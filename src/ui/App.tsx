@@ -3,6 +3,7 @@ import { ItemListScreen } from './items/ItemListScreen'
 import { ItemEditScreen } from './items/ItemEditScreen'
 import { MachineListScreen } from './machines/MachineListScreen'
 import { MachineMapScreen } from './machines/MachineMapScreen'
+import { CountScreen } from './run/CountScreen'
 import type { Id } from '../domain/types'
 
 type Screen =
@@ -10,6 +11,7 @@ type Screen =
   | { name: 'item-edit'; itemId?: Id }
   | { name: 'machines' }
   | { name: 'machine-map'; machineId: Id }
+  | { name: 'count'; runId: Id; machineId: Id }
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'machines' })
@@ -37,10 +39,19 @@ export default function App() {
             onBack={() => setScreen({ name: 'machines' })}
           />
         )
+      case 'count':
+        return (
+          <CountScreen
+            runId={screen.runId}
+            machineId={screen.machineId}
+            onDone={() => setScreen({ name: 'machines' })}
+          />
+        )
       case 'machines':
         return (
           <MachineListScreen
-            onSelect={(machineId) => setScreen({ name: 'machine-map', machineId })}
+            onCount={(machineId, runId) => setScreen({ name: 'count', runId, machineId })}
+            onViewMap={(machineId) => setScreen({ name: 'machine-map', machineId })}
           />
         )
     }
