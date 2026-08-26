@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getItem, saveItem } from '../../data/repositories/items'
+import { getBasePlacement, setPlacement } from '../../data/repositories/placements'
+import { parseSlotNumbers } from '../../domain/trays'
 import type { Id } from '../../domain/types'
 
 const numberOrNull = (raw: string) => (raw.trim() === '' ? null : Number(raw))
@@ -9,16 +11,24 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
   const [price, setPrice] = useState<number | null>(null)
   const [basePar, setBasePar] = useState<number | null>(null)
   const [boxSize, setBoxSize] = useState<number | null>(null)
+  const [slots, setSlots] = useState('')
+  const [slotError, setSlotError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!itemId) return
-    getItem(itemId).then((item) => {
-      if (!item) return
-      setName(item.name)
-      setPrice(item.price)
-      setBasePar(item.basePar)
-      setBoxSize(item.boxSize)
-    })
+    // One await, so the fields and the slots land in a single render.
+    void (async () => {
+      const [item, placement] = await Promise.all([
+        getItem(itemId), getBasePlacement(itemId),
+      ])
+      if (item) {
+        setName(item.name)
+        setPrice(item.price)
+        setBasePar(item.basePar)
+        setBoxSize(item.boxSize)
+      }
+      setSlots((placement?.slots ?? []).join(', '))
+    })()
   }, [itemId])
 
   const valid =
@@ -26,7 +36,22 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
 
   async function handleSave() {
     if (!valid) return
-    await saveItem({ id: itemId, name: name.trim(), price, basePar, boxSize })
+
+    // Spec §4.2: set the slots once from the item — "Coke is at 58, 59" —
+    // and note the exceptions per machine afterwards. A bad slot number is
+    // shown, never dropped silently: a typo that vanishes leaves the operator
+    // standing at a machine with a slot that never appears.
+    const { slots: parsed, invalid } = parseSlotNumbers(slots)
+    if (invalid.length > 0) {
+      setSlotError(
+        `Not slot numbers: ${invalid.join(', ')}. Slots run 10–14, 20–29, 30–39, 40–49, 50–59, 60–69.`,
+      )
+      return
+    }
+    setSlotError(null)
+
+    const item = await saveItem({ id: itemId, name: name.trim(), price, basePar, boxSize })
+    await setPlacement(item.id, { kind: 'base' }, parsed)
     onDone()
   }
 
@@ -79,6 +104,26 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
           value={boxSize ?? ''}
           onChange={(e) => setBoxSize(numberOrNull(e.target.value))}
         />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-bold uppercase text-gray-500">Slots</span>
+        <input
+          aria-label="Slots"
+          inputMode="numeric"
+          placeholder="58, 59"
+          className="rounded-lg border p-2"
+          value={slots}
+          onChange={(e) => setSlots(e.target.value)}
+        />
+        <span className="text-xs text-gray-400">
+          Applies to every machine. Correct the exceptions at the machine.
+        </span>
+        {slotError && (
+          <span role="alert" className="text-xs font-semibold text-red-600">
+            {slotError}
+          </span>
+        )}
       </label>
 
       <button

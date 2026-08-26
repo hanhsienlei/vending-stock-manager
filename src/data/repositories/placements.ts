@@ -6,6 +6,12 @@ export function listPlacements(): Promise<ItemPlacement[]> {
   return db.placements.toArray()
 }
 
+/** The item's placement across every machine, as set from the item screen. */
+export async function getBasePlacement(itemId: Id): Promise<ItemPlacement | undefined> {
+  const forItem = await db.placements.where('itemId').equals(itemId).toArray()
+  return forItem.find((p) => p.scope.kind === 'base')
+}
+
 function sameScope(a: PlacementScope, b: PlacementScope): boolean {
   if (a.kind === 'base' && b.kind === 'base') return true
   return a.kind === 'machine' && b.kind === 'machine' && a.machineId === b.machineId

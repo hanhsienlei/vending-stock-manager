@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
 import { saveMachine } from '../../data/repositories/machines'
-import { setPlacement } from '../../data/repositories/placements'
+import { listPlacements, setPlacement } from '../../data/repositories/placements'
+import { effectivePlacement } from '../../domain/placement'
 import { createRun } from '../../data/repositories/runs'
 import {
   openVisit, getCountLines, putCountLine, finalizeVisit,
@@ -78,6 +79,46 @@ describe('CountScreen', () => {
     expect((fantaLine?.after ?? 0) + (sunkistLine?.after ?? 0)).toBe(5)
     expect(fantaLine?.after).toBeGreaterThanOrEqual(fantaLine?.before ?? 0)
     expect(sunkistLine?.after).toBeGreaterThanOrEqual(sunkistLine?.before ?? 0)
+  })
+
+  it('lets a slot be populated at the machine when nothing is mapped yet', async () => {
+    const user = userEvent.setup()
+    // A fresh install: the item exists but no placement does, so the resolved
+    // map is empty. Without an empty state there are no rows, so no ⋯ button,
+    // so no way to reach the slot editor at all.
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const run = await createRun('2026-08-26')
+
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+
+    expect(await screen.findByText(/no slots/i)).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Slot number'), '58')
+    await user.click(screen.getByRole('button', { name: 'Open slot' }))
+    await user.click(await screen.findByRole('button', { name: 'Add Coke' }))
+
+    await screen.findByText('Coke')
+    expect(screen.getByLabelText('slot 58')).toBeInTheDocument()
+
+    const placements = await listPlacements()
+    expect(effectivePlacement(coke.id, machine.id, placements)?.slots).toEqual([58])
+  })
+
+  it('rejects a slot number outside the machine trays in the empty state', async () => {
+    const user = userEvent.setup()
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const run = await createRun('2026-08-26')
+
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    await screen.findByText(/no slots/i)
+
+    await user.type(screen.getByLabelText('Slot number'), '99')
+    await user.click(screen.getByRole('button', { name: 'Open slot' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('99')
+    expect(screen.queryByRole('button', { name: 'Add Coke' })).toBeNull()
   })
 
   it('greys a carried-forward level until the row is touched', async () => {
