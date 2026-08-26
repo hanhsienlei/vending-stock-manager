@@ -15,6 +15,16 @@ export function SlotRow({
   onEdit: (slotNumber: number) => void
 }) {
   const mixed = slot.accepts.length > 1
+  const total = slot.accepts.reduce(
+    (sum, itemId) => sum + (before.get(levelKey(slot.slotNumber, itemId)) ?? 0),
+    0,
+  )
+  // The printed map is ~90% accurate and Phase 1 capacity is derived from
+  // basePar, so a slot can genuinely hold more than its recorded capacity —
+  // and an item with basePar 0 derives a capacity of 0. Capping the stepper
+  // at capacity would force the operator to under-record, which books phantom
+  // sales through the sales residual (spec §3.3). Record the truth; flag it.
+  const overCapacity = total > slot.capacity
 
   return (
     <li
@@ -31,6 +41,9 @@ export function SlotRow({
           <div className="text-xs text-gray-400">
             capacity {slot.capacity}
             {ranDry && <span className="ml-2 font-bold text-red-600">RAN DRY</span>}
+            {overCapacity && (
+              <span className="ml-2 font-bold text-amber-600">OVER CAPACITY</span>
+            )}
           </div>
         </div>
 
@@ -38,7 +51,6 @@ export function SlotRow({
           <Stepper
             label={`slot ${slot.slotNumber}`}
             value={before.get(levelKey(slot.slotNumber, slot.accepts[0])) ?? 0}
-            max={slot.capacity}
             onChange={(qty) => onSetBefore(slot.slotNumber, slot.accepts[0], qty)}
           />
         )}
@@ -72,7 +84,6 @@ export function SlotRow({
             <Stepper
               label={`slot ${slot.slotNumber} ${items.get(itemId)?.name ?? ''}`}
               value={before.get(levelKey(slot.slotNumber, itemId)) ?? 0}
-              max={slot.capacity}
               onChange={(qty) => onSetBefore(slot.slotNumber, itemId, qty)}
             />
           </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
@@ -75,5 +75,51 @@ describe('CountScreen', () => {
     expect((fantaLine?.after ?? 0) + (sunkistLine?.after ?? 0)).toBe(5)
     expect(fantaLine?.after).toBeGreaterThanOrEqual(fantaLine?.before ?? 0)
     expect(sunkistLine?.after).toBeGreaterThanOrEqual(sunkistLine?.before ?? 0)
+  })
+
+  it('counts a slot whose derived capacity is 0', async () => {
+    const user = userEvent.setup()
+    // basePar 0 is legal (ItemEditScreen accepts it), and in a slot with no
+    // SlotConfig it derives a capacity of 0. The row must still be countable.
+    const water = await saveItem({ name: 'Water', price: 3, basePar: 0, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(water.id, { kind: 'base' }, [41])
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, machine.id)
+
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    await screen.findByText('Water')
+
+    await user.click(screen.getByLabelText('slot 41 increase'))
+    await user.click(screen.getByLabelText('slot 41 increase'))
+
+    expect(screen.getByLabelText('slot 41')).toHaveTextContent('2')
+    await waitFor(async () => {
+      expect((await getCountLines(visit.id))[0]?.before).toBe(2)
+    })
+  })
+
+  it('records a count deeper than capacity and flags it rather than blocking it', async () => {
+    const user = userEvent.setup()
+    // The printed map is only ~90% accurate, so a slot can physically hold
+    // more than its derived capacity. Under-recording books phantom sales.
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 2, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, machine.id)
+
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    await screen.findByText('Coke')
+
+    for (let i = 0; i < 4; i += 1) {
+      await user.click(screen.getByLabelText('slot 58 increase'))
+    }
+
+    expect(screen.getByLabelText('slot 58')).toHaveTextContent('4')
+    expect(screen.getByText('OVER CAPACITY')).toBeInTheDocument()
+    await waitFor(async () => {
+      expect((await getCountLines(visit.id))[0]?.before).toBe(4)
+    })
   })
 })
