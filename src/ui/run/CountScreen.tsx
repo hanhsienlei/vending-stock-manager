@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { TrayTabs } from '../components/TrayTabs'
 import { SlotRow } from './SlotRow'
+import { SlotEditSheet } from './SlotEditSheet'
 import { trayOf } from '../../domain/trays'
 import { useCounting } from './useCounting'
 import type { Id } from '../../domain/types'
@@ -14,6 +15,7 @@ export function CountScreen({
 }) {
   const counting = useCounting(runId, machineId)
   const [tray, setTray] = useState<number | null>(null)
+  const [editingSlot, setEditingSlot] = useState<number | null>(null)
 
   if (counting.loading) return <div className="p-4">Loading…</div>
 
@@ -44,9 +46,26 @@ export function CountScreen({
             onToggleFill={(slotNumber) => {
               counting.toggleFill(slotNumber).catch(() => {})
             }}
+            onEdit={setEditingSlot}
           />
         ))}
       </ul>
+
+      {editingSlot !== null && (
+        <SlotEditSheet
+          machineId={machineId}
+          slotNumber={editingSlot}
+          items={[...counting.items.values()]}
+          currentItemIds={
+            counting.map.find((s) => s.slotNumber === editingSlot)?.accepts ?? []
+          }
+          onSaved={() => {
+            setEditingSlot(null)
+            void counting.reload()
+          }}
+          onCancel={() => setEditingSlot(null)}
+        />
+      )}
 
       <div className="p-3">
         <button

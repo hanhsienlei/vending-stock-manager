@@ -3,7 +3,7 @@ import { levelKey } from '../../domain/levels'
 import type { Id, Item, ResolvedSlot } from '../../domain/types'
 
 export function SlotRow({
-  slot, items, before, isFilled, ranDry, onSetBefore, onToggleFill,
+  slot, items, before, isFilled, ranDry, onSetBefore, onToggleFill, onEdit,
 }: {
   slot: ResolvedSlot
   items: Map<Id, Item>
@@ -12,6 +12,7 @@ export function SlotRow({
   ranDry: boolean
   onSetBefore: (slotNumber: number, itemId: Id, qty: number) => void
   onToggleFill: (slotNumber: number) => void
+  onEdit: (slotNumber: number) => void
 }) {
   const mixed = slot.accepts.length > 1
 
@@ -52,6 +53,15 @@ export function SlotRow({
           }`}
         >
           Fill
+        </button>
+
+        <button
+          type="button"
+          aria-label={`Edit slot ${slot.slotNumber}`}
+          onClick={() => onEdit(slot.slotNumber)}
+          className="px-1 text-lg text-gray-400"
+        >
+          ⋯
         </button>
       </div>
 

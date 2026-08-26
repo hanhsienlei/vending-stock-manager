@@ -136,6 +136,34 @@ describe('useCounting', () => {
     expect(sunkistAfter).toBeLessThanOrEqual(5)
   })
 
+  it('preserves an in-progress count across reload() instead of re-seeding it from history', async () => {
+    const { coke, machine } = await seed()
+
+    const past = await createRun('2026-08-22')
+    const pastVisit = await openVisit(past.id, machine.id)
+    await putCountLine({
+      id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
+      before: 2, after: 8, touched: true, updatedAt: now(),
+    })
+    await finalizeVisit(pastVisit.id)
+
+    const run = await createRun('2026-08-26')
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.before.get(`58:${coke.id}`)).toBe(8)
+
+    await act(async () => { await result.current.setBefore(58, coke.id, 3) })
+    expect(result.current.before.get(`58:${coke.id}`)).toBe(3)
+
+    // A map correction (e.g. via SlotEditSheet) calls reload(), which gives
+    // useMachineMap a new `map` array identity and re-fires the seeding
+    // effect. That must merge, not replace: the operator's entered count
+    // (3) must survive, not reset back to the historical level (8).
+    await act(async () => { await result.current.reload() })
+    await waitFor(() => expect(result.current.before.get(`58:${coke.id}`)).toBe(3))
+    expect(result.current.after.get(`58:${coke.id}`)).toBe(3)
+  })
+
   it('recomputes after for every item in a filled mixed slot when one item changes', async () => {
     const { fanta, sunkist, machine } = await seedMixed()
     const run = await createRun('2026-08-26')

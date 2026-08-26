@@ -9,7 +9,7 @@ import {
 import type { Id, ResolvedSlot, Visit } from '../../domain/types'
 
 export function useCounting(runId: Id, machineId: Id) {
-  const { map, items, loading: mapLoading } = useMachineMap(machineId)
+  const { map, items, reload, loading: mapLoading } = useMachineMap(machineId)
   const [visit, setVisit] = useState<Visit | null>(null)
   const [before, setBeforeState] = useState<Map<string, number>>(new Map())
   const [after, setAfterState] = useState<Map<string, number>>(new Map())
@@ -25,16 +25,30 @@ export function useCounting(runId: Id, machineId: Id) {
         historyForMachine(machineId),
       ])
       const levels = lastRecordedLevels(history)
-      const seeded = new Map<string, number>()
-      for (const slot of map) {
-        for (const itemId of slot.accepts) {
-          const key = levelKey(slot.slotNumber, itemId)
-          seeded.set(key, levels.get(key) ?? 0)
+
+      // Merge rather than replace: a key already present (because the
+      // operator has already entered a count for it in this session) keeps
+      // its current value. Only keys not yet present — including a newly
+      // added item's slot — get seeded from history. This makes the effect
+      // idempotent, so a `map` identity change (e.g. from `reload()` after
+      // a mid-count map correction) never wipes counts already entered on
+      // this screen. Uses the functional setState form so the merge reads
+      // the current `before`/`after` rather than a stale closure snapshot,
+      // without needing them in the dependency array (which would loop).
+      const merge = (prev: Map<string, number>) => {
+        const next = new Map(prev)
+        for (const slot of map) {
+          for (const itemId of slot.accepts) {
+            const key = levelKey(slot.slotNumber, itemId)
+            if (!next.has(key)) next.set(key, levels.get(key) ?? 0)
+          }
         }
+        return next
       }
+
       setVisit(openedVisit)
-      setBeforeState(seeded)
-      setAfterState(new Map(seeded))
+      setBeforeState(merge)
+      setAfterState(merge)
       setLoading(false)
     })()
   }, [mapLoading, map, runId, machineId])
@@ -174,6 +188,6 @@ export function useCounting(runId: Id, machineId: Id) {
   return {
     loading: loading || mapLoading,
     map, items, before, after, filled, touched,
-    setBefore, toggleFill, finalize, ranDry,
+    setBefore, toggleFill, finalize, ranDry, reload,
   }
 }
