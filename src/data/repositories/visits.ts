@@ -3,17 +3,19 @@ import { newId, now } from '../../domain/ids'
 import type { CountLine, Id, Visit } from '../../domain/types'
 
 export async function openVisit(runId: Id, machineId: Id): Promise<Visit> {
-  const existing = await db.visits
-    .where('[runId+machineId]')
-    .equals([runId, machineId])
-    .first()
-  if (existing) return existing
+  return db.transaction('rw', db.visits, async () => {
+    const existing = await db.visits
+      .where('[runId+machineId]')
+      .equals([runId, machineId])
+      .first()
+    if (existing) return existing
 
-  const visit: Visit = {
-    id: newId(), runId, machineId, status: 'draft', updatedAt: now(),
-  }
-  await db.visits.put(visit)
-  return visit
+    const visit: Visit = {
+      id: newId(), runId, machineId, status: 'draft', updatedAt: now(),
+    }
+    await db.visits.put(visit)
+    return visit
+  })
 }
 
 export function getCountLines(visitId: Id): Promise<CountLine[]> {
@@ -21,17 +23,28 @@ export function getCountLines(visitId: Id): Promise<CountLine[]> {
 }
 
 export async function putCountLine(line: CountLine): Promise<void> {
-  const visit = await db.visits.get(line.visitId)
-  if (!visit) throw new Error(`Unknown visit ${line.visitId}`)
-  if (visit.status === 'finalized') {
-    throw new Error(`Visit ${line.visitId} is finalized and cannot be modified`)
-  }
-  await db.countLines.put(line)
+  await db.transaction('rw', db.visits, db.countLines, async () => {
+    const visit = await db.visits.get(line.visitId)
+    if (!visit) throw new Error(`Unknown visit ${line.visitId}`)
+    if (visit.status === 'finalized') {
+      throw new Error(`Visit ${line.visitId} is finalized and cannot be modified`)
+    }
+
+    const existing = (await db.countLines
+      .where('[visitId+slotNumber]')
+      .equals([line.visitId, line.slotNumber])
+      .toArray())
+      .find((l) => l.itemId === line.itemId)
+
+    await db.countLines.put({ ...line, id: existing?.id ?? line.id })
+  })
 }
 
 export async function finalizeVisit(visitId: Id): Promise<Visit> {
   const visit = await db.visits.get(visitId)
   if (!visit) throw new Error(`Unknown visit ${visitId}`)
+  if (visit.status === 'finalized') return visit
+
   const finalized: Visit = {
     ...visit, status: 'finalized', finalizedAt: now(), updatedAt: now(),
   }

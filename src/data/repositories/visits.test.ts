@@ -66,4 +66,37 @@ describe('visits', () => {
     expect(history[0].lines[0].after).toBe(8)
     expect(history[1].lines[0].after).toBe(3)
   })
+
+  it('upserts repeated taps on the same slot/item into a single row', async () => {
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, 'L7')
+
+    await putCountLine(lineFor(visit.id, 8))
+    await putCountLine(lineFor(visit.id, 5))
+    await putCountLine(lineFor(visit.id, 3))
+
+    const lines = await getCountLines(visit.id)
+    expect(lines).toHaveLength(1)
+    expect(lines[0].after).toBe(3)
+  })
+
+  it('keeps two items in the same slot as separate rows', async () => {
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, 'L7')
+
+    await putCountLine({ ...lineFor(visit.id, 8), itemId: 'coke' })
+    await putCountLine({ ...lineFor(visit.id, 2), itemId: 'sunkist' })
+
+    const lines = await getCountLines(visit.id)
+    expect(lines).toHaveLength(2)
+  })
+
+  it('does not re-stamp an already-finalized visit', async () => {
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, 'L7')
+    const first = await finalizeVisit(visit.id)
+    const second = await finalizeVisit(visit.id)
+    expect(second.finalizedAt).toBe(first.finalizedAt)
+    expect(second.updatedAt).toBe(first.updatedAt)
+  })
 })
