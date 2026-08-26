@@ -34,8 +34,11 @@ describe('CountScreen', () => {
 
     await user.click(screen.getByLabelText('slot 58 increase'))
 
-    const lines = await getCountLines(visit.id)
-    expect(lines[0].before).toBe(1)
+    // The tap paints immediately and persists behind it, so the assertion
+    // waits for the write rather than racing it.
+    await waitFor(async () => {
+      expect((await getCountLines(visit.id))[0]?.before).toBe(1)
+    })
   })
 
   it('marks an empty slot as ran dry', async () => {
@@ -69,6 +72,11 @@ describe('CountScreen', () => {
     await user.click(screen.getByLabelText('slot 52 Sunkist increase'))
     await user.click(screen.getByLabelText('slot 52 Sunkist increase'))
     await user.click(screen.getByLabelText('slot 52 Sunkist increase'))
+
+    await waitFor(async () => {
+      const pending = await getCountLines(visit.id)
+      expect(pending.find((l) => l.itemId === sunkist.id)?.before).toBe(3)
+    })
 
     const lines = await getCountLines(visit.id)
     const sunkistLine = lines.find((l) => l.itemId === sunkist.id)
