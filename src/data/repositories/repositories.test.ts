@@ -75,4 +75,20 @@ describe('slotConfigs', () => {
     expect(all[0].capacity).toBe(5)
     expect(all[0].accepts).toEqual(['sunkist', 'fanta'])
   })
+
+  it('throws when creating a new config without a capacity', async () => {
+    await expect(
+      setSlotConfig('L7', 52, { accepts: ['sunkist', 'fanta'] }),
+    ).rejects.toThrow(/capacity/)
+    expect(await listSlotConfigs()).toEqual([])
+  })
+
+  it('preserves stored capacity when patching accepts on an existing config', async () => {
+    await setSlotConfig('L7', 52, { capacity: 5 })
+    await setSlotConfig('L7', 52, { accepts: ['sunkist', 'fanta'] })
+    const all = await listSlotConfigs()
+    expect(all).toHaveLength(1)
+    expect(all[0].capacity).toBe(5)
+    expect(all[0].accepts).toEqual(['sunkist', 'fanta'])
+  })
 })

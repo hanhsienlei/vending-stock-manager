@@ -16,17 +16,19 @@ export async function setPlacement(
   scope: PlacementScope,
   slots: number[],
 ): Promise<ItemPlacement> {
-  const existing = (await db.placements.where('itemId').equals(itemId).toArray())
-    .find((p) => sameScope(p.scope, scope))
+  return db.transaction('rw', db.placements, async () => {
+    const existing = (await db.placements.where('itemId').equals(itemId).toArray())
+      .find((p) => sameScope(p.scope, scope))
 
-  const placement: ItemPlacement = {
-    id: existing?.id ?? newId(),
-    itemId,
-    scope,
-    slots: [...slots].sort((a, b) => a - b),
-    updatedAt: now(),
-  }
+    const placement: ItemPlacement = {
+      id: existing?.id ?? newId(),
+      itemId,
+      scope,
+      slots: [...slots].sort((a, b) => a - b),
+      updatedAt: now(),
+    }
 
-  await db.placements.put(placement)
-  return placement
+    await db.placements.put(placement)
+    return placement
+  })
 }

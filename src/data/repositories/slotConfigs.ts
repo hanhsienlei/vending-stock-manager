@@ -11,20 +11,29 @@ export async function setSlotConfig(
   slotNumber: number,
   patch: { capacity?: number; accepts?: Id[] },
 ): Promise<SlotConfig> {
-  const existing = await db.slotConfigs
-    .where('[machineId+slotNumber]')
-    .equals([machineId, slotNumber])
-    .first()
+  return db.transaction('rw', db.slotConfigs, async () => {
+    const existing = await db.slotConfigs
+      .where('[machineId+slotNumber]')
+      .equals([machineId, slotNumber])
+      .first()
 
-  const config: SlotConfig = {
-    id: existing?.id ?? newId(),
-    machineId,
-    slotNumber,
-    capacity: patch.capacity ?? existing?.capacity ?? 0,
-    accepts: patch.accepts ?? existing?.accepts ?? [],
-    updatedAt: now(),
-  }
+    const capacity = patch.capacity ?? existing?.capacity
+    if (capacity === undefined) {
+      throw new Error(
+        `Cannot create slot config ${machineId}/${slotNumber} without a capacity — capacity is operator-set and has no default`,
+      )
+    }
 
-  await db.slotConfigs.put(config)
-  return config
+    const config: SlotConfig = {
+      id: existing?.id ?? newId(),
+      machineId,
+      slotNumber,
+      capacity,
+      accepts: patch.accepts ?? existing?.accepts ?? [],
+      updatedAt: now(),
+    }
+
+    await db.slotConfigs.put(config)
+    return config
+  })
 }
