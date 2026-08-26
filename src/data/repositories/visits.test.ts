@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { db } from '../db'
 import { createRun, listRuns } from './runs'
 import {
   openVisit, getCountLines, putCountLine, finalizeVisit, historyForMachine,
 } from './visits'
 import { newId, now } from '../../domain/ids'
+import { lastRecordedLevels, levelKey } from '../../domain/levels'
 import type { CountLine } from '../../domain/types'
 
 const lineFor = (visitId: string, after: number): CountLine => ({
@@ -98,5 +99,59 @@ describe('visits', () => {
     const second = await finalizeVisit(visit.id)
     expect(second.finalizedAt).toBe(first.finalizedAt)
     expect(second.updatedAt).toBe(first.updatedAt)
+  })
+})
+
+describe('historyForMachine bounds', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  /** Stamps each record with a strictly increasing time, so `finalizedAt`
+   * ordering is deterministic rather than depending on whether two writes
+   * happened to land in the same millisecond. */
+  function useIncreasingClock() {
+    let t = 1_700_000_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => {
+      t += 1000
+      return t
+    })
+  }
+
+  async function seedFinalizedVisits(machineId: string, count: number) {
+    for (let i = 0; i < count; i += 1) {
+      const run = await createRun(`2026-08-${String(10 + i).padStart(2, '0')}`)
+      const visit = await openVisit(run.id, machineId)
+      await putCountLine({ ...lineFor(visit.id, i), id: newId() })
+      await finalizeVisit(visit.id)
+    }
+  }
+
+  it('reads only the newest 4 finalized visits by default', async () => {
+    useIncreasingClock()
+    await seedFinalizedVisits('L7', 6)
+
+    const history = await historyForMachine('L7')
+
+    expect(history).toHaveLength(4)
+    expect(history.map((h) => h.lines[0].after)).toEqual([5, 4, 3, 2])
+  })
+
+  it('honours an explicit limit', async () => {
+    useIncreasingClock()
+    await seedFinalizedVisits('L7', 6)
+
+    const history = await historyForMachine('L7', 2)
+
+    expect(history.map((h) => h.lines[0].after)).toEqual([5, 4])
+  })
+
+  it('still lets the newest value per key win within the bound', async () => {
+    useIncreasingClock()
+    await seedFinalizedVisits('L7', 6)
+
+    const history = await historyForMachine('L7')
+
+    expect(lastRecordedLevels(history).get(levelKey(58, 'coke'))).toBe(5)
   })
 })

@@ -52,12 +52,22 @@ export async function finalizeVisit(visitId: Id): Promise<Visit> {
   return finalized
 }
 
+/** Newest-first, bounded. Count lines are only read for the visits that
+ * survive the bound — unbounded history would grow at ~5,600 rows per machine
+ * per year and is re-read on every screen entry, which spec §8 forbids on the
+ * latency-critical path. Four is the window Phase 3's demand rate needs
+ * (`mean over the last 4 non-censored periods`), and `lastRecordedLevels`
+ * only ever consumes the newest value per key. */
+export const HISTORY_LIMIT = 4
+
 export async function historyForMachine(
   machineId: Id,
+  limit: number = HISTORY_LIMIT,
 ): Promise<{ visit: Visit; lines: CountLine[] }[]> {
   const visits = (await db.visits.toArray())
     .filter((v) => v.machineId === machineId && v.status === 'finalized')
     .sort((a, b) => (b.finalizedAt ?? 0) - (a.finalizedAt ?? 0))
+    .slice(0, Math.max(0, limit))
 
   return Promise.all(
     visits.map(async (visit) => ({ visit, lines: await getCountLines(visit.id) })),
