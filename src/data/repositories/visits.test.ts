@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { db } from '../db'
-import { createRun, listRuns } from './runs'
+import { createRun, getOrCreateRun, listRuns } from './runs'
 import {
   openVisit, getCountLines, putCountLine, finalizeVisit, historyForMachine,
 } from './visits'
@@ -23,6 +23,33 @@ describe('runs', () => {
     await createRun('2026-08-22')
     await createRun('2026-08-26')
     expect((await listRuns()).map((r) => r.date)).toEqual(['2026-08-26', '2026-08-22'])
+  })
+
+  it('creates one run per date even when two taps race', async () => {
+    const [a, b] = await Promise.all([
+      getOrCreateRun('2026-08-26'),
+      getOrCreateRun('2026-08-26'),
+    ])
+
+    expect(b.id).toBe(a.id)
+    expect(await listRuns()).toHaveLength(1)
+  })
+
+  it('returns the existing run for a date rather than a second one', async () => {
+    const first = await createRun('2026-08-26')
+    const again = await getOrCreateRun('2026-08-26')
+
+    expect(again.id).toBe(first.id)
+    expect(again.createdAt).toBe(first.createdAt)
+    expect(await listRuns()).toHaveLength(1)
+  })
+
+  it('still creates a distinct run for a different date', async () => {
+    const tuesday = await getOrCreateRun('2026-08-25')
+    const friday = await getOrCreateRun('2026-08-28')
+
+    expect(friday.id).not.toBe(tuesday.id)
+    expect((await listRuns()).map((r) => r.date)).toEqual(['2026-08-28', '2026-08-25'])
   })
 })
 

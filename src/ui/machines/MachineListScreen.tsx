@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { listMachines, saveMachine } from '../../data/repositories/machines'
-import { createRun, listRuns } from '../../data/repositories/runs'
+import { getOrCreateRun } from '../../data/repositories/runs'
 import type { Id, Machine } from '../../domain/types'
 
 export function MachineListScreen({
@@ -31,8 +31,7 @@ export function MachineListScreen({
 
   async function startCount(machineId: Id) {
     const today = new Date().toISOString().slice(0, 10)
-    const runs = await listRuns()
-    const run = runs.find((r) => r.date === today) ?? (await createRun(today))
+    const run = await getOrCreateRun(today)
     onCount(machineId, run.id)
   }
 
