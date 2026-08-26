@@ -3,11 +3,15 @@ import { levelKey } from '../../domain/levels'
 import type { Id, Item, ResolvedSlot } from '../../domain/types'
 
 export function SlotRow({
-  slot, items, before, isFilled, ranDry, onSetBefore, onToggleFill, onEdit,
+  slot, items, before, touched, isFilled, ranDry, onSetBefore, onToggleFill, onEdit,
 }: {
   slot: ResolvedSlot
   items: Map<Id, Item>
   before: Map<string, number>
+  /** Level keys the operator has actually worked this visit. Everything else
+   * is last visit's level carried forward, and is greyed to say so
+   * (spec §3.1, §5.1). */
+  touched: Set<string>
   isFilled: boolean
   ranDry: boolean
   onSetBefore: (slotNumber: number, itemId: Id, qty: number) => void
@@ -51,6 +55,7 @@ export function SlotRow({
           <Stepper
             label={`slot ${slot.slotNumber}`}
             value={before.get(levelKey(slot.slotNumber, slot.accepts[0])) ?? 0}
+            dimmed={!touched.has(levelKey(slot.slotNumber, slot.accepts[0]))}
             onChange={(qty) => onSetBefore(slot.slotNumber, slot.accepts[0], qty)}
           />
         )}
@@ -84,6 +89,7 @@ export function SlotRow({
             <Stepper
               label={`slot ${slot.slotNumber} ${items.get(itemId)?.name ?? ''}`}
               value={before.get(levelKey(slot.slotNumber, itemId)) ?? 0}
+              dimmed={!touched.has(levelKey(slot.slotNumber, itemId))}
               onChange={(qty) => onSetBefore(slot.slotNumber, itemId, qty)}
             />
           </div>

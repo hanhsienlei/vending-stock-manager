@@ -34,6 +34,7 @@ export function CountScreen({
             slot={slot}
             items={counting.items}
             before={counting.before}
+            touched={counting.touched}
             isFilled={counting.filled.has(slot.slotNumber)}
             ranDry={counting.ranDry(slot)}
             onSetBefore={(slotNumber, itemId, qty) => {

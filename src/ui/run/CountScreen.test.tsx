@@ -6,7 +6,10 @@ import { saveItem } from '../../data/repositories/items'
 import { saveMachine } from '../../data/repositories/machines'
 import { setPlacement } from '../../data/repositories/placements'
 import { createRun } from '../../data/repositories/runs'
-import { openVisit, getCountLines } from '../../data/repositories/visits'
+import {
+  openVisit, getCountLines, putCountLine, finalizeVisit,
+} from '../../data/repositories/visits'
+import { newId, now } from '../../domain/ids'
 import { CountScreen } from './CountScreen'
 
 beforeEach(async () => {
@@ -75,6 +78,33 @@ describe('CountScreen', () => {
     expect((fantaLine?.after ?? 0) + (sunkistLine?.after ?? 0)).toBe(5)
     expect(fantaLine?.after).toBeGreaterThanOrEqual(fantaLine?.before ?? 0)
     expect(sunkistLine?.after).toBeGreaterThanOrEqual(sunkistLine?.before ?? 0)
+  })
+
+  it('greys a carried-forward level until the row is touched', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+
+    const past = await createRun('2026-08-22')
+    const pastVisit = await openVisit(past.id, machine.id)
+    await putCountLine({
+      id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
+      before: 2, after: 8, touched: true, updatedAt: now(),
+    })
+    await finalizeVisit(pastVisit.id)
+
+    const run = await createRun('2026-08-26')
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+
+    // On a 54-slot machine this is the operator's only signal for which rows
+    // have actually been worked (spec §3.1, §5.1).
+    const value = await screen.findByLabelText('slot 58')
+    expect(value).toHaveTextContent('8')
+    expect(value).toHaveClass('text-gray-400')
+
+    await user.click(screen.getByLabelText('slot 58 decrease'))
+    expect(screen.getByLabelText('slot 58')).not.toHaveClass('text-gray-400')
   })
 
   it('counts a slot whose derived capacity is 0', async () => {
