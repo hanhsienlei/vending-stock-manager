@@ -35,10 +35,14 @@ export function CountScreen({
             isFilled={counting.filled.has(slot.slotNumber)}
             ranDry={counting.ranDry(slot)}
             onSetBefore={(slotNumber, itemId, qty) => {
-              void counting.setBefore(slotNumber, itemId, qty)
+              // useCounting has already rolled local state back to the
+              // pre-change values on a rejected write (e.g. a finalized
+              // visit); swallow here so it isn't an unhandled rejection.
+              // No UI error surface is in scope for this task.
+              counting.setBefore(slotNumber, itemId, qty).catch(() => {})
             }}
             onToggleFill={(slotNumber) => {
-              void counting.toggleFill(slotNumber)
+              counting.toggleFill(slotNumber).catch(() => {})
             }}
           />
         ))}

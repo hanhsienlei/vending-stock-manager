@@ -23,6 +23,18 @@ async function seed() {
   return { coke, machine }
 }
 
+/** A mixed slot: two items sharing slot 52, no SlotConfig, so `accepts`
+ * falls back to alphabetical order (Fanta, then Sunkist) and capacity
+ * falls back to the preferred item's basePar (5). */
+async function seedMixed() {
+  const fanta = await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+  const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+  const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+  await setPlacement(fanta.id, { kind: 'base' }, [52])
+  await setPlacement(sunkist.id, { kind: 'base' }, [52])
+  return { fanta, sunkist, machine }
+}
+
 describe('useCounting', () => {
   it('seeds before-counts from the last finalized visit', async () => {
     const { coke, machine } = await seed()
@@ -87,6 +99,60 @@ describe('useCounting', () => {
     await act(async () => { await result.current.setBefore(58, coke.id, 3) })
     await act(async () => { await result.current.finalize() })
 
-    await expect(result.current.setBefore(58, coke.id, 4)).rejects.toThrow(/finalized/i)
+    await act(async () => {
+      await expect(result.current.setBefore(58, coke.id, 4)).rejects.toThrow(/finalized/i)
+    })
+  })
+
+  it('rolls back before to the pre-write value when a write is rejected', async () => {
+    const { coke, machine } = await seed()
+    const run = await createRun('2026-08-26')
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setBefore(58, coke.id, 3) })
+    await act(async () => { await result.current.finalize() })
+
+    await act(async () => {
+      await expect(result.current.setBefore(58, coke.id, 4)).rejects.toThrow(/finalized/i)
+    })
+
+    expect(result.current.before.get(`58:${coke.id}`)).toBe(3)
+    expect(result.current.after.get(`58:${coke.id}`)).toBe(3)
+  })
+
+  it('brings a mixed slot total to capacity on fill, not each item to capacity', async () => {
+    const { fanta, sunkist, machine } = await seedMixed()
+    const run = await createRun('2026-08-26')
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.toggleFill(52) })
+
+    const fantaAfter = result.current.after.get(`52:${fanta.id}`) ?? 0
+    const sunkistAfter = result.current.after.get(`52:${sunkist.id}`) ?? 0
+    expect(fantaAfter + sunkistAfter).toBe(5)
+    expect(fantaAfter).toBeLessThanOrEqual(5)
+    expect(sunkistAfter).toBeLessThanOrEqual(5)
+  })
+
+  it('recomputes after for every item in a filled mixed slot when one item changes', async () => {
+    const { fanta, sunkist, machine } = await seedMixed()
+    const run = await createRun('2026-08-26')
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.toggleFill(52) })
+    await act(async () => { await result.current.setBefore(52, sunkist.id, 3) })
+
+    const fantaBefore = result.current.before.get(`52:${fanta.id}`) ?? 0
+    const sunkistBefore = result.current.before.get(`52:${sunkist.id}`) ?? 0
+    const fantaAfter = result.current.after.get(`52:${fanta.id}`) ?? 0
+    const sunkistAfter = result.current.after.get(`52:${sunkist.id}`) ?? 0
+
+    expect(sunkistBefore).toBe(3)
+    expect(fantaAfter + sunkistAfter).toBe(5)
+    expect(fantaAfter).toBeGreaterThanOrEqual(fantaBefore)
+    expect(sunkistAfter).toBeGreaterThanOrEqual(sunkistBefore)
   })
 })

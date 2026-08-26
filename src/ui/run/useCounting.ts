@@ -62,22 +62,68 @@ export function useCounting(runId: Id, machineId: Id) {
   const setBefore = useCallback(
     async (slotNumber: number, itemId: Id, qty: number) => {
       const key = levelKey(slotNumber, itemId)
+      const slot = map.find((s) => s.slotNumber === slotNumber)
+
+      // Every tap must paint immediately and persist behind it (spec §8.1) —
+      // so we commit optimistically first. If the write is rejected (e.g.
+      // the visit was finalized concurrently), we roll every captured map
+      // back to its pre-change value and rethrow, rather than leaving
+      // in-memory state showing a value the database never accepted.
+      const prevBefore = before
+      const prevAfter = after
+      const prevFilled = filled
+      const prevTouched = touched
+
       const nextBefore = new Map(before).set(key, qty)
+      const nextTouched = new Set(touched).add(key)
+
+      // While the slot is filled, changing any one item's before must
+      // recompute `after` for the whole slot via fillToCapacity — not just
+      // set the edited item's after to its own before. Otherwise a mixed
+      // slot's after goes stale for its other items (and can end up
+      // recording after < before for the edited item). Unfilled slots keep
+      // the simple before-mirrors-after rule.
+      const affected = slot && filled.has(slotNumber)
+        ? fillToCapacity(slot, contentsOf(slot, nextBefore))
+        : [{ itemId, qty }]
+
       const nextAfter = new Map(after)
-      if (!filled.has(slotNumber)) nextAfter.set(key, qty)
+      for (const entry of affected) {
+        nextAfter.set(levelKey(slotNumber, entry.itemId), entry.qty)
+      }
 
       setBeforeState(nextBefore)
       setAfterState(nextAfter)
-      setTouched(new Set(touched).add(key))
-      await persist(slotNumber, itemId, qty, nextAfter.get(key) ?? qty, true)
+      setTouched(nextTouched)
+
+      try {
+        for (const entry of affected) {
+          const entryKey = levelKey(slotNumber, entry.itemId)
+          await persist(
+            slotNumber, entry.itemId,
+            nextBefore.get(entryKey) ?? 0, entry.qty, nextTouched.has(entryKey),
+          )
+        }
+      } catch (err) {
+        setBeforeState(prevBefore)
+        setAfterState(prevAfter)
+        setFilled(prevFilled)
+        setTouched(prevTouched)
+        throw err
+      }
     },
-    [before, after, filled, touched, persist],
+    [before, after, filled, touched, map, contentsOf, persist],
   )
 
   const toggleFill = useCallback(
     async (slotNumber: number) => {
       const slot = map.find((s) => s.slotNumber === slotNumber)
       if (!slot) return
+
+      const prevBefore = before
+      const prevAfter = after
+      const prevFilled = filled
+      const prevTouched = touched
 
       const nextFilled = new Set(filled)
       const nextAfter = new Map(after)
@@ -95,12 +141,20 @@ export function useCounting(runId: Id, machineId: Id) {
       setFilled(nextFilled)
       setAfterState(nextAfter)
 
-      for (const entry of target) {
-        const key = levelKey(slotNumber, entry.itemId)
-        await persist(
-          slotNumber, entry.itemId,
-          before.get(key) ?? 0, entry.qty, touched.has(key),
-        )
+      try {
+        for (const entry of target) {
+          const key = levelKey(slotNumber, entry.itemId)
+          await persist(
+            slotNumber, entry.itemId,
+            before.get(key) ?? 0, entry.qty, touched.has(key),
+          )
+        }
+      } catch (err) {
+        setBeforeState(prevBefore)
+        setAfterState(prevAfter)
+        setFilled(prevFilled)
+        setTouched(prevTouched)
+        throw err
       }
     },
     [map, filled, after, before, touched, contentsOf, persist],
