@@ -55,6 +55,7 @@ export function CountScreen({
         <SlotEditSheet
           machineId={machineId}
           slotNumber={editingSlot}
+          capacity={counting.map.find((s) => s.slotNumber === editingSlot)?.capacity ?? null}
           items={[...counting.items.values()]}
           currentItemIds={
             counting.map.find((s) => s.slotNumber === editingSlot)?.accepts ?? []
