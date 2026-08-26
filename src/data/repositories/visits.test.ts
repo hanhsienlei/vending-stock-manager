@@ -1,0 +1,69 @@
+import { describe, it, expect, beforeEach } from 'vitest'
+import { db } from '../db'
+import { createRun, listRuns } from './runs'
+import {
+  openVisit, getCountLines, putCountLine, finalizeVisit, historyForMachine,
+} from './visits'
+import { newId, now } from '../../domain/ids'
+import type { CountLine } from '../../domain/types'
+
+const lineFor = (visitId: string, after: number): CountLine => ({
+  id: newId(), visitId, slotNumber: 58, itemId: 'coke',
+  before: 3, after, touched: true, updatedAt: now(),
+})
+
+beforeEach(async () => {
+  await db.delete()
+  await db.open()
+})
+
+describe('runs', () => {
+  it('lists newest first', async () => {
+    await createRun('2026-08-22')
+    await createRun('2026-08-26')
+    expect((await listRuns()).map((r) => r.date)).toEqual(['2026-08-26', '2026-08-22'])
+  })
+})
+
+describe('visits', () => {
+  it('reuses an existing draft rather than creating a second', async () => {
+    const run = await createRun('2026-08-26')
+    const a = await openVisit(run.id, 'L7')
+    const b = await openVisit(run.id, 'L7')
+    expect(b.id).toBe(a.id)
+  })
+
+  it('stores count lines', async () => {
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, 'L7')
+    await putCountLine(lineFor(visit.id, 8))
+    expect(await getCountLines(visit.id)).toHaveLength(1)
+  })
+
+  it('rejects writes to a finalized visit', async () => {
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, 'L7')
+    await finalizeVisit(visit.id)
+    await expect(putCountLine(lineFor(visit.id, 8))).rejects.toThrow(/finalized/i)
+  })
+
+  it('returns only finalized visits in history, newest first', async () => {
+    const older = await createRun('2026-08-22')
+    const olderVisit = await openVisit(older.id, 'L7')
+    await putCountLine(lineFor(olderVisit.id, 3))
+    await finalizeVisit(olderVisit.id)
+
+    const newer = await createRun('2026-08-26')
+    const newerVisit = await openVisit(newer.id, 'L7')
+    await putCountLine(lineFor(newerVisit.id, 8))
+    await finalizeVisit(newerVisit.id)
+
+    const draftRun = await createRun('2026-08-29')
+    await openVisit(draftRun.id, 'L7')   // left as a draft
+
+    const history = await historyForMachine('L7')
+    expect(history).toHaveLength(2)
+    expect(history[0].lines[0].after).toBe(8)
+    expect(history[1].lines[0].after).toBe(3)
+  })
+})
