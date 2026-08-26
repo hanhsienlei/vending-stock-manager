@@ -184,3 +184,125 @@ describe('useCounting', () => {
     expect(sunkistAfter).toBeGreaterThanOrEqual(sunkistBefore)
   })
 })
+
+/** Switching screens, reloading the page, or a service-worker autoUpdate all
+ * unmount the counting screen mid-machine. Spec §7: "every keystroke is
+ * persisted immediately, so abandoning mid-machine loses nothing." */
+describe('useCounting resuming an open draft visit', () => {
+  async function seedWithHistory() {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58, 59])
+
+    const past = await createRun('2026-08-22')
+    const pastVisit = await openVisit(past.id, machine.id)
+    await putCountLine({
+      id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
+      before: 2, after: 8, touched: true, updatedAt: now(),
+    })
+    await putCountLine({
+      id: newId(), visitId: pastVisit.id, slotNumber: 59, itemId: coke.id,
+      before: 1, after: 4, touched: true, updatedAt: now(),
+    })
+    await finalizeVisit(pastVisit.id)
+
+    return { coke, machine }
+  }
+
+  it('reloads counts entered before the screen was unmounted', async () => {
+    const { coke, machine } = await seedWithHistory()
+    const run = await createRun('2026-08-26')
+
+    const first = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(first.result.current.loading).toBe(false))
+    await act(async () => { await first.result.current.setBefore(58, coke.id, 3) })
+    first.unmount()
+
+    const second = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(second.result.current.loading).toBe(false))
+
+    // The draft line wins over the historical level (8) it was counted against.
+    expect(second.result.current.before.get(`58:${coke.id}`)).toBe(3)
+    expect(second.result.current.after.get(`58:${coke.id}`)).toBe(3)
+  })
+
+  it('restores which rows were touched, and leaves the untouched ones alone', async () => {
+    const { coke, machine } = await seedWithHistory()
+    const run = await createRun('2026-08-26')
+
+    const first = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(first.result.current.loading).toBe(false))
+    await act(async () => { await first.result.current.setBefore(58, coke.id, 3) })
+    first.unmount()
+
+    const second = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(second.result.current.loading).toBe(false))
+
+    expect(second.result.current.touched.has(`58:${coke.id}`)).toBe(true)
+    expect(second.result.current.touched.has(`59:${coke.id}`)).toBe(false)
+  })
+
+  it('lets history fill the slots the open visit has not reached yet', async () => {
+    const { coke, machine } = await seedWithHistory()
+    const run = await createRun('2026-08-26')
+
+    const first = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(first.result.current.loading).toBe(false))
+    await act(async () => { await first.result.current.setBefore(58, coke.id, 3) })
+    first.unmount()
+
+    const second = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(second.result.current.loading).toBe(false))
+
+    expect(second.result.current.before.get(`59:${coke.id}`)).toBe(4)
+  })
+
+  it('restores the fill toggles already applied', async () => {
+    const { coke, machine } = await seedWithHistory()
+    const run = await createRun('2026-08-26')
+
+    const first = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(first.result.current.loading).toBe(false))
+    await act(async () => { await first.result.current.setBefore(58, coke.id, 3) })
+    await act(async () => { await first.result.current.toggleFill(58) })
+    first.unmount()
+
+    const second = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(second.result.current.loading).toBe(false))
+
+    expect(second.result.current.filled.has(58)).toBe(true)
+    expect(second.result.current.after.get(`58:${coke.id}`)).toBe(8)
+    expect(second.result.current.before.get(`58:${coke.id}`)).toBe(3)
+  })
+
+  it('does not resurrect a fill that was toggled back off', async () => {
+    const { coke, machine } = await seedWithHistory()
+    const run = await createRun('2026-08-26')
+
+    const first = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(first.result.current.loading).toBe(false))
+    await act(async () => { await first.result.current.setBefore(58, coke.id, 3) })
+    await act(async () => { await first.result.current.toggleFill(58) })
+    await act(async () => { await first.result.current.toggleFill(58) })
+    first.unmount()
+
+    const second = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(second.result.current.loading).toBe(false))
+
+    expect(second.result.current.filled.has(58)).toBe(false)
+    expect(second.result.current.after.get(`58:${coke.id}`)).toBe(3)
+  })
+
+  it('keeps an in-session count when a map correction re-fires the seed', async () => {
+    const { coke, machine } = await seedWithHistory()
+    const run = await createRun('2026-08-26')
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    await act(async () => { await result.current.setBefore(58, coke.id, 3) })
+    await act(async () => { await result.current.reload() })
+
+    await waitFor(() => expect(result.current.before.get(`58:${coke.id}`)).toBe(3))
+    expect(result.current.filled.has(58)).toBe(false)
+  })
+})
