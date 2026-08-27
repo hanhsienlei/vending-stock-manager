@@ -106,7 +106,7 @@ describe('CountScreen', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 6, touched: true, updatedAt: now(),
+      before: 2, after: 6, touched: true, filled: true, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 
@@ -174,7 +174,7 @@ describe('CountScreen', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 8, touched: true, updatedAt: now(),
+      before: 2, after: 8, touched: true, filled: true, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 

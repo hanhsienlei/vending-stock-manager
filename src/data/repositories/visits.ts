@@ -101,8 +101,8 @@ export async function historyForMachine(
   machineId: Id,
   limit: number = HISTORY_LIMIT,
 ): Promise<{ visit: Visit; lines: CountLine[] }[]> {
-  const visits = (await db.visits.toArray())
-    .filter((v) => v.machineId === machineId && v.status === 'finalized')
+  const visits = (await db.visits.where('machineId').equals(machineId).toArray())
+    .filter((v) => v.status === 'finalized')
     .sort((a, b) => (b.finalizedAt ?? 0) - (a.finalizedAt ?? 0))
     .slice(0, Math.max(0, limit))
 

@@ -10,7 +10,7 @@ import type { CountLine } from '../../domain/types'
 
 const lineFor = (visitId: string, after: number): CountLine => ({
   id: newId(), visitId, slotNumber: 58, itemId: 'coke',
-  before: 3, after, touched: true, updatedAt: now(),
+  before: 3, after, touched: true, filled: false, updatedAt: now(),
 })
 
 beforeEach(async () => {
@@ -93,6 +93,21 @@ describe('visits', () => {
     expect(history).toHaveLength(2)
     expect(history[0].lines[0].after).toBe(8)
     expect(history[1].lines[0].after).toBe(3)
+  })
+
+  it('does not mix in another machine\'s visits, now that lookup goes through the machineId index', async () => {
+    const run = await createRun('2026-08-26')
+    const thisMachine = await openVisit(run.id, 'L7')
+    await putCountLine(lineFor(thisMachine.id, 8))
+    await finalizeVisit(thisMachine.id)
+
+    const otherMachine = await openVisit(run.id, 'L9')
+    await putCountLine(lineFor(otherMachine.id, 99))
+    await finalizeVisit(otherMachine.id)
+
+    const history = await historyForMachine('L7')
+    expect(history).toHaveLength(1)
+    expect(history[0].visit.machineId).toBe('L7')
   })
 
   it('upserts repeated taps on the same slot/item into a single row', async () => {

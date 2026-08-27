@@ -74,5 +74,17 @@ export interface CountLine {
   before: number
   after: number
   touched: boolean    // true once the operator alters `before`
+  filled: boolean     // true once Fill has been tapped for this slot; shared
+                       // by every line of the slot (mild denormalisation)
   updatedAt: number
+}
+
+/** Per item: units on hand at the storeroom, and when that figure was last
+ * confirmed by an actual count (spec §6.5). One row per item. */
+export interface StoreroomBalance {
+  id: Id
+  itemId: Id
+  units: number
+  updatedAt: number
+  verifiedAt: number
 }

@@ -43,7 +43,7 @@ describe('useCounting', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 8, touched: true, updatedAt: now(),
+      before: 2, after: 8, touched: true, filled: true, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 
@@ -143,7 +143,7 @@ describe('useCounting', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 8, touched: true, updatedAt: now(),
+      before: 2, after: 8, touched: true, filled: true, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 
@@ -198,11 +198,11 @@ describe('useCounting resuming an open draft visit', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 8, touched: true, updatedAt: now(),
+      before: 2, after: 8, touched: true, filled: true, updatedAt: now(),
     })
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 59, itemId: coke.id,
-      before: 1, after: 4, touched: true, updatedAt: now(),
+      before: 1, after: 4, touched: true, filled: true, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 
@@ -273,6 +273,26 @@ describe('useCounting resuming an open draft visit', () => {
     expect(second.result.current.filled.has(58)).toBe(true)
     expect(second.result.current.after.get(`58:${coke.id}`)).toBe(8)
     expect(second.result.current.before.get(`58:${coke.id}`)).toBe(3)
+  })
+
+  it('comes back toggled after remount when filled while already at capacity', async () => {
+    const { coke, machine } = await seedWithHistory()
+    const run = await createRun('2026-08-26')
+
+    const first = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(first.result.current.loading).toBe(false))
+    // Slot 58's capacity is 8 (coke's basePar, no SlotConfig). Bring the
+    // before-count to capacity by hand, then Fill — after stays 8, equal to
+    // before, so `after > before` cannot tell this apart from an untouched
+    // slot. This is exactly the case spec 1a exists to fix.
+    await act(async () => { await first.result.current.setBefore(58, coke.id, 8) })
+    await act(async () => { await first.result.current.toggleFill(58) })
+    first.unmount()
+
+    const second = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(second.result.current.loading).toBe(false))
+
+    expect(second.result.current.filled.has(58)).toBe(true)
   })
 
   it('does not resurrect a fill that was toggled back off', async () => {

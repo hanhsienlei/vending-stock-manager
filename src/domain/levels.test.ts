@@ -10,7 +10,7 @@ const line = (
   visitId: string, slotNumber: number, itemId: string, after: number,
 ): CountLine => ({
   id: `${visitId}-${slotNumber}-${itemId}`,
-  visitId, slotNumber, itemId, before: 0, after, touched: true, updatedAt: 1,
+  visitId, slotNumber, itemId, before: 0, after, touched: true, filled: false, updatedAt: 1,
 })
 
 describe('levelKey', () => {

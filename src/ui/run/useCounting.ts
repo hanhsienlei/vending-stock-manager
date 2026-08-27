@@ -80,13 +80,14 @@ export function useCounting(runId: Id, machineId: Id) {
       setAfterState(mergeWith(draftAfter))
 
       if (firstEntry) {
-        // `touched` is recorded on the line itself; `filled` is not stored, but
-        // a filled slot is exactly one whose after was raised above its before.
+        // Both `touched` and `filled` are recorded on the line itself (spec
+        // 1a: a slot filled while already at capacity has after === before,
+        // so `after > before` cannot stand in for the flag).
         const touchedKeys = draftLines
           .filter((l) => l.touched)
           .map((l) => levelKey(l.slotNumber, l.itemId))
         const filledSlots = draftLines
-          .filter((l) => l.after > l.before)
+          .filter((l) => l.filled)
           .map((l) => l.slotNumber)
 
         if (touchedKeys.length > 0) {
@@ -125,11 +126,14 @@ export function useCounting(runId: Id, machineId: Id) {
   )
 
   const persist = useCallback(
-    async (slotNumber: number, itemId: Id, b: number, a: number, isTouched: boolean) => {
+    async (
+      slotNumber: number, itemId: Id, b: number, a: number,
+      isTouched: boolean, isFilled: boolean,
+    ) => {
       if (!visit) return
       await putCountLine({
         id: newId(), visitId: visit.id, slotNumber, itemId,
-        before: b, after: a, touched: isTouched, updatedAt: now(),
+        before: b, after: a, touched: isTouched, filled: isFilled, updatedAt: now(),
       })
     },
     [visit],
@@ -172,12 +176,14 @@ export function useCounting(runId: Id, machineId: Id) {
       setAfterState(nextAfter)
       setTouched(nextTouched)
 
+      const isFilled = filled.has(slotNumber)
+
       try {
         for (const entry of affected) {
           const entryKey = levelKey(slotNumber, entry.itemId)
           await persist(
             slotNumber, entry.itemId,
-            nextBefore.get(entryKey) ?? 0, entry.qty, nextTouched.has(entryKey),
+            nextBefore.get(entryKey) ?? 0, entry.qty, nextTouched.has(entryKey), isFilled,
           )
         }
       } catch (err) {
@@ -217,12 +223,14 @@ export function useCounting(runId: Id, machineId: Id) {
       setFilled(nextFilled)
       setAfterState(nextAfter)
 
+      const isFilled = nextFilled.has(slotNumber)
+
       try {
         for (const entry of target) {
           const key = levelKey(slotNumber, entry.itemId)
           await persist(
             slotNumber, entry.itemId,
-            before.get(key) ?? 0, entry.qty, touched.has(key),
+            before.get(key) ?? 0, entry.qty, touched.has(key), isFilled,
           )
         }
       } catch (err) {
@@ -271,6 +279,7 @@ export function useCounting(runId: Id, machineId: Id) {
             before: before.get(key) ?? 0,
             after: after.get(key) ?? 0,
             touched: touched.has(key),
+            filled: filled.has(slot.slotNumber),
             updatedAt: now(),
           }
         }),
@@ -279,7 +288,7 @@ export function useCounting(runId: Id, machineId: Id) {
 
     const finalized = await finalizeVisit(visit.id)
     setVisit(finalized)
-  }, [visit, map, before, after, touched])
+  }, [visit, map, before, after, touched, filled])
 
   const ranDry = useCallback(
     (slot: ResolvedSlot) => slotTotal(contentsOf(slot, before)) === 0,
