@@ -96,4 +96,26 @@ describe('MachineListScreen', () => {
 
     expect(l7Row).not.toHaveTextContent(/finished/i)
   })
+
+  // The seed writes "Level 2" as machine L2's label, so the grey location
+  // text duplicated the bold "L2" chip on every row
+  // (devs/debug/machine-list-page-no-need-location.png). Spec §4.1 still
+  // defines a machine as being at a location (e.g. "L7 · Lift lobby"), so a
+  // genuinely distinct label must keep showing.
+  it("hides a machine's label when it just restates the level", async () => {
+    await saveMachine({ label: 'Level 2', level: 2 })
+
+    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+    await screen.findByText('L2')
+
+    expect(screen.queryByText('Level 2')).not.toBeInTheDocument()
+  })
+
+  it("keeps showing a machine's label when it differs from the level", async () => {
+    await saveMachine({ label: 'Lift lobby', level: 7 })
+
+    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+
+    expect(await screen.findByText('Lift lobby')).toBeInTheDocument()
+  })
 })

@@ -1,5 +1,6 @@
 import { TRAYS, trayOf } from '../../domain/trays'
 import { useMachineMap } from '../useMachineMap'
+import { distinctLabel } from './machineLabel'
 import type { Machine } from '../../domain/types'
 
 export function MachineMapScreen({
@@ -20,7 +21,9 @@ export function MachineMapScreen({
         </button>
         <span className="text-sm">
           <span className="font-semibold">L{machine.level}</span>
-          <span className="ml-2 text-gray-500">{machine.label}</span>
+          {distinctLabel(machine) && (
+            <span className="ml-2 text-gray-500">{distinctLabel(machine)}</span>
+          )}
         </span>
       </div>
 

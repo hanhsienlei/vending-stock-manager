@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { listMachines } from '../../data/repositories/machines'
 import { getOrCreateRun, getRunForDate } from '../../data/repositories/runs'
 import { listVisitsForRun } from '../../data/repositories/visits'
+import { distinctLabel } from './machineLabel'
 import type { Id, Machine } from '../../domain/types'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -56,7 +57,9 @@ export function MachineListScreen({
               className="flex-1 text-left"
             >
               <span className="font-semibold">L{m.level}</span>
-              <span className="ml-2 text-gray-500">{m.label}</span>
+              {distinctLabel(m) && (
+                <span className="ml-2 text-gray-500">{distinctLabel(m)}</span>
+              )}
               {finishedMachineIds.has(m.id) && (
                 <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold uppercase text-green-700">
                   Finished
