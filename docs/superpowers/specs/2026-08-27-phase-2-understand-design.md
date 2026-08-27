@@ -33,8 +33,9 @@ the `Adjustment` entity, and it is the only new table this phase adds.
 - `Adjustment` — a stock movement with a reason, at a machine slot or the
   storeroom (spec §4.1, §5.3).
 - The sales residual (spec §3.3), derived per slot per period.
-- A run summary at G: units and revenue, a per-slot breakdown, stock on hand
-  across machines and storeroom, and which slots ran dry.
+- A summary at G: units and revenue, a per-slot breakdown, stock on hand
+  across machines and storeroom, and which slots ran dry — scoped to a run by
+  default, or to a chosen start and end date.
 - The storeroom ledger (spec §6.5): a running balance anchored to the last
   manual count.
 - Pack/loose quantity entry at G (spec §5.4), built into the ledger's input
@@ -162,7 +163,7 @@ Spec §4.1 already defines it: *"a stock movement with a reason, at a machine sl
 or the storeroom."* One entity serves both locations — machine-located
 adjustments feed the sales residual, storeroom-located ones **are** the ledger.
 
-```
+```text
 Adjustment {
   id            Id
   itemId        Id
@@ -173,7 +174,7 @@ Adjustment {
   units         number       // SIGNED, relative to this location
   transferId?   Id           // links the two rows of one transfer
   note?         string
-  occurredAt    number       // when the movement happened
+  occurredAt    number       // when the adjustment was logged — see below
   updatedAt     number
 }
 ```
@@ -187,13 +188,28 @@ query this phase needs is an index lookup.
 
 Indexes: `id, itemId, occurredAt, machineId, transferId, [machineId+slotNumber]`.
 
+**`occurredAt` is when the adjustment was logged, not a date the operator
+enters.** It is set from the clock at write time and there is no field to
+change it. The alternative — asking when the stock actually moved — buys
+backdating at the cost of a date picker on every adjustment, for movements
+the operator logs as they find them.
+
+The consequence, so it is not rediscovered: **an adjustment cannot be
+backdated.** Noticing on Friday that a tray expired last Tuesday records it
+against Friday, so it lands in the period being closed now rather than the
+one it belonged to. For write-offs found at the machine during a count this
+is the same period either way. It is wrong only for a movement remembered
+after a later count has already closed the period — rare, given adjustments
+at the machines barely happen at all (§3.5), and recoverable by correcting
+the count itself.
+
 ### 4.2 Reason codes
 
 From spec §5.3, plus `delivery` — described in the original brainstorm as "the
 only reason code that increases total stock".
 
 | Reason | Total stock | Enters the residual |
-|---|---|---|
+| --- | --- | --- |
 | `transfer` | unchanged — leaves one location, arrives at another | yes, both sides |
 | `expired` | decrease | yes — write-off |
 | `damaged` | decrease | yes — write-off |
@@ -216,7 +232,7 @@ neither does.
 
 ### 4.4 `CountLine` gains `price`
 
-```
+```text
 CountLine {
   … existing fields …
   price   number    // the item's price when this line was recorded
@@ -232,7 +248,7 @@ already enforces that boundary for `src/domain/` and must keep passing.
 
 For each `(slotNumber, itemId)` across one period:
 
-```
+```text
 opening    = the previous finalized visit's `after`
 closing    = this visit's `before`
 movements  = this slot's adjustments for this item, occurring between the two,
@@ -254,7 +270,25 @@ Opening 10, closing 5, 3 transferred in → `10 − 5 + 3 = 8` sold.
 
 **Revenue** is `sales × CountLine.price`, per §3.6.
 
-### 5.1 When a period is censored
+### 5.1 Which period a result belongs to
+
+A period is bounded by two consecutive finalized visits to one machine, so it
+does not line up with a run by itself — a machine skipped in one run has a
+period spanning two.
+
+**A period is attributed to the run of its closing visit**: the run in which
+the numbers were actually counted. That makes a per-run summary and a
+date-range summary the same operation, one being a range of a single run, and
+it means a skipped machine simply contributes nothing to the run it was
+skipped in, rather than contributing a double-length period to it.
+
+Adjustments fall in the period whose closing visit is the first to be
+finalized after they were logged. Because `occurredAt` is the moment of
+logging (§4.1), one logged at a machine during a count belongs to the period
+that count is closing — which is the reading that matches what the operator
+just saw in the machine.
+
+### 5.2 When a period is censored
 
 A censored period reports **no sales figure** rather than a wrong one, and is
 excluded from the data Phase 3 learns from.
@@ -279,7 +313,7 @@ Explicitly **not** censored:
 Spec §6.5: the storeroom balance is *"an estimate maintained by a ledger, not a
 stocktake."*
 
-```
+```text
 balance(item) = last verified manual count
               + Σ signed storeroom adjustments occurring after `verifiedAt`
 ```
@@ -306,17 +340,31 @@ context, then quantity and reason. Choosing `transfer` reveals a destination.
 
 Nothing is added to the counting screen itself.
 
-### 7.2 Run summary
+### 7.2 Summary
 
 At G, during close-out — step 9 of the run flow, *"units sold and revenue this
 period; stock on hand: machines, storeroom, total"*. It shows:
 
-- Units and revenue for the run, per machine and totalled
+- Units and revenue, per machine and totalled
 - A per-slot breakdown — the data Phase 3's forecast reads
 - Stock on hand across the fifteen machines, the storeroom, and combined
-- Which slots ran dry this period
-- Any visit marked **edited late** (§3.2), and any censored period (§5.1), each
+- Which slots ran dry
+- Any visit marked **edited late** (§3.2), and any censored period (§5.2), each
   with the reason it could not be counted
+
+**Scoped to a run by default, with a start and end date available.** Opening
+the summary after a run shows that run, which is what close-out wants and
+needs no input. A date range answers the questions a single run cannot —
+what a month sold, or how two weeks compare.
+
+The two are the same computation, not two code paths: §5.1 attributes each
+period to the run of its closing visit, so a run is simply the range covering
+that run's date. Only the selector differs.
+
+Stock on hand is the exception, and the screen must not pretend otherwise: it
+is a **current** figure, read from the latest count of each machine and the
+storeroom balance. It does not vary with the selected range and is labelled as
+"now" rather than as belonging to the period.
 
 ---
 
@@ -385,25 +433,39 @@ Per spec §9, and following what the codebase already does.
   Dexie or React reaches `src/domain/`.
 - **The residual is unit-tested against §3.3's own worked cases** — a plain
   period, a write-off, a transfer in, a transfer out — plus each censoring rule
-  from §5.1, and the §3.4 changeover proving a drained line yields zero rather
+  from §5.2, and the §3.4 changeover proving a drained line yields zero rather
   than phantom sales.
 - **Transfers are tested for atomicity**: a failure writes neither side.
 - **The v3 upgrade is tested through the v1→v2→v3 path**, with data written
   through the older schema before the new one opens (§10).
 - **Revenue is tested across a price change**, proving a past run keeps its
   original figure (§3.6).
+- **The range summary is tested to agree with the per-run one**: a range
+  covering exactly one run's date must produce that run's figures, since
+  §5.1 makes them the same computation. And a machine skipped in a run must
+  contribute to the run it was next counted in, not the one it was skipped in.
 
 ---
 
-## 12. Open questions
+## 12. Questions settled after the first draft
 
-None blocking. Two to settle while planning:
+Both of this document's open questions were answered by the operator on
+2026-08-27, and a requirement was added. Recorded here so the reasoning is not
+lost behind the sections they changed.
 
-1. **The period boundary for adjustments.** `occurredAt` between two visits is
-   unambiguous for a machine slot. An adjustment logged *while* a visit is open
-   but before it is finalized needs a stated rule — most likely "belongs to the
-   period being closed".
-2. **Whether the run summary is per-run or per-period.** They differ when a
-   machine is skipped in a run: its period spans two runs. The per-slot
-   breakdown is per-period by construction; the run headline needs to say which
-   it is showing.
+1. **The period boundary for adjustments** — settled by `occurredAt` being the
+   moment of logging rather than an entered date (§4.1). An adjustment logged
+   at a machine during a count therefore belongs to the period that count is
+   closing, with no rule to remember. The cost is that nothing can be
+   backdated, which §4.1 states plainly.
+2. **Per-run or per-period** — the summary is scoped to a **run** (§7.2).
+   §5.1 makes this well-defined by attributing each period to the run of its
+   closing visit, so a machine skipped in a run contributes nothing to it
+   rather than a double-length period.
+3. **Added: a start and end date on the summary** (§7.2). It falls out of the
+   same attribution rule, so it is a selector rather than a second
+   implementation — but it is what makes the sales data answerable across
+   runs, and it is the reason §5.1 exists as a stated rule instead of an
+   assumption.
+
+No open questions remain.
