@@ -4,6 +4,7 @@ import { ItemEditScreen } from './items/ItemEditScreen'
 import { MachineListScreen } from './machines/MachineListScreen'
 import { MachineMapScreen } from './machines/MachineMapScreen'
 import { CountScreen } from './run/CountScreen'
+import { StoreroomScreen } from './storeroom/StoreroomScreen'
 import type { Id } from '../domain/types'
 
 type Screen =
@@ -12,6 +13,7 @@ type Screen =
   | { name: 'machines' }
   | { name: 'machine-map'; machineId: Id }
   | { name: 'count'; runId: Id; machineId: Id }
+  | { name: 'storeroom' }
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'machines' })
@@ -54,6 +56,8 @@ export default function App() {
             onViewMap={(machineId) => setScreen({ name: 'machine-map', machineId })}
           />
         )
+      case 'storeroom':
+        return <StoreroomScreen />
     }
   })()
 
@@ -74,6 +78,13 @@ export default function App() {
           onClick={() => setScreen({ name: 'items' })}
         >
           Items
+        </button>
+        <button
+          type="button"
+          className="flex-1 p-3 font-semibold"
+          onClick={() => setScreen({ name: 'storeroom' })}
+        >
+          Storeroom
         </button>
       </nav>
     </div>

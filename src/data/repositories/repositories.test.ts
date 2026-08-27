@@ -4,6 +4,7 @@ import { listItems, getItem, saveItem, deleteItem } from './items'
 import { listMachines, saveMachine } from './machines'
 import { listPlacements, setPlacement } from './placements'
 import { listSlotConfigs, setSlotConfig } from './slotConfigs'
+import { listStoreroomBalances, setStoreroomBalance } from './storeroom'
 
 beforeEach(async () => {
   await db.delete()
@@ -90,5 +91,38 @@ describe('slotConfigs', () => {
     expect(all).toHaveLength(1)
     expect(all[0].capacity).toBe(5)
     expect(all[0].accepts).toEqual(['sunkist', 'fanta'])
+  })
+})
+
+describe('storeroomBalances', () => {
+  it('saves with a generated id, updatedAt and verifiedAt', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const saved = await setStoreroomBalance(coke.id, 40)
+    expect(saved.id).toBeTruthy()
+    expect(saved.itemId).toBe(coke.id)
+    expect(saved.units).toBe(40)
+    expect(saved.updatedAt).toBeGreaterThan(0)
+    expect(saved.verifiedAt).toBeGreaterThan(0)
+  })
+
+  it('updates the same row in place rather than creating a second one for the item', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const first = await setStoreroomBalance(coke.id, 40)
+    const second = await setStoreroomBalance(coke.id, 35)
+
+    expect(second.id).toBe(first.id)
+    const all = await listStoreroomBalances()
+    expect(all).toHaveLength(1)
+    expect(all[0].units).toBe(35)
+  })
+
+  it('keeps balances for different items separate', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const fanta = await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+    await setStoreroomBalance(coke.id, 40)
+    await setStoreroomBalance(fanta.id, 12)
+
+    const all = await listStoreroomBalances()
+    expect(all).toHaveLength(2)
   })
 })
