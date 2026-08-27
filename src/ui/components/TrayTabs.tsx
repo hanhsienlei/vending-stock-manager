@@ -1,4 +1,4 @@
-import { TRAYS } from '../../domain/trays'
+import { TRAYS, trayLabel } from '../../domain/trays'
 
 export function TrayTabs({
   active, onSelect, present,
@@ -18,7 +18,7 @@ export function TrayTabs({
             tray === active ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
           }`}
         >
-          {tray}
+          {trayLabel(tray)}
         </button>
       ))}
     </div>
