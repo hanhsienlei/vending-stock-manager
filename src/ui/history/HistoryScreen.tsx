@@ -4,6 +4,7 @@ import { listRuns } from '../../data/repositories/runs'
 import { listVisitsForRun } from '../../data/repositories/visits'
 import { formatRunDate } from '../../domain/date'
 import { distinctLabel } from '../machines/machineLabel'
+import { ReportScreen } from '../report/ReportScreen'
 import { VisitReceipt } from './VisitReceipt'
 import type { Id, Machine, Run, Visit } from '../../domain/types'
 
@@ -19,6 +20,7 @@ import type { Id, Machine, Run, Visit } from '../../domain/types'
  * union: the three levels are one feature, and `App` should not have to know
  * how deep into it the operator is. */
 export function HistoryScreen() {
+  const [view, setView] = useState<'receipts' | 'report'>('receipts')
   const [runs, setRuns] = useState<Run[]>([])
   const [visitsByRun, setVisitsByRun] = useState<Map<Id, Visit[]>>(new Map())
   const [machines, setMachines] = useState<Machine[]>([])
@@ -45,6 +47,38 @@ export function HistoryScreen() {
   if (loading) return <div className="p-4">Loading…</div>
 
   const machineById = new Map(machines.map((m) => [m.id, m]))
+
+  const toggle = (
+    <div className="mb-3 flex gap-2">
+      <button
+        type="button"
+        onClick={() => setView('receipts')}
+        className={`flex-1 rounded-lg border p-2 text-sm font-semibold ${
+          view === 'receipts' ? 'bg-blue-600 text-white' : 'text-gray-700'
+        }`}
+      >
+        Receipts
+      </button>
+      <button
+        type="button"
+        onClick={() => setView('report')}
+        className={`flex-1 rounded-lg border p-2 text-sm font-semibold ${
+          view === 'report' ? 'bg-blue-600 text-white' : 'text-gray-700'
+        }`}
+      >
+        Report
+      </button>
+    </div>
+  )
+
+  if (view === 'report') {
+    return (
+      <div className="p-4">
+        {toggle}
+        <ReportScreen />
+      </div>
+    )
+  }
 
   if (openRun && openVisit) {
     const machine = machineById.get(openVisit.machineId)
@@ -122,6 +156,7 @@ export function HistoryScreen() {
   return (
     <div className="p-4">
       <h2 className="mb-3 text-lg font-semibold">History</h2>
+      {toggle}
 
       {runs.length === 0 ? (
         <p className="text-sm text-gray-500">No runs recorded yet.</p>

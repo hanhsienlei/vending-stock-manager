@@ -105,4 +105,18 @@ describe('HistoryScreen', () => {
     await user.click(screen.getByText('← Back'))
     expect(await screen.findByLabelText('run 2026-08-27')).toBeInTheDocument()
   })
+
+  it('switches between the receipts and the report', async () => {
+    const user = userEvent.setup()
+    await createRun('2026-08-27')
+
+    render(<HistoryScreen />)
+    await screen.findByLabelText('run 2026-08-27')
+
+    await user.click(screen.getByRole('button', { name: 'Report' }))
+    expect(await screen.findByLabelText('From')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Receipts' }))
+    expect(await screen.findByLabelText('run 2026-08-27')).toBeInTheDocument()
+  })
 })
