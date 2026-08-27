@@ -17,3 +17,27 @@
 export function today(): string {
   return new Date().toLocaleDateString('en-CA')
 }
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+]
+
+/** A stored run date (`yyyy-mm-dd`) as a label, e.g. `Thu 27 Aug 2026`.
+ *
+ * The parts are split by hand and fed to the local-time `Date` constructor
+ * rather than passed as a string. `new Date('2026-08-27')` is specified to
+ * parse a date-only string as UTC midnight, so in any zone behind UTC it
+ * renders as the 26th — the same class of bug as `today()` above, one screen
+ * over, and just as silent.
+ *
+ * The names are spelled out rather than taken from `toLocaleDateString` so
+ * the label cannot change with the device's locale: this is a stored
+ * calendar date, not a moment being presented to a reader in their own
+ * conventions. */
+export function formatRunDate(date: string): string {
+  const [year, month, day] = date.split('-').map(Number)
+  const local = new Date(year, month - 1, day)
+  return `${WEEKDAYS[local.getDay()]} ${day} ${MONTHS[month - 1]} ${year}`
+}

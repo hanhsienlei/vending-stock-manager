@@ -5,6 +5,7 @@ import { MachineListScreen } from './machines/MachineListScreen'
 import { MachineMapScreen } from './machines/MachineMapScreen'
 import { CountScreen } from './run/CountScreen'
 import { StoreroomScreen } from './storeroom/StoreroomScreen'
+import { HistoryScreen } from './history/HistoryScreen'
 import type { Id, Machine } from '../domain/types'
 
 type Screen =
@@ -14,6 +15,7 @@ type Screen =
   | { name: 'machine-map'; machine: Machine }
   | { name: 'count'; runId: Id; machineId: Id }
   | { name: 'storeroom' }
+  | { name: 'history' }
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'machines' })
@@ -58,6 +60,8 @@ export default function App() {
         )
       case 'storeroom':
         return <StoreroomScreen />
+      case 'history':
+        return <HistoryScreen />
     }
   })()
 
@@ -88,6 +92,13 @@ export default function App() {
           onClick={() => setScreen({ name: 'storeroom' })}
         >
           Storeroom
+        </button>
+        <button
+          type="button"
+          className="flex-1 p-3 font-semibold"
+          onClick={() => setScreen({ name: 'history' })}
+        >
+          History
         </button>
       </nav>
       {body}
