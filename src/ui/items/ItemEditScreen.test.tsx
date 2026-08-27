@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
-import { listItems, saveItem } from '../../data/repositories/items'
+import { listItems, getItem, saveItem } from '../../data/repositories/items'
 import { saveMachine } from '../../data/repositories/machines'
 import { listPlacements, setPlacement } from '../../data/repositories/placements'
 import { listSlotConfigs } from '../../data/repositories/slotConfigs'
@@ -266,5 +266,43 @@ describe('ItemEditScreen', () => {
     const slot = resolveMachineMap(l7.id, items, placements, configs)
       .find((s) => s.slotNumber === 41)
     expect(slot?.capacity).toBe(8)
+  })
+
+  it('offers no delete affordance when creating a new item', async () => {
+    render(<ItemEditScreen onDone={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Delete item' })).not.toBeInTheDocument()
+  })
+
+  // Destructive, so it needs a second tap to actually fire — a thumb landing
+  // on it once while scrolling must not delete anything.
+  it('requires a second tap to delete an existing item', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+
+    render(<ItemEditScreen itemId={coke.id} onDone={onDone} />)
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Coke'))
+
+    await user.click(screen.getByRole('button', { name: 'Delete item' }))
+    expect(await getItem(coke.id)).toBeDefined()
+    expect(onDone).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Confirm delete' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+    expect(await getItem(coke.id)).toBeUndefined()
+  })
+
+  it('lets a delete be cancelled before the second tap', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+
+    render(<ItemEditScreen itemId={coke.id} onDone={vi.fn()} />)
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Coke'))
+
+    await user.click(screen.getByRole('button', { name: 'Delete item' }))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('button', { name: 'Confirm delete' })).not.toBeInTheDocument()
+    expect(await getItem(coke.id)).toBeDefined()
   })
 })

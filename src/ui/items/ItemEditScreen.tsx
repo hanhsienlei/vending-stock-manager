@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getItem, saveItem } from '../../data/repositories/items'
+import { getItem, saveItem, deleteItem } from '../../data/repositories/items'
 import { listMachines } from '../../data/repositories/machines'
 import { getBasePlacement, setPlacement } from '../../data/repositories/placements'
 import { pinSlotCapacities } from '../../data/repositories/slotConfigs'
@@ -17,6 +17,7 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
   const [remark, setRemark] = useState('')
   const [slots, setSlots] = useState('')
   const [slotError, setSlotError] = useState<string | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   useEffect(() => {
     if (!itemId) return
@@ -83,6 +84,12 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
       ...(trimmedRemark === '' ? {} : { remark: trimmedRemark }),
     })
     await setPlacement(item.id, { kind: 'base' }, parsed)
+    onDone()
+  }
+
+  async function handleDelete() {
+    if (!itemId) return
+    await deleteItem(itemId)
     onDone()
   }
 
@@ -191,6 +198,40 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
       >
         Save
       </button>
+
+      {/* Destructive, so it lives below Save, separated, and needs a second
+          tap — a thumb landing on it once while scrolling must not delete
+          anything. Only offered for an item that already exists. */}
+      {itemId && (
+        <div className="mt-4 border-t pt-4">
+          {confirmingDelete ? (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                className="flex-1 rounded-lg bg-red-600 p-3 font-semibold text-white"
+              >
+                Confirm delete
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                className="text-sm text-gray-500"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              className="text-sm font-semibold text-red-600"
+            >
+              Delete item
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
-import { saveItem } from '../../data/repositories/items'
+import { saveItem, deleteItem } from '../../data/repositories/items'
 import { saveMachine } from '../../data/repositories/machines'
 import { listPlacements, setPlacement } from '../../data/repositories/placements'
+import { setSlotConfig } from '../../data/repositories/slotConfigs'
 import { effectivePlacement } from '../../domain/placement'
 import { createRun } from '../../data/repositories/runs'
 import {
@@ -235,5 +236,46 @@ describe('CountScreen', () => {
     await waitFor(async () => {
       expect((await getCountLines(visit.id))[0]?.before).toBe(4)
     })
+  })
+
+  // The regression that would ruin tomorrow: a machine's mixed slot had an
+  // item that has since been deleted from the catalogue. The counting
+  // screen must still render that slot for the item(s) that remain, and a
+  // stale finalized CountLine for the deleted item must not crash it either.
+  it('still renders a machine whose map referenced a since-deleted item', async () => {
+    const ghost = await saveItem({ name: 'Ghost Cola', price: 4, basePar: 5, boxSize: 24 })
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(ghost.id, { kind: 'base' }, [52])
+    await setPlacement(coke.id, { kind: 'base' }, [52])
+    await setSlotConfig(machine.id, 52, { capacity: 5, accepts: [ghost.id, coke.id] })
+
+    // A finalized count against the ghost item, before it was deleted — this
+    // is the historical record that must survive the delete unread and
+    // untouched, per the delete's documented decision.
+    const priorRun = await createRun('2026-08-22')
+    const priorVisit = await openVisit(priorRun.id, machine.id)
+    await putCountLine({
+      id: newId(), visitId: priorVisit.id, slotNumber: 52, itemId: ghost.id,
+      before: 1, after: 5, touched: true, filled: true, updatedAt: now(),
+    })
+    await finalizeVisit(priorVisit.id)
+
+    await deleteItem(ghost.id)
+
+    const run = await createRun('2026-08-26')
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+
+    await screen.findByText('Coke')
+    expect(screen.queryByText('Ghost Cola')).not.toBeInTheDocument()
+    // Slot 52 is single-item now that the ghost item is gone from the map —
+    // the delete's SlotConfig.accepts cleanup, not a leftover mixed row.
+    expect(screen.queryByLabelText('slot 52 Coke')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('slot 52')).toBeInTheDocument()
+
+    // The prior finalized CountLine for the deleted item is untouched.
+    const priorLines = await getCountLines(priorVisit.id)
+    expect(priorLines).toHaveLength(1)
+    expect(priorLines[0].itemId).toBe(ghost.id)
   })
 })

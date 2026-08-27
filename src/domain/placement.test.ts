@@ -103,4 +103,20 @@ describe('resolveMachineMap', () => {
     const map = resolveMachineMap('L7', [], [base('p1', 'ghost', [58])], [])
     expect(map).toEqual([])
   })
+
+  // Regression: deleting an item can leave a SlotConfig.accepts preference
+  // list carrying its old id (e.g. data written before delete started
+  // cleaning it up, or a config the delete's cleanup hasn't reached). The
+  // counting screen must not crash resolving a mixed slot in that state — it
+  // must simply resolve to the items that still exist.
+  it('tolerates a stale itemId left over in SlotConfig.accepts', () => {
+    const placements = [base('p1', 'coke', [52])]
+    const configs: SlotConfig[] = [{
+      id: 'c1', machineId: 'L7', slotNumber: 52, capacity: 5,
+      accepts: ['ghost', 'coke'], updatedAt: 1,
+    }]
+    const map = resolveMachineMap('L7', [coke], placements, configs)
+    expect(map).toHaveLength(1)
+    expect(map[0].accepts).toEqual(['coke'])
+  })
 })
