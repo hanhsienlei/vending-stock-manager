@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../data/db'
-import { listMachines } from '../data/repositories/machines'
+import { listMachines, saveMachine } from '../data/repositories/machines'
 import { getOrCreateRun, listRuns } from '../data/repositories/runs'
 import { historyForMachine } from '../data/repositories/visits'
 import { levelKey, lastRecordedLevels } from '../domain/levels'
@@ -23,12 +23,13 @@ const tomorrow = () => new Date(Date.now() + 86_400_000).toISOString().slice(0, 
 describe('a machine, end to end', () => {
   it('records a visit and carries its closing levels into the next one', async () => {
     const user = userEvent.setup()
-    render(<App />)
 
-    // --- Set the estate up -------------------------------------------------
-    await user.type(await screen.findByLabelText('Level'), '7')
-    await user.type(screen.getByLabelText('Location'), 'Lift lobby')
-    await user.click(screen.getByRole('button', { name: 'Add' }))
+    // --- Set the estate up ---------------------------------------------
+    // The roster is fixed and created by the seed, not hand-added through
+    // a UI form (that form was removed — devs/debug/no-need-to-add-
+    // machine.png), so the fixture machine is created directly here.
+    await saveMachine({ level: 7, label: 'Lift lobby' })
+    render(<App />)
     await screen.findByRole('button', { name: 'L7 Lift lobby' })
 
     await user.click(screen.getByRole('button', { name: 'Items' }))

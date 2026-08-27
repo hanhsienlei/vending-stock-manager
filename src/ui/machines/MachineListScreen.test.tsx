@@ -25,4 +25,19 @@ describe('MachineListScreen', () => {
     expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/delete/i)).not.toBeInTheDocument()
   })
+
+  // The roster is fixed at fifteen machines, created once by the seed
+  // (devs/debug/no-need-to-add-machine.png): hand-adding one invited the
+  // duplicate-level problem the seed's own empty-roster guard exists to
+  // prevent.
+  it('offers no add-machine form', async () => {
+    await saveMachine({ label: 'Lift lobby', level: 7 })
+
+    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+    await screen.findByText('L7')
+
+    expect(screen.queryByLabelText('Level')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Location')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add' })).not.toBeInTheDocument()
+  })
 })
