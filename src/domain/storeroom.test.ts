@@ -11,6 +11,11 @@ const movement = (units: number, occurredAt: number): Adjustment => ({
   reason: 'delivery', units, occurredAt, updatedAt: occurredAt,
 })
 
+const miscount = (units: number, occurredAt: number): Adjustment => ({
+  id: `c${occurredAt}`, itemId: 'coke', locationKind: 'storeroom',
+  reason: 'miscount', units, occurredAt, updatedAt: occurredAt,
+})
+
 describe('ledgerBalance', () => {
   // Spec §6.5: "an estimate maintained by a ledger, not a stocktake."
   it('adds movements since the last verified count', () => {
@@ -34,5 +39,17 @@ describe('ledgerBalance', () => {
 
   it('never reports negative stock', () => {
     expect(ledgerBalance(anchor(5, 50), [movement(-10, 60)])).toBe(0)
+  })
+
+  // Fix round 1, finding 1: types.ts documents `miscount` as "a data fix,
+  // NOT a stock movement" — the same invariant `entersResidual` already
+  // enforces for the sales residual (domain/adjustments.ts, domain/sales.ts).
+  // A ledger that let a miscount move the balance would disagree with that.
+  it('ignores a miscount, which is a data fix rather than a stock movement', () => {
+    expect(ledgerBalance(anchor(100, 50), [miscount(24, 60)])).toBe(100)
+  })
+
+  it('still applies a delivery of the same size', () => {
+    expect(ledgerBalance(anchor(100, 50), [movement(24, 60)])).toBe(124)
   })
 })
