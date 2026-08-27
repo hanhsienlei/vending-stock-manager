@@ -237,7 +237,12 @@ export function useCounting(runId: Id, machineId: Id) {
   )
 
   const finalize = useCallback(async () => {
-    if (!visit) return
+    // An already-finalized visit is immutable, and re-entering a machine you
+    // have finished is ordinary — the machine list routes back there after
+    // every finish and openVisit hands the finalized visit straight back. The
+    // whole-machine batch below would throw on it, so stop here instead: the
+    // record is already complete.
+    if (!visit || visit.status === 'finalized') return
 
     // Record the whole machine, not just the rows the operator worked. Spec
     // §3.1 makes untouched the common case — a slot that sold nothing needs

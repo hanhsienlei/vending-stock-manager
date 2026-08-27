@@ -132,7 +132,10 @@ export function CountScreen({
         <button
           type="button"
           onClick={() => {
-            void counting.finalize().then(onDone)
+            // Same shape as the stepper handlers: finalize is a no-op on an
+            // already-finalized visit, but a rejected write must not surface
+            // as an unhandled rejection and must still leave the machine.
+            void counting.finalize().catch(() => {}).then(onDone)
           }}
           className="w-full rounded-lg bg-blue-600 p-3 font-semibold text-white"
         >

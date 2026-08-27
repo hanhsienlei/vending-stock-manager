@@ -419,6 +419,54 @@ describe('useCounting recording the whole machine on finalize', () => {
       .toBe(false)
   })
 
+  it('stays a no-op when the visit is already finalized', async () => {
+    const { coke, machine } = await seedMachine()
+    const run = await createRun('2026-08-26')
+    const opened = await openVisit(run.id, machine.id)
+
+    const hook = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(hook.result.current.loading).toBe(false))
+    await act(async () => { await hook.result.current.setBefore(58, coke.id, 3) })
+    await act(async () => { await hook.result.current.finalize() })
+
+    const afterFirst = await getCountLines(opened.id)
+
+    // Re-entering a finished machine is ordinary — you would do it to check
+    // something — so a second tap on Finish must not throw. The whole-machine
+    // batch would, because a finalized visit rejects writes.
+    await act(async () => {
+      await expect(hook.result.current.finalize()).resolves.toBeUndefined()
+    })
+    hook.unmount()
+
+    expect(await getCountLines(opened.id)).toEqual(afterFirst)
+  })
+
+  it('does not rewrite a machine reopened after it was finalized', async () => {
+    const { coke, machine } = await seedMachine()
+    const run = await createRun('2026-08-26')
+    const opened = await openVisit(run.id, machine.id)
+
+    const first = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(first.result.current.loading).toBe(false))
+    await act(async () => { await first.result.current.setBefore(58, coke.id, 3) })
+    await act(async () => { await first.result.current.finalize() })
+    first.unmount()
+
+    const recorded = await getCountLines(opened.id)
+
+    // Walking back into the machine: openVisit hands back the finalized visit
+    // unchanged, and Finish must still be harmless.
+    const second = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(second.result.current.loading).toBe(false))
+    await act(async () => {
+      await expect(second.result.current.finalize()).resolves.toBeUndefined()
+    })
+    second.unmount()
+
+    expect(await getCountLines(opened.id)).toEqual(recorded)
+  })
+
   it('records a filled slot at capacity for every item in it', async () => {
     const { fanta, sunkist, machine } = await seedMachine()
     const run = await createRun('2026-08-26')

@@ -57,11 +57,15 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
     // — on every machine — or adding this item's label re-derives the slot's
     // capacity from whichever item now sorts first. Pinned before the item is
     // saved, so a par edited in the same pass cannot leak into the pin.
-    // Slots already in the placement are unchanged and need no new pin.
+    // Both directions move capacity: adding a label re-derives the slot from
+    // whichever item now sorts first, and giving one up re-derives it from
+    // whatever is left. Slots on both sides of the edit are unchanged and need
+    // no new pin.
     const existingSlots = itemId ? (await getBasePlacement(itemId))?.slots ?? [] : []
     const added = parsed.filter((slot) => !existingSlots.includes(slot))
+    const removed = existingSlots.filter((slot) => !parsed.includes(slot))
     const machines = await listMachines()
-    await pinSlotCapacities(machines.map((m) => m.id), added)
+    await pinSlotCapacities(machines.map((m) => m.id), [...added, ...removed])
 
     const item = await saveItem({ id: itemId, name: name.trim(), price, basePar, boxSize })
     await setPlacement(item.id, { kind: 'base' }, parsed)

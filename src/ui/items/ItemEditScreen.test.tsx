@@ -144,6 +144,38 @@ describe('ItemEditScreen', () => {
     }
   })
 
+  it('keeps every machine capacity when a base placement gives up a slot', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    // The mirror of the add direction. Coke sorts first and pars higher, so
+    // slot 52 derives capacity 8 while both are in it; dropping Coke would
+    // re-derive it from Sunkist and shallow the slot to 5 on every machine,
+    // and Fill would then under-fill a channel that holds 8.
+    const l5 = await saveMachine({ label: 'Lift lobby', level: 5 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+    await setPlacement(coke.id, { kind: 'base' }, [52])
+
+    render(<ItemEditScreen itemId={coke.id} onDone={onDone} />)
+    await waitFor(() => expect(screen.getByLabelText('Slots')).toHaveValue('52'))
+
+    await user.clear(screen.getByLabelText('Slots'))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+
+    const [items, placements, configs] = await Promise.all([
+      listItems(), listPlacements(), listSlotConfigs(),
+    ])
+    for (const machine of [l5, l7]) {
+      const slot = resolveMachineMap(machine.id, items, placements, configs)
+        .find((s) => s.slotNumber === 52)
+      expect(slot?.capacity).toBe(8)
+      expect(slot?.accepts).toEqual([sunkist.id])
+    }
+  })
+
   it('leaves a slot nobody stocks yet to seed its capacity from this item', async () => {
     const user = userEvent.setup()
     const onDone = vi.fn()

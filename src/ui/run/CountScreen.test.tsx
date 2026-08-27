@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
@@ -17,19 +17,6 @@ beforeEach(async () => {
   await db.delete()
   await db.open()
 })
-
-/** A map correction saves, reloads the map, and the counting hook re-seeds
- * behind that. The first two steps change pixels; the re-seed does not —
- * mounting gates the screen on `loading`, but a reload deliberately does not,
- * so there is no DOM signal marking the re-seed's end. Left alone it lands in
- * the gap between two awaits, outside act. Holding an act window open across
- * it is what makes it land inside the test. Call this with no await between it
- * and the preceding assertion, so no database callback can slip in first. */
-async function settleReSeed() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 200))
-  })
-}
 
 describe('CountScreen', () => {
   it('renders slots and persists a decrement without any save action', async () => {
@@ -109,6 +96,20 @@ describe('CountScreen', () => {
     // so no way to reach the slot editor at all.
     const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
     const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+
+    // Slot 58 was counted here before it fell off the map, so re-mapping it
+    // has a level to pick up. That is also what makes the re-seed observable:
+    // the row first paints at 0 from the reloaded map, then the seed behind it
+    // raises it to 6, which is a condition a test can wait on rather than a
+    // wall-clock sleep.
+    const past = await createRun('2026-08-22')
+    const pastVisit = await openVisit(past.id, machine.id)
+    await putCountLine({
+      id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
+      before: 2, after: 6, touched: true, updatedAt: now(),
+    })
+    await finalizeVisit(pastVisit.id)
+
     const run = await createRun('2026-08-26')
 
     const { unmount } = render(
@@ -122,22 +123,26 @@ describe('CountScreen', () => {
     await user.click(await screen.findByRole('button', { name: 'Add Coke' }))
 
     // Wait on the row's stepper, not on the text "Coke" — the sheet lists that
-    // name too, so it is present before the map has reloaded.
-    const row = await screen.findByLabelText('slot 58')
-    await settleReSeed()
+    // name too, so it is present before the map has reloaded. Then wait for
+    // the seed behind the reload to raise it to the level history holds; that
+    // condition is what closes the window the re-seed would otherwise land in.
+    await screen.findByLabelText('slot 58')
+    await waitFor(() => {
+      expect(screen.getByLabelText('slot 58')).toHaveTextContent('6')
+    })
 
-    expect(row).toBeInTheDocument()
     expect(screen.getByText('Coke')).toBeInTheDocument()
 
     const placements = await listPlacements()
     expect(effectivePlacement(coke.id, machine.id, placements)?.slots).toEqual([58])
 
-    // The slot just mapped is countable straight away.
+    // The slot just mapped is countable straight away, from the level it
+    // carried rather than from zero.
     const visit = await openVisit(run.id, machine.id)
     await user.click(screen.getByLabelText('slot 58 increase'))
-    expect(screen.getByLabelText('slot 58')).toHaveTextContent('1')
+    expect(screen.getByLabelText('slot 58')).toHaveTextContent('7')
     await waitFor(async () => {
-      expect((await getCountLines(visit.id))[0]?.before).toBe(1)
+      expect((await getCountLines(visit.id))[0]?.before).toBe(7)
     })
 
     unmount()
