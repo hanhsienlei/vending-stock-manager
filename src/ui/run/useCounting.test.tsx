@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
@@ -90,7 +90,10 @@ describe('useCounting', () => {
     expect(lines[0]).toMatchObject({ before: 3, after: 3, touched: true })
   })
 
-  it('finalizes the visit and blocks further writes', async () => {
+  it('finalizes the visit and still allows a correcting edit afterwards (spec §7, amended 2026-08-27)', async () => {
+    // The operator finished a machine, noticed a miscount, and found a
+    // screen that silently swallowed every tap. finalizedAt is a marker now,
+    // not a lock.
     const { coke, machine } = await seed()
     const run = await createRun('2026-08-26')
     const { result } = renderHook(() => useCounting(run.id, machine.id))
@@ -99,26 +102,83 @@ describe('useCounting', () => {
     await act(async () => { await result.current.setBefore(58, coke.id, 3) })
     await act(async () => { await result.current.finalize() })
 
-    await act(async () => {
-      await expect(result.current.setBefore(58, coke.id, 4)).rejects.toThrow(/finalized/i)
-    })
+    await act(async () => { await result.current.setBefore(58, coke.id, 4) })
+
+    expect(result.current.before.get(`58:${coke.id}`)).toBe(4)
+    const lines = await getCountLines(
+      (await openVisit(run.id, machine.id)).id,
+    )
+    expect(lines.find((l) => l.slotNumber === 58)?.before).toBe(4)
   })
 
   it('rolls back before to the pre-write value when a write is rejected', async () => {
     const { coke, machine } = await seed()
     const run = await createRun('2026-08-26')
+    // A rejection unrelated to finalization — e.g. the visit itself is gone —
+    // is still possible and must still roll the optimistic update back.
+    const visit = await openVisit(run.id, machine.id)
     const { result } = renderHook(() => useCounting(run.id, machine.id))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     await act(async () => { await result.current.setBefore(58, coke.id, 3) })
-    await act(async () => { await result.current.finalize() })
+    await db.visits.delete(visit.id)
 
     await act(async () => {
-      await expect(result.current.setBefore(58, coke.id, 4)).rejects.toThrow(/finalized/i)
+      await expect(result.current.setBefore(58, coke.id, 4)).rejects.toThrow(/unknown visit/i)
     })
 
     expect(result.current.before.get(`58:${coke.id}`)).toBe(3)
     expect(result.current.after.get(`58:${coke.id}`)).toBe(3)
+  })
+
+  it('does not flag ran dry on a slot with no prior recorded level and no operator input', async () => {
+    // First-ever visit to this machine: every slot seeds at 0 from an empty
+    // history. That is "never counted", not "sold out" (spec §5.2, amended).
+    const { coke, machine } = await seed()
+    const run = await createRun('2026-08-26')
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    const slot = result.current.map.find((s) => s.slotNumber === 58)!
+    expect(result.current.before.get(`58:${coke.id}`)).toBe(0)
+    expect(result.current.ranDry(slot)).toBe(false)
+  })
+
+  it('flags ran dry once the operator counts a never-counted slot down to zero', async () => {
+    const { coke, machine } = await seed()
+    const run = await createRun('2026-08-26')
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    const slot = result.current.map.find((s) => s.slotNumber === 58)!
+    // Touch the row without changing its value: tap up then back down. The
+    // operator has now actually looked at the slot and confirmed it empty.
+    await act(async () => { await result.current.setBefore(58, coke.id, 1) })
+    await act(async () => { await result.current.setBefore(58, coke.id, 0) })
+
+    expect(result.current.touched.has(`58:${coke.id}`)).toBe(true)
+    expect(result.current.ranDry(slot)).toBe(true)
+  })
+
+  it('still flags ran dry when a prior visit recorded the slot empty and it is carried forward', async () => {
+    const { coke, machine } = await seed()
+
+    const past = await createRun('2026-08-22')
+    const pastVisit = await openVisit(past.id, machine.id)
+    await putCountLine({
+      id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
+      before: 0, after: 0, touched: true, filled: false, updatedAt: now(),
+    })
+    await finalizeVisit(pastVisit.id)
+
+    const run = await createRun('2026-08-26')
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    const slot = result.current.map.find((s) => s.slotNumber === 58)!
+    // Untouched this visit — carried forward from a real, recorded empty.
+    expect(result.current.touched.has(`58:${coke.id}`)).toBe(false)
+    expect(result.current.ranDry(slot)).toBe(true)
   })
 
   it('brings a mixed slot total to capacity on fill, not each item to capacity', async () => {
@@ -439,7 +499,22 @@ describe('useCounting recording the whole machine on finalize', () => {
       .toBe(false)
   })
 
-  it('stays a no-op when the visit is already finalized', async () => {
+  /** Strips `updatedAt` before comparing — finalize() re-stamps every line on
+   * every call by design now (spec §7, amended), so exact line objects
+   * differ across calls even when nothing else changed. What must not
+   * differ is the row set and its content. */
+  const withoutStamp = (lines: Awaited<ReturnType<typeof getCountLines>>) =>
+    lines
+      .map(({ updatedAt: _updatedAt, ...rest }) => rest)
+      .sort((a, b) => a.slotNumber - b.slotNumber || a.itemId.localeCompare(b.itemId))
+
+  it('re-finalizing without further edits does not throw or duplicate rows, and still re-stamps', async () => {
+    let t = 1_700_000_000_000
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => {
+      t += 1000
+      return t
+    })
+
     const { coke, machine } = await seedMachine()
     const run = await createRun('2026-08-26')
     const opened = await openVisit(run.id, machine.id)
@@ -452,17 +527,23 @@ describe('useCounting recording the whole machine on finalize', () => {
     const afterFirst = await getCountLines(opened.id)
 
     // Re-entering a finished machine is ordinary — you would do it to check
-    // something — so a second tap on Finish must not throw. The whole-machine
-    // batch would, because a finalized visit rejects writes.
+    // something — so a second tap on Finish must not throw, and per the
+    // amendment it re-runs and re-stamps rather than being a dead button
+    // (the bug the old status-based early return would reintroduce).
     await act(async () => {
       await expect(hook.result.current.finalize()).resolves.toBeUndefined()
     })
     hook.unmount()
 
-    expect(await getCountLines(opened.id)).toEqual(afterFirst)
+    const afterSecond = await getCountLines(opened.id)
+    expect(afterSecond).toHaveLength(afterFirst.length)
+    expect(withoutStamp(afterSecond)).toEqual(withoutStamp(afterFirst))
+    expect(afterSecond.every((l, i) => l.updatedAt > afterFirst[i].updatedAt)).toBe(true)
+
+    clock.mockRestore()
   })
 
-  it('does not rewrite a machine reopened after it was finalized', async () => {
+  it('re-finishing a reopened, already-finalized machine works and re-stamps, without duplicating rows', async () => {
     const { coke, machine } = await seedMachine()
     const run = await createRun('2026-08-26')
     const opened = await openVisit(run.id, machine.id)
@@ -476,7 +557,9 @@ describe('useCounting recording the whole machine on finalize', () => {
     const recorded = await getCountLines(opened.id)
 
     // Walking back into the machine: openVisit hands back the finalized visit
-    // unchanged, and Finish must still be harmless.
+    // unchanged, and Finish must still work — re-stamping, not silently
+    // no-op'ing forever (the old dead-button bug the early return fixed for
+    // the wrong reason).
     const second = renderHook(() => useCounting(run.id, machine.id))
     await waitFor(() => expect(second.result.current.loading).toBe(false))
     await act(async () => {
@@ -484,7 +567,43 @@ describe('useCounting recording the whole machine on finalize', () => {
     })
     second.unmount()
 
-    expect(await getCountLines(opened.id)).toEqual(recorded)
+    const rewritten = await getCountLines(opened.id)
+    expect(rewritten).toHaveLength(recorded.length)
+    expect(withoutStamp(rewritten)).toEqual(withoutStamp(recorded))
+  })
+
+  it('persists an edit made after finalize, and re-finishing afterwards records it and re-stamps', async () => {
+    let t = 1_700_000_000_000
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => {
+      t += 1000
+      return t
+    })
+
+    const { coke, machine } = await seedMachine()
+    const run = await createRun('2026-08-26')
+    const opened = await openVisit(run.id, machine.id)
+
+    const hook = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(hook.result.current.loading).toBe(false))
+    await act(async () => { await hook.result.current.setBefore(58, coke.id, 3) })
+    await act(async () => { await hook.result.current.finalize() })
+    const firstFinalizedAt = (await openVisit(run.id, machine.id)).finalizedAt
+
+    // The miscount-correction scenario from the operator's device test:
+    // finish, notice a miscount, correct it, finish again.
+    await act(async () => { await hook.result.current.setBefore(58, coke.id, 5) })
+    await act(async () => { await hook.result.current.finalize() })
+    hook.unmount()
+
+    const lines = await getCountLines(opened.id)
+    const line58 = lines.find((l) => l.slotNumber === 58 && l.itemId === coke.id)
+    expect(line58?.before).toBe(5)
+    expect(line58?.after).toBe(5)
+
+    const secondFinalizedAt = (await openVisit(run.id, machine.id)).finalizedAt
+    expect(secondFinalizedAt).toBeGreaterThan(firstFinalizedAt ?? 0)
+
+    clock.mockRestore()
   })
 
   it('records a filled slot at capacity for every item in it', async () => {

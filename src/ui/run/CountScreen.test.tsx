@@ -42,13 +42,53 @@ describe('CountScreen', () => {
     })
   })
 
-  it('marks an empty slot as ran dry', async () => {
+  it('does not mark a never-counted slot as ran dry on a machine with no history', async () => {
+    // Every machine's first-ever visit seeds all slots at 0 from empty
+    // history. Flagging that as RAN DRY buried the real signal under ~54 red
+    // rows on the operator's first run (spec §5.2, amended 2026-08-27).
     const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
     const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
     await setPlacement(coke.id, { kind: 'base' }, [58])
     const run = await createRun('2026-08-26')
 
     render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    await screen.findByText('Coke')
+    expect(screen.queryByText('RAN DRY')).not.toBeInTheDocument()
+  })
+
+  it('marks a slot ran dry once the operator counts it down to zero', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-26')
+
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    await screen.findByText('Coke')
+    expect(screen.queryByText('RAN DRY')).not.toBeInTheDocument()
+
+    await user.click(screen.getByLabelText('slot 58 increase'))
+    await user.click(screen.getByLabelText('slot 58 decrease'))
+
+    expect(await screen.findByText('RAN DRY')).toBeInTheDocument()
+  })
+
+  it('still marks a slot ran dry when a prior visit recorded it empty and it is carried forward', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+
+    const past = await createRun('2026-08-22')
+    const pastVisit = await openVisit(past.id, machine.id)
+    await putCountLine({
+      id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
+      before: 0, after: 0, touched: true, filled: false, updatedAt: now(),
+    })
+    await finalizeVisit(pastVisit.id)
+
+    const run = await createRun('2026-08-26')
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+
     expect(await screen.findByText('RAN DRY')).toBeInTheDocument()
   })
 
@@ -306,5 +346,66 @@ describe('CountScreen', () => {
     const priorLines = await getCountLines(priorVisit.id)
     expect(priorLines).toHaveLength(1)
     expect(priorLines[0].itemId).toBe(ghost.id)
+  })
+
+  // devs/debug/finish-machine-should-not-block-editing-it-is-only-a-flag.png:
+  // the operator finished a machine, noticed a miscount, and every tap after
+  // that was silently swallowed. Spec §7, amended 2026-08-27: finalizedAt is
+  // a marker, not a lock.
+  it('accepts an edit after Finish machine is tapped, on the same screen', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, machine.id)
+
+    const onDone = vi.fn()
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={onDone} />)
+    await screen.findByText('Coke')
+
+    await user.click(screen.getByLabelText('slot 58 increase'))
+    await user.click(screen.getByLabelText('slot 58 increase'))
+    await user.click(screen.getByRole('button', { name: 'Finish machine' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+
+    // The miscount correction: one more tap after Finish.
+    await user.click(screen.getByLabelText('slot 58 increase'))
+    expect(screen.getByLabelText('slot 58')).toHaveTextContent('3')
+
+    await waitFor(async () => {
+      const lines = await getCountLines(visit.id)
+      expect(lines.find((l) => l.slotNumber === 58)?.before).toBe(3)
+    })
+  })
+
+  it('re-entering a finished machine still accepts edits and Finish still works', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, machine.id)
+    await putCountLine({
+      id: newId(), visitId: visit.id, slotNumber: 58, itemId: coke.id,
+      before: 2, after: 2, touched: true, filled: false, updatedAt: now(),
+    })
+    await finalizeVisit(visit.id)
+
+    // A fresh mount of the same visit — exactly what re-opening a finished
+    // machine from the machine list does.
+    const onDone = vi.fn()
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={onDone} />)
+    await screen.findByText('Coke')
+    expect(screen.getByLabelText('slot 58')).toHaveTextContent('2')
+
+    await user.click(screen.getByLabelText('slot 58 increase'))
+    expect(screen.getByLabelText('slot 58')).toHaveTextContent('3')
+
+    await user.click(screen.getByRole('button', { name: 'Finish machine' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+
+    const lines = await getCountLines(visit.id)
+    expect(lines.find((l) => l.slotNumber === 58)?.before).toBe(3)
   })
 })

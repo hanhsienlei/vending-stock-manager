@@ -15,6 +15,11 @@ export function useCounting(runId: Id, machineId: Id) {
   const [after, setAfterState] = useState<Map<string, number>>(new Map())
   const [filled, setFilled] = useState<Set<number>>(new Set())
   const [touched, setTouched] = useState<Set<string>>(new Set())
+  // Level keys for which some prior finalized visit recorded a level, even
+  // 0 — i.e. `lastRecordedLevels(history)` has an entry for the key. Used to
+  // tell "never counted" (seeded at 0 from empty history) apart from
+  // "counted and found empty" for ran-dry (spec §5.2, amended 2026-08-27).
+  const [hasHistory, setHasHistory] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
 
   // Which (run, machine) this hook has already resumed. Set synchronously,
@@ -78,6 +83,10 @@ export function useCounting(runId: Id, machineId: Id) {
       setVisit(openedVisit)
       setBeforeState(mergeWith(draftBefore))
       setAfterState(mergeWith(draftAfter))
+      // Recomputed fresh from `historyForMachine` every time, including on a
+      // `reload()`-driven re-seed: it depends only on finalized history, never
+      // on in-session edits, so there is nothing to merge.
+      setHasHistory(new Set(levels.keys()))
 
       if (firstEntry) {
         // Both `touched` and `filled` are recorded on the line itself (spec
@@ -245,12 +254,17 @@ export function useCounting(runId: Id, machineId: Id) {
   )
 
   const finalize = useCallback(async () => {
-    // An already-finalized visit is immutable, and re-entering a machine you
-    // have finished is ordinary — the machine list routes back there after
-    // every finish and openVisit hands the finalized visit straight back. The
-    // whole-machine batch below would throw on it, so stop here instead: the
-    // record is already complete.
-    if (!visit || visit.status === 'finalized') return
+    // Re-entering a finished machine is ordinary — the machine list routes
+    // back there after every finish and openVisit hands the finalized visit
+    // straight back — so tapping Finish again must not be a dead button.
+    // Spec §7, amended 2026-08-27: finalizedAt is a marker, not a lock, and
+    // putCountLines no longer rejects writes to a finalized visit. So there
+    // is no longer any reason to special-case "already finalized" here: it
+    // always re-runs the whole-machine batch and re-stamps below, which is
+    // exactly what "re-finishing after an edit should still work and
+    // re-stamp" requires — including when nothing changed, where it is a
+    // harmless, idempotent-in-content re-write (only `updatedAt` moves).
+    if (!visit) return
 
     // Record the whole machine, not just the rows the operator worked. Spec
     // §3.1 makes untouched the common case — a slot that sold nothing needs
@@ -264,9 +278,8 @@ export function useCounting(runId: Id, machineId: Id) {
     // operator did touch is rewritten from the same state it was written from.
     // `touched` is carried through, so the distinction survives into Phase 2.
     //
-    // This must land before the visit is finalized — a finalized visit rejects
-    // writes, so the reverse order would throw with the visit half-recorded.
-    // It runs once per machine, off the tapping path, as a single batch.
+    // Runs before finalizeVisit re-stamps, once per machine, off the tapping
+    // path, as a single batch.
     await putCountLines(
       map.flatMap((slot) =>
         slot.accepts.map((itemId) => {
@@ -291,8 +304,21 @@ export function useCounting(runId: Id, machineId: Id) {
   }, [visit, map, before, after, touched, filled])
 
   const ranDry = useCallback(
-    (slot: ResolvedSlot) => slotTotal(contentsOf(slot, before)) === 0,
-    [before, contentsOf],
+    (slot: ResolvedSlot) => {
+      if (slotTotal(contentsOf(slot, before)) !== 0) return false
+
+      // Zero alone is not dry — it might just be a slot nobody has ever
+      // counted. It is dry when that zero is an observation: either a prior
+      // visit recorded a level for this slot (even 0, carried forward
+      // untouched), or the operator has touched it this visit (counted it
+      // down themselves). A slot with neither has simply never been looked
+      // at, and "never counted" is not "sold out" (spec §5.2, amended).
+      return slot.accepts.some((itemId) => {
+        const key = levelKey(slot.slotNumber, itemId)
+        return hasHistory.has(key) || touched.has(key)
+      })
+    },
+    [before, contentsOf, hasHistory, touched],
   )
 
   return {

@@ -3,6 +3,7 @@ import { db } from '../db'
 import { createRun, getOrCreateRun, listRuns } from './runs'
 import {
   openVisit, getCountLines, putCountLine, putCountLines, finalizeVisit, historyForMachine,
+  assertVisitNotFinalized,
 } from './visits'
 import { newId, now } from '../../domain/ids'
 import { lastRecordedLevels, levelKey } from '../../domain/levels'
@@ -68,11 +69,20 @@ describe('visits', () => {
     expect(await getCountLines(visit.id)).toHaveLength(1)
   })
 
-  it('rejects writes to a finalized visit', async () => {
+  it('accepts writes to a finalized visit — finishing a machine is a marker, not a lock (spec §7, amended)', async () => {
     const run = await createRun('2026-08-26')
     const visit = await openVisit(run.id, 'L7')
     await finalizeVisit(visit.id)
-    await expect(putCountLine(lineFor(visit.id, 8))).rejects.toThrow(/finalized/i)
+
+    await putCountLine(lineFor(visit.id, 8))
+
+    const lines = await getCountLines(visit.id)
+    expect(lines).toHaveLength(1)
+    expect(lines[0].after).toBe(8)
+  })
+
+  it('rejects a write to an unknown visit', async () => {
+    await expect(putCountLine(lineFor('no-such-visit', 8))).rejects.toThrow(/unknown visit/i)
   })
 
   it('returns only finalized visits in history, newest first', async () => {
@@ -157,22 +167,43 @@ describe('visits', () => {
     })
   })
 
-  it('rejects a batch aimed at a finalized visit', async () => {
+  it('accepts a batch aimed at a finalized visit', async () => {
     const run = await createRun('2026-08-26')
     const visit = await openVisit(run.id, 'L7')
     await finalizeVisit(visit.id)
 
-    await expect(putCountLines([lineFor(visit.id, 8)])).rejects.toThrow(/finalized/i)
-    expect(await getCountLines(visit.id)).toEqual([])
+    await putCountLines([lineFor(visit.id, 8)])
+    expect(await getCountLines(visit.id)).toHaveLength(1)
   })
 
-  it('does not re-stamp an already-finalized visit', async () => {
+  it('re-stamps finalizedAt and updatedAt on every call, so re-finishing after an edit still works', async () => {
+    let t = 1_700_000_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => {
+      t += 1000
+      return t
+    })
+
     const run = await createRun('2026-08-26')
     const visit = await openVisit(run.id, 'L7')
     const first = await finalizeVisit(visit.id)
     const second = await finalizeVisit(visit.id)
-    expect(second.finalizedAt).toBe(first.finalizedAt)
-    expect(second.updatedAt).toBe(first.updatedAt)
+
+    expect(second.finalizedAt).toBeGreaterThan(first.finalizedAt ?? 0)
+    expect(second.updatedAt).toBeGreaterThan(first.updatedAt)
+
+    vi.restoreAllMocks()
+  })
+})
+
+describe('assertVisitNotFinalized', () => {
+  it('is available for a genuine lock, but is not enforced on the normal write path', async () => {
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, 'L7')
+    const finalized = await finalizeVisit(visit.id)
+
+    expect(() => assertVisitNotFinalized(finalized)).toThrow(/finalized/i)
+    // The normal path (putCountLine/putCountLines) does not call it —
+    // confirmed above by writes to a finalized visit succeeding.
   })
 })
 

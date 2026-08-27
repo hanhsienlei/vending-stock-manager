@@ -22,13 +22,22 @@ export function getCountLines(visitId: Id): Promise<CountLine[]> {
   return db.countLines.where('visitId').equals(visitId).toArray()
 }
 
+/** Spec §7, amended 2026-08-27: finishing a machine is a marker, not a lock.
+ * A finalized visit no longer rejects writes — kept here, unused by
+ * `putCountLine` / `putCountLines`, for Phase 2, which "must decide how late
+ * an edit may arrive before the period it closes is considered settled" and
+ * may want a genuine immutability lock on top of the marker. Call this
+ * explicitly wherever that lock should apply. */
+export function assertVisitNotFinalized(visit: Visit): void {
+  if (visit.status === 'finalized') {
+    throw new Error(`Visit ${visit.id} is finalized and cannot be modified`)
+  }
+}
+
 export async function putCountLine(line: CountLine): Promise<void> {
   await db.transaction('rw', db.visits, db.countLines, async () => {
     const visit = await db.visits.get(line.visitId)
     if (!visit) throw new Error(`Unknown visit ${line.visitId}`)
-    if (visit.status === 'finalized') {
-      throw new Error(`Visit ${line.visitId} is finalized and cannot be modified`)
-    }
 
     const existing = (await db.countLines
       .where('[visitId+slotNumber]')
@@ -58,9 +67,6 @@ export async function putCountLines(lines: CountLine[]): Promise<void> {
     for (const visitId of visitIds) {
       const visit = await db.visits.get(visitId)
       if (!visit) throw new Error(`Unknown visit ${visitId}`)
-      if (visit.status === 'finalized') {
-        throw new Error(`Visit ${visitId} is finalized and cannot be modified`)
-      }
     }
 
     const existing = await db.countLines.where('visitId').anyOf(visitIds).toArray()
@@ -77,10 +83,14 @@ export async function putCountLines(lines: CountLine[]): Promise<void> {
   })
 }
 
+/** Always re-stamps `finalizedAt`/`updatedAt`, even when the visit is already
+ * finalized — spec §7, amended 2026-08-27: "finalizedAt records that the
+ * operator considers the machine done; it does not prevent editing, and an
+ * edit re-stamps updatedAt." Re-finishing after an edit must work and record
+ * the fact, not silently no-op. */
 export async function finalizeVisit(visitId: Id): Promise<Visit> {
   const visit = await db.visits.get(visitId)
   if (!visit) throw new Error(`Unknown visit ${visitId}`)
-  if (visit.status === 'finalized') return visit
 
   const finalized: Visit = {
     ...visit, status: 'finalized', finalizedAt: now(), updatedAt: now(),
