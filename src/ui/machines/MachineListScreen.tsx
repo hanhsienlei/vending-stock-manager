@@ -3,8 +3,8 @@ import { listMachines } from '../../data/repositories/machines'
 import { getOrCreateRun, getRunForDate } from '../../data/repositories/runs'
 import { listVisitsForRun } from '../../data/repositories/visits'
 import { distinctLabel } from './machineLabel'
-import { today } from '../../domain/date'
-import type { Id, Machine } from '../../domain/types'
+import { today, formatRunDate } from '../../domain/date'
+import type { Id, Machine, Run } from '../../domain/types'
 
 export function MachineListScreen({
   onCount, onViewMap,
@@ -13,6 +13,17 @@ export function MachineListScreen({
   onViewMap: (machine: Machine) => void
 }) {
   const [machines, setMachines] = useState<Machine[]>([])
+  // Today's run, or null if it has not been started. Held so the header can
+  // say which day the app thinks it is and how far through the estate the
+  // run has got — until now a run was created silently on the first machine
+  // tap and nothing ever showed that it had happened.
+  const [todaysRun, setTodaysRun] = useState<Run | null>(null)
+  // Without this the header paints before the first read finishes, so a run
+  // that already exists shows "Start run" for a frame. Harmless to tap —
+  // `getOrCreateRun` is idempotent — but this screen's job is now to tell the
+  // operator what state the run is in, and briefly telling them the wrong
+  // thing is the opposite of that.
+  const [loading, setLoading] = useState(true)
   // Status indicator only, never a gate — the amended spec §7 makes a
   // finished machine editable again, so this set only decides what a row
   // shows, never whether `startCount` below is allowed to run.
@@ -24,28 +35,61 @@ export function MachineListScreen({
     // A read-only lookup — never getOrCreateRun — so merely viewing this
     // screen can't mint an empty run before the operator starts counting.
     const run = await getRunForDate(today())
+    setTodaysRun(run ?? null)
     if (!run) {
       setFinishedMachineIds(new Set())
+      setLoading(false)
       return
     }
     const visits = await listVisitsForRun(run.id)
     setFinishedMachineIds(
       new Set(visits.filter((v) => v.status === 'finalized').map((v) => v.machineId)),
     )
+    setLoading(false)
   }
 
   useEffect(() => {
     void reload()
   }, [])
 
+  async function startRun() {
+    await getOrCreateRun(today())
+    await reload()
+  }
+
   async function startCount(machineId: Id) {
     const run = await getOrCreateRun(today())
     onCount(machineId, run.id)
   }
 
+  if (loading) return <div className="p-4">Loading…</div>
+
   return (
     <div className="p-4">
       <h2 className="mb-3 text-lg font-semibold">Machines</h2>
+
+      <div
+        aria-label="run header"
+        className="mb-3 flex items-center gap-2 rounded-lg border bg-gray-50 p-3"
+      >
+        <span className="flex-1 text-sm font-semibold">{formatRunDate(today())}</span>
+        {todaysRun ? (
+          <span className="text-sm text-gray-500">
+            {finishedMachineIds.size} of {machines.length} counted
+          </span>
+        ) : (
+          // Explicit, but not a gate: tapping a machine still starts the run
+          // on its own. `getOrCreateRun` is idempotent per date, so both
+          // entry points land on the same run.
+          <button
+            type="button"
+            onClick={() => void startRun()}
+            className="rounded-lg bg-blue-600 px-3 py-1 text-sm font-semibold text-white"
+          >
+            Start run
+          </button>
+        )}
+      </div>
 
       <ul className="flex flex-col gap-2">
         {machines.map((m) => (

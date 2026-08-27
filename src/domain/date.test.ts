@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { today } from './date'
+import { today, formatRunDate } from './date'
 
 // fix-plan 2026-08-27, item 1 (critical): the run date must be the
 // operator's *local* calendar day, never UTC. This machine runs at
@@ -39,5 +39,36 @@ describe('today', () => {
     vi.setSystemTime(new Date('2026-08-27T00:30:00Z'))
 
     expect(today()).toBe('2026-08-27')
+  })
+})
+
+// The history screen labels each run with its date. `new Date('2026-08-27')`
+// parses as UTC midnight, which in any zone behind UTC renders as the 26th —
+// the same class of bug as the critical one above, one screen over.
+describe('formatRunDate', () => {
+  const originalTZ = process.env.TZ
+
+  afterEach(() => {
+    process.env.TZ = originalTZ
+  })
+
+  it('reads a stored run date as a plain calendar date', () => {
+    expect(formatRunDate('2026-08-27')).toBe('Thu 27 Aug 2026')
+  })
+
+  it('does not shift the date in a zone behind UTC', () => {
+    // Honolulu is UTC-10. Parsing '2026-08-27' as an instant renders as the
+    // 26th here.
+    process.env.TZ = 'Pacific/Honolulu'
+    expect(formatRunDate('2026-08-27')).toBe('Thu 27 Aug 2026')
+  })
+
+  it('does not shift the date in a zone ahead of UTC either', () => {
+    process.env.TZ = 'Australia/Adelaide'
+    expect(formatRunDate('2026-08-27')).toBe('Thu 27 Aug 2026')
+  })
+
+  it('handles the first of a month, where an off-by-one crosses the month', () => {
+    expect(formatRunDate('2026-09-01')).toBe('Tue 1 Sep 2026')
   })
 })

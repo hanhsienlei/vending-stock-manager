@@ -24,6 +24,21 @@ const tomorrow = () => new Date(Date.now() + 86_400_000).toISOString().slice(0, 
 // they are standing in front of. Navigation is used three times a run; the
 // scroll area is used constantly, so the rare control is the one that moves.
 describe('the global nav', () => {
+  it('reaches the run history, so a recorded run can be checked without reopening it for counting', async () => {
+    const user = userEvent.setup()
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const run = await getOrCreateRun(today())
+    const visit = await openVisit(run.id, machine.id)
+    await finalizeVisit(visit.id)
+
+    render(<App />)
+    await screen.findByText('Finished')
+
+    await user.click(screen.getByRole('button', { name: 'History' }))
+
+    expect(await screen.findByLabelText(`run ${run.date}`)).toBeInTheDocument()
+  })
+
   it('is pinned clear of the thumb at the top, not along the bottom edge', async () => {
     const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
     const run = await getOrCreateRun(today())
@@ -101,7 +116,14 @@ describe('a machine, end to end', () => {
     // Wait for the machine row, not just the screen: the row is what the
     // machine list's own load produces, so waiting on it keeps that update
     // inside the test rather than landing after it.
-    await screen.findByRole('button', { name: 'L7 Lift lobby' })
+    //
+    // Matched by prefix, because by this point the row also carries its
+    // "Finished" badge and that is part of the button's accessible name. The
+    // exact-name form used to pass only because the list painted its rows
+    // before the finished-visit lookup resolved — this assertion was landing
+    // in that gap. The list now waits for its whole load, so the settled row
+    // is the only one there is.
+    await screen.findByRole('button', { name: /^L7 Lift lobby/ })
 
     // One run for the day, one finalized visit, counted 3 and left at 8.
     expect(await listRuns()).toHaveLength(1)

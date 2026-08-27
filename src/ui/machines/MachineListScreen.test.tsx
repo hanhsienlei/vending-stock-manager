@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveMachine } from '../../data/repositories/machines'
-import { createRun, getRun } from '../../data/repositories/runs'
+import { createRun, getRun, listRuns } from '../../data/repositories/runs'
 import { openVisit, putCountLine, finalizeVisit } from '../../data/repositories/visits'
 import { newId, now } from '../../domain/ids'
-import { today } from '../../domain/date'
+import { today, formatRunDate } from '../../domain/date'
 import { MachineListScreen } from './MachineListScreen'
 
 beforeEach(async () => {
@@ -170,6 +170,75 @@ describe('MachineListScreen', () => {
       render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
       const l7Row = (await screen.findByRole('button', { name: /^L7/ })).closest('li')
       expect(l7Row).toHaveTextContent(/finished/i)
+    })
+  })
+
+  // Until now a run was created silently, the first time a machine was
+  // tapped, and nothing ever showed that it had happened. The header makes
+  // today's run visible: which day the app thinks it is, whether the run has
+  // started, and how far through the estate it is.
+  describe('the run header', () => {
+    it("shows today's date", async () => {
+      await saveMachine({ label: 'Lift lobby', level: 7 })
+
+      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+
+      expect(await screen.findByLabelText('run header')).toHaveTextContent(
+        formatRunDate(today()),
+      )
+    })
+
+    it('offers to start the run when today has none', async () => {
+      await saveMachine({ label: 'Lift lobby', level: 7 })
+
+      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+
+      expect(await screen.findByRole('button', { name: 'Start run' })).toBeInTheDocument()
+    })
+
+    it('creates the run for the local day when tapped', async () => {
+      const user = userEvent.setup()
+      await saveMachine({ label: 'Lift lobby', level: 7 })
+
+      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+      await user.click(await screen.findByRole('button', { name: 'Start run' }))
+
+      await waitFor(async () => {
+        expect((await listRuns()).map((r) => r.date)).toEqual([today()])
+      })
+    })
+
+    it('replaces the button with progress once the run exists', async () => {
+      const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+      await saveMachine({ label: 'Gym', level: 8 })
+      const run = await createRun(today())
+      const visit = await openVisit(run.id, l7.id)
+      await finalizeVisit(visit.id)
+
+      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+
+      expect(await screen.findByLabelText('run header')).toHaveTextContent('1 of 2 counted')
+      expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument()
+    })
+
+    // Starting a run and then tapping a machine must not produce two runs for
+    // one day — `getOrCreateRun` is idempotent per date, and this pins it
+    // across the two entry points now that both exist.
+    it('reuses the run it just started when a machine is then counted', async () => {
+      const user = userEvent.setup()
+      const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+      const onCount = vi.fn()
+
+      render(<MachineListScreen onCount={onCount} onViewMap={vi.fn()} />)
+      await user.click(await screen.findByRole('button', { name: 'Start run' }))
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Start run' })).toBeNull())
+
+      await user.click(screen.getByRole('button', { name: /^L7/ }))
+
+      await waitFor(() => expect(onCount).toHaveBeenCalled())
+      const runs = await listRuns()
+      expect(runs).toHaveLength(1)
+      expect(onCount).toHaveBeenCalledWith(l7.id, runs[0].id)
     })
   })
 })
