@@ -64,6 +64,16 @@ first follow-up to pick up.**
   query or sync partition will want a denormalised column plus a data-rewriting
   migration. The likeliest painful migration in the current schema.
 - **No ESLint configuration.**
+- **`Item.remark` and `Item.size` are additions beyond spec §4.1**, which
+  lists an `Item` as name, price, photo, box size, base par — no remark, no
+  size. Both were added later (catalogue seed work) the same way: optional,
+  free text, display-only, no schema migration. `remark` is specifically
+  **not** the spec's unbuilt `Note` entity (§4.1: a time-stamped
+  observation with optional photo/video, attachable to a machine or a
+  machine+item pair) — it is a plain property of the catalogue entry, like
+  name or price, with no timestamp and no attachment target of its own.
+  Flagging this so a future `Note` implementation doesn't treat `remark` as
+  a partial version of it, or vice versa.
 
 ---
 

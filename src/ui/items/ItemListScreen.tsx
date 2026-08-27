@@ -10,6 +10,7 @@ export function ItemListScreen({
   onNew: () => void
 }) {
   const [items, setItems] = useState<Item[]>([])
+  const [busy, setBusy] = useState(false)
 
   async function reload() {
     setItems(await listItems())
@@ -19,9 +20,20 @@ export function ItemListScreen({
     void reload()
   }, [])
 
+  // The empty catalogue is the real safety mechanism (seedStarterCatalogue is
+  // one atomic transaction, so two overlapping calls can't both land — see
+  // seed.ts). `busy` is belt-and-braces on top of that: the write is ~135
+  // records, so disabling on the very first tap means a double-tap never
+  // gets a second call in, rather than merely relying on the button vanishing
+  // once `items` repopulates after the fact.
   async function loadStarterCatalogue() {
-    await seedStarterCatalogue()
-    await reload()
+    setBusy(true)
+    try {
+      await seedStarterCatalogue()
+      await reload()
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -37,10 +49,11 @@ export function ItemListScreen({
       {items.length === 0 && (
         <button
           type="button"
+          disabled={busy}
           onClick={() => void loadStarterCatalogue()}
-          className="mb-3 w-full rounded-lg border border-blue-600 p-3 font-semibold text-blue-600"
+          className="mb-3 w-full rounded-lg border border-blue-600 p-3 font-semibold text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Load starter catalogue
+          {busy ? 'Loading…' : 'Load starter catalogue'}
         </button>
       )}
       <ul className="flex flex-col gap-2">

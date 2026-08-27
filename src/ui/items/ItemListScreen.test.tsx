@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
+import * as seedRepo from '../../data/repositories/seed'
 import { ItemListScreen } from './ItemListScreen'
 
 beforeEach(async () => {
@@ -42,6 +43,33 @@ describe('ItemListScreen', () => {
     expect(
       screen.queryByRole('button', { name: 'Load starter catalogue' }),
     ).not.toBeInTheDocument()
+  })
+
+  // Review defect #1's belt-and-braces: the real fix is that seedStarterCatalogue
+  // is now one atomic transaction (see seed.test.ts), but the button must also
+  // not sit there enabled through ~135 writes inviting a second tap. The seed
+  // call is mocked and held open here so the assertion does not depend on how
+  // fast the real writes happen to be.
+  it('disables the button the instant it is tapped, before the write settles', async () => {
+    const user = userEvent.setup()
+    let resolveSeed!: (value: boolean) => void
+    const held = new Promise<boolean>((resolve) => {
+      resolveSeed = resolve
+    })
+    const spy = vi.spyOn(seedRepo, 'seedStarterCatalogue').mockReturnValue(held)
+
+    render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+    const button = await screen.findByRole('button', { name: 'Load starter catalogue' })
+    await user.click(button)
+
+    // The mocked write is still in flight — nothing has resolved it yet —
+    // and the button must already refuse a second tap.
+    expect(button).toBeDisabled()
+    expect(spy).toHaveBeenCalledTimes(1)
+
+    resolveSeed(true)
+    await waitFor(() => expect(button).not.toBeDisabled())
+    spy.mockRestore()
   })
 
   it('shows the remark when the item has one', async () => {

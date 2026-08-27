@@ -44,7 +44,7 @@ Branch: `main` (worked directly on `main`, two commits)
 
 ## Judgement calls
 
-1. **The transcription's `size` column is not persisted.** `Item` has no
+1. ~~**The transcription's `size` column is not persisted.** `Item` has no
    size field (spec §4.1: name, price, photo, box size, base par — not
    product size), and folding size into `name` (e.g. "Sunkist (375ml)")
    would break exact-name matching that the transcription's own resolutions
@@ -52,17 +52,31 @@ Branch: `main` (worked directly on `main`, two commits)
    to find and rename the placeholder items. Size was read from the
    transcription while writing the data module but deliberately dropped,
    not carried forward. Flagging this explicitly in case it should instead
-   become a real field later — nothing here blocks that.
+   become a real field later — nothing here blocks that.~~ **Superseded** by
+   the `size` addendum below (commit `a4e10fa`): `Item.size?: string` was
+   added the same way `remark` was, and all 60 `STARTER_ITEMS` entries now
+   carry it verbatim from the transcription. The exact-name concern raised
+   here was about folding size into `name`, not about a dedicated field —
+   the addendum doesn't touch `name`, so it stands without contradiction.
+   Left struck through rather than deleted so the reasoning that led to the
+   addendum stays visible.
 2. **Duplicate-slot products collapse to one item with two slots**, not two
    items. Nu Pure Water Bottles appears at both 48 and 49 with identical
    name/size/price; Coke No Sugar at 56 and 57; Coke at 58 and 59. Treating
    each as one item occupying `slots: [48, 49]` (etc.) rather than two
-   separate items is what makes the total come out to exactly 60 — the
-   transcription table has 65 rows across the six trays, minus these three
-   duplicate rows, plus the mixed-slot items being distinct rows already
-   counted individually. This matches how the existing app already models a
-   product ("Coke is at 58, 59" is used verbatim as the example in
-   `ItemEditScreen.tsx`'s comments).
+   separate items is what makes the total come out to exactly 60. The
+   transcription table has **55 rows** across the six trays (5 + 10 + 10 +
+   10 + 10 + 10, one row per slot number 10–14/20–69), of which 7 rows are
+   marked `MIXED` and expand to 2 or 3 named items apiece (6 rows -> 2 each
+   = 12, plus 1 row -> 3, replacing 7 rows with 15 names): 55 − 7 + 15 = 63
+   named items. 3 of those 63 are the duplicate-slot products above,
+   collapsed to 1 item each: 63 − 3 = **60**. (An earlier version of this
+   note said "65 rows... minus three duplicate rows" — that arithmetic was
+   wrong even though the resulting count of 60 happened to be right; this
+   replaces it rather than leaving bad working next to a correct answer.)
+   This matches how the existing app already models a product ("Coke is at
+   58, 59" is used verbatim as the example in `ItemEditScreen.tsx`'s
+   comments).
 3. **Machine label**: the transcription only names machines `L2`..`L16` with
    no location text (unlike the `Machine.label` examples elsewhere, e.g.
    "Lift lobby"). Used `Level ${n}` as a plain, correctable placeholder label
@@ -395,3 +409,264 @@ Clean, no type errors.
 Not touched: `tsconfig.json`, `package.json`, `vite.config.ts`,
 `src/data/db.ts` (confirmed via `git diff --stat -- src/data/db.ts`,
 empty).
+
+---
+
+# Addendum 2 — review fixes (2026-08-27)
+
+Five defects came back from review of the seed work: three in the safety
+mechanism (one critical: the empty-catalogue gate was not atomic), one
+missing test class, and one test-naming collision. All five are fixed here.
+Scope: `src/**` plus this file and `docs/known-gaps.md`. No
+`tsconfig.json`, `package.json`, `vite.config.ts`, or Dexie schema-version
+changes.
+
+## What changed
+
+### 1–3 (critical/important) — the gate is now one atomic transaction
+
+`seedStarterCatalogue` (`src/data/repositories/seed.ts`) now wraps the
+emptiness check *and* every write in a single
+`db.transaction('rw', db.items, db.machines, db.placements, async () => …)`:
+
+- **Not atomic (defect #1).** Two overlapping calls — a double-tap on a
+  button left enabled through ~135 writes — both used to read an empty
+  catalogue and both proceed. Fixed by moving the `listItems()` check
+  inside the transaction: IndexedDB serializes two `readwrite` transactions
+  that touch the same object stores, so the second call's transaction does
+  not even start running its body until the first has committed. By then
+  the catalogue is non-empty and the second call's check correctly returns
+  `false`.
+- **Gate ignored machines (defect #2).** The check now reads
+  `listMachines()` as well as `listItems()` and refuses to seed if *either*
+  is non-empty. `App.tsx` opens on the Machines screen and invites adding
+  one before Items is ever visited; a machine added by hand is now enough
+  to block the seed, rather than getting a silent duplicate level.
+- **Partial failure locked the gate forever (defect #3).** Previously three
+  separate `Promise.all` batches, each in its own implicit transaction — a
+  crash between batches left items with no placements, and because items
+  then existed, the gate returned `false` for good with no in-app recovery.
+  One transaction means any failure partway rolls back every write in the
+  batch: items, machines, and any placements already written all revert
+  together, so `listItems()`/`listMachines()` read empty again afterwards
+  and a retry can succeed cleanly.
+
+`saveItem`, `saveMachine`, and `setPlacement` are all still called as-is —
+none of this reaches past the repositories into raw table calls. This
+works because Dexie reuses the currently-active transaction for any table
+operation performed inside its scope, including `setPlacement`'s own
+nested `db.transaction('rw', db.placements, …)`: since `placements` is
+already part of the outer transaction's table set, the nested call joins
+it rather than opening a second one. **Verified, not assumed**: the
+rollback test below forces a write to fail on the 30th `db.placements.put`
+call (by spying on the raw Dexie table method, restored afterwards) and
+asserts that every item and machine written earlier in the same batch is
+gone too — that only holds if the nesting is real. It is; the test passes.
+
+**Belt-and-braces**, per the review: `ItemListScreen` (`src/ui/items/ItemListScreen.tsx`)
+now tracks a `busy` boolean, set before `seedStarterCatalogue()` is called
+and cleared in a `finally`. The button is `disabled` while `busy` and its
+label reads "Loading…". The transaction is the real fix — this only
+shortens the window in which a second tap could even be dispatched.
+
+### 4 (important) — table-driven price/size/slot regression test
+
+Added a new `describe` block to `src/data/starterCatalogue.test.ts`:
+a 63-row table (`{ slot, name, size, price }`), one row per slot/item pair
+— 60 items, 3 of which occupy two slots each (Nu Pure Water Bottles at
+48/49, Coke No Sugar at 56/57, Coke at 58/59) — typed independently from
+`docs/catalogue-transcription.md` rather than derived from `STARTER_ITEMS`,
+run through `it.each`. Each row looks up the matching `STARTER_ITEMS` entry
+by `name` *and* slot membership (not by array index, so a row moved to the
+wrong position in `STARTER_ITEMS` would still be checked against the right
+expectation) and asserts `size` and `price` both match.
+
+**Mutation-tested, not just written**: temporarily changed Coopers XPA's
+price in `starterCatalogue.ts` from `10` to `8` (the exact transposition
+example from the review) and reran — the new test failed with
+`expected 8 to be 10`, all 69 other rows still passed. Reverted immediately
+after (`git status` confirmed no diff left behind). This confirms the test
+actually catches the regression class it's meant to catch, not just that it
+runs.
+
+### 5 (minor) — duplicate test name
+
+`src/ui/items/ItemEditScreen.test.tsx`: the two identically-named
+`it('is not required and an item without one still saves')` tests (one for
+`remark`, one for `size`) are now `'remark is not required and an item
+without one still saves'` and `'size is not required and an item without
+one still saves'`.
+
+## Report corrections
+
+- The "Part 2 — Judgement calls" section's item #1 (size not persisted) is
+  struck through in place, with a note that it was superseded by the `size`
+  addendum (commit `a4e10fa`), rather than silently left to contradict the
+  addendum below it.
+- Item #2's arithmetic ("the transcription table has 65 rows... minus these
+  three duplicate rows") was wrong; replaced with the correct working: 55
+  rows (one per physical slot, 10–14/20–69) → 63 named items after 7 `MIXED`
+  rows expand to 15 names → 60 items after collapsing the 3 duplicate-slot
+  products. The answer (60) was always right; only the working was wrong.
+
+## `docs/known-gaps.md`
+
+Added a line under "Smaller items" recording that `Item.remark` and
+`Item.size` are additions beyond spec §4.1 (which lists name, price,
+photo, box size, base par — not a remark or a size field), and that
+`remark` is specifically **not** the spec's unbuilt `Note` entity (§4.1:
+time-stamped, photo/video, attachable to a machine or machine+item pair) —
+so a future reader implementing `Note` doesn't treat `remark` as a partial
+version of it or vice versa.
+
+## TDD evidence
+
+All commands run with plain `npm test` / `npx vitest run <path>` — no
+`--exclude` flag needed; the stale worktree noted in the original report is
+gone (`git worktree list` now shows only `main`), and `npm test` collects
+exactly the project's own suite.
+
+### RED — defects #1–#3 (`seed.test.ts`)
+
+Three tests added against the not-yet-fixed `seed.ts` (three separate
+transactions, items-only gate):
+
+```
+$ npx vitest run src/data/repositories/seed.test.ts
+ × seedStarterCatalogue > is safe against two overlapping calls: only one full seed ever lands
+   → expected [ true, true ] to deeply equal [ false, true ]
+ × seedStarterCatalogue > does not reseed when a machine already exists, even with an empty catalogue
+   → expected true to be false
+ × seedStarterCatalogue > rolls back the whole seed if a write partway through fails, and the gate is not left stuck
+   → expected [...] to have a length of +0 but got 60
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 6 passed (9)
+```
+
+### GREEN — defects #1–#3
+
+After wrapping `seedStarterCatalogue` in one `db.transaction`:
+
+```
+$ npx vitest run src/data/repositories/seed.test.ts
+ ✓ src/data/repositories/seed.test.ts (9 tests) 108ms
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+```
+
+### RED — belt-and-braces `busy` state (`ItemListScreen.test.tsx`)
+
+Added a test that spies on `seedStarterCatalogue` (via `vi.spyOn` on the
+real module — not `vi.mock`, so every other test in the file still exercises
+real seeding) and holds its promise open, against the not-yet-changed
+`ItemListScreen`:
+
+```
+$ npx vitest run src/ui/items/ItemListScreen.test.tsx -t "disables the button"
+ × ItemListScreen > disables the button the instant it is tapped, before the write settles
+   → expect(element).toBeDisabled()
+   Received element is not disabled
+
+ Tests  1 failed | 7 skipped (8)
+```
+
+### GREEN — belt-and-braces `busy` state
+
+After adding the `busy` state and `disabled={busy}` to the button:
+
+```
+$ npx vitest run src/ui/items/ItemListScreen.test.tsx
+ ✓ src/ui/items/ItemListScreen.test.tsx (8 tests) 148ms
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+```
+
+### Defect #4 — table-driven test (verification + mutation check, not RED/GREEN)
+
+This is a pure data-verification test, not implementation-driving, so there
+is no meaningful RED state against unfinished code — the data it checks
+(`STARTER_ITEMS`) was already complete and, per the original review, correct.
+Instead it was mutation-tested directly against the transcription's own
+transposition example:
+
+```
+$ npx vitest run src/data/starterCatalogue.test.ts   # baseline, price correct
+ ✓ src/data/starterCatalogue.test.ts (70 tests) 5ms
+
+# Coopers XPA price changed 10 -> 8 in starterCatalogue.ts
+$ npx vitest run src/data/starterCatalogue.test.ts
+ × every slot/item pair against the transcription, table-driven > slot 51 — 'Coopers XPA'
+   → expected 8 to be 10
+ Tests  1 failed | 69 passed (70)
+
+# reverted; git status confirmed clean
+$ npx vitest run src/data/starterCatalogue.test.ts
+ ✓ src/data/starterCatalogue.test.ts (70 tests) 5ms
+```
+
+### Defect #5 — renamed tests
+
+No RED/GREEN — a pure rename, verified only by the full suite below still
+passing with distinct test names (checked via `grep -n` that the duplicate
+string no longer appears twice in the file).
+
+## Full suite and build
+
+```
+$ npm test
+ ✓ src/data/starterCatalogue.test.ts (70 tests)
+ ✓ src/domain/placement.test.ts (12 tests)
+ ✓ src/data/repositories/repositories.test.ts (10 tests)
+ ✓ src/data/repositories/visits.test.ts (16 tests)
+ ✓ src/domain/trays.test.ts (12 tests)
+ ✓ src/ui/items/ItemListScreen.test.tsx (8 tests)
+ ✓ src/domain/levels.test.ts (5 tests)
+ ✓ src/domain/fill.test.ts (8 tests)
+ ✓ src/ui/run/SlotEditSheet.test.tsx (5 tests)
+ ✓ src/ui/run/CountScreen.test.tsx (8 tests)
+ ✓ src/data/repositories/seed.test.ts (9 tests)
+ ✓ src/ui/App.e2e.test.tsx (1 test)
+ ✓ src/domain/purity.test.ts (1 test)
+ ✓ src/domain/ids.test.ts (3 tests)
+ ✓ src/ui/useMachineMap.test.tsx (2 tests)
+ ✓ src/ui/items/ItemEditScreen.test.tsx (13 tests)
+ ✓ src/ui/run/useCounting.test.tsx (22 tests)
+
+ Test Files  17 passed (17)
+      Tests  205 passed (205)
+```
+
+205 = 137 baseline (post-`size`-addendum) + 68 new: 61 new rows in
+`starterCatalogue.test.ts` (63 `it.each` rows + 1 count assertion, net +1
+since one prior "carries size" style test already existed... precisely:
+70 − 6 = 64 net-new in that file), 4 new in `seed.test.ts` (9 − 5), 1 new in
+`ItemListScreen.test.tsx` (8 − 7 remark/size tests already counted). Checked
+for clean output with `grep -i -E "act\(|warning|unhandled"` against the
+captured full run — no matches (`exit=1`, i.e. no lines matched).
+
+```
+$ npm run build
+> tsc --noEmit && vite build
+✓ 58 modules transformed.
+✓ built in 552ms
+PWA v0.21.2 — precache 5 entries (323.83 KiB)
+```
+
+Clean, no type errors.
+
+## Files changed (this round)
+
+- `src/data/repositories/seed.ts` — atomic transaction, machines-aware gate
+- `src/data/repositories/seed.test.ts` — 3 new tests (concurrent calls,
+  machine-only guard, rollback + retry)
+- `src/ui/items/ItemListScreen.tsx` — `busy` state, disabled button
+- `src/ui/items/ItemListScreen.test.tsx` — 1 new test (disables on tap)
+- `src/data/starterCatalogue.test.ts` — 63-row table-driven test
+- `src/ui/items/ItemEditScreen.test.tsx` — renamed two colliding test names
+- `docs/seed-report.md` — this addendum, plus corrections to the Part 2
+  judgement calls
+- `docs/known-gaps.md` — `remark`/`size` vs. spec §4.1 and the `Note` entity
+
+Not touched: `tsconfig.json`, `package.json`, `vite.config.ts`,
+`src/data/db.ts`.

@@ -176,7 +176,7 @@ describe('ItemEditScreen', () => {
     }
   })
 
-  it('is not required and an item without one still saves', async () => {
+  it('remark is not required and an item without one still saves', async () => {
     const user = userEvent.setup()
     const onDone = vi.fn()
     render(<ItemEditScreen onDone={onDone} />)
@@ -214,7 +214,7 @@ describe('ItemEditScreen', () => {
     )
   })
 
-  it('is not required and an item without one still saves', async () => {
+  it('size is not required and an item without one still saves', async () => {
     const user = userEvent.setup()
     const onDone = vi.fn()
     render(<ItemEditScreen onDone={onDone} />)

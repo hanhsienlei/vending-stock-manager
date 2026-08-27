@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { db } from '../db'
 import { listItems } from './items'
-import { listMachines } from './machines'
+import { listMachines, saveMachine } from './machines'
 import { listPlacements } from './placements'
 import { listSlotConfigs } from './slotConfigs'
 import { resolveMachineMap } from '../../domain/placement'
@@ -81,6 +81,60 @@ describe('seedStarterCatalogue', () => {
     const second = await seedStarterCatalogue()
 
     expect(second).toBe(false)
+    expect(await listItems()).toHaveLength(60)
+    expect(await listMachines()).toHaveLength(15)
+    expect(await listPlacements()).toHaveLength(60)
+  })
+
+  // Review defect #1: two overlapping calls (a double-tap on a button that
+  // stays enabled through ~135 writes) must not both see an empty catalogue.
+  // The emptiness check and every write have to share one transaction so
+  // IndexedDB serializes the two attempts instead of interleaving them.
+  it('is safe against two overlapping calls: only one full seed ever lands', async () => {
+    const [a, b] = await Promise.all([seedStarterCatalogue(), seedStarterCatalogue()])
+
+    expect([a, b].sort()).toEqual([false, true])
+    expect(await listItems()).toHaveLength(60)
+    expect(await listMachines()).toHaveLength(15)
+    expect(await listPlacements()).toHaveLength(60)
+  })
+
+  // Review defect #2: the gate checked only `listItems`, so an operator who
+  // adds a machine by hand before ever touching Items — the natural first
+  // screen per App.tsx — got a second, duplicate machine per level.
+  it('does not reseed when a machine already exists, even with an empty catalogue', async () => {
+    await saveMachine({ level: 2, label: 'L2' })
+
+    const result = await seedStarterCatalogue()
+
+    expect(result).toBe(false)
+    expect(await listItems()).toHaveLength(0)
+    expect(await listMachines()).toHaveLength(1)
+  })
+
+  // Review defect #3: three separate transactions meant a crash between
+  // batches left items with no placements, and — because items then existed
+  // — the gate returned `false` forever after, with no in-app way to finish
+  // or clear it. One transaction means a failure partway rolls everything
+  // back, so the catalogue is empty again and a retry can succeed cleanly.
+  it('rolls back the whole seed if a write partway through fails, and the gate is not left stuck', async () => {
+    const realPut = db.placements.put.bind(db.placements)
+    let calls = 0
+    const spy = vi.spyOn(db.placements, 'put').mockImplementation((record: unknown) => {
+      calls += 1
+      if (calls === 30) throw new Error('simulated write failure')
+      return realPut(record as never)
+    })
+
+    await expect(seedStarterCatalogue()).rejects.toThrow('simulated write failure')
+    spy.mockRestore()
+
+    expect(await listItems()).toHaveLength(0)
+    expect(await listMachines()).toHaveLength(0)
+    expect(await listPlacements()).toHaveLength(0)
+
+    const retry = await seedStarterCatalogue()
+    expect(retry).toBe(true)
     expect(await listItems()).toHaveLength(60)
     expect(await listMachines()).toHaveLength(15)
     expect(await listPlacements()).toHaveLength(60)
