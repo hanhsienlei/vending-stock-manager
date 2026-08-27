@@ -231,6 +231,35 @@ describe('useCounting', () => {
     expect(second.result.current.ranDry(slot)).toBe(true)
   })
 
+  // Item 4, fix-plan 2026-08-27: toggleFill never marked a slot `touched`,
+  // only `−`/`+` did. On a machine with no history, a slot found empty and
+  // refilled without ever tapping the stepper therefore showed no RAN DRY —
+  // losing the lost-sales signal on the run where it matters most. ranDry is
+  // display-only (CountLine has no such field), so this is a presentation
+  // fix, not a data one — but the persisted `touched` flag drives it, so it
+  // must be set too.
+  it('treats Fill as observing the slot, flagging ran dry on a never-counted empty slot', async () => {
+    const { coke, machine } = await seed()
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, machine.id)
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    const slot = result.current.map.find((s) => s.slotNumber === 58)!
+    // Before any interaction: never counted, not sold out.
+    expect(result.current.ranDry(slot)).toBe(false)
+
+    // The operator never touched the stepper — the slot was already showing
+    // 0 — and went straight to Fill.
+    await act(async () => { await result.current.toggleFill(58) })
+
+    expect(result.current.touched.has(`58:${coke.id}`)).toBe(true)
+    expect(result.current.ranDry(slot)).toBe(true)
+
+    const lines = await getCountLines(visit.id)
+    expect(lines.find((l) => l.slotNumber === 58)?.touched).toBe(true)
+  })
+
   it('brings a mixed slot total to capacity on fill, not each item to capacity', async () => {
     const { fanta, sunkist, machine } = await seedMixed()
     const run = await createRun('2026-08-26')

@@ -226,21 +226,33 @@ export function useCounting(runId: Id, machineId: Id) {
       const prevFilled = filled
       const prevTouched = touched
 
+      const turningOn = !filled.has(slotNumber)
       const nextFilled = new Set(filled)
       const nextAfter = new Map(after)
-      const target = filled.has(slotNumber)
-        ? contentsOf(slot, before)
-        : fillToCapacity(slot, contentsOf(slot, before))
+      const target = turningOn
+        ? fillToCapacity(slot, contentsOf(slot, before))
+        : contentsOf(slot, before)
 
-      if (filled.has(slotNumber)) nextFilled.delete(slotNumber)
-      else nextFilled.add(slotNumber)
+      if (turningOn) nextFilled.add(slotNumber)
+      else nextFilled.delete(slotNumber)
 
       for (const entry of target) {
         nextAfter.set(levelKey(slotNumber, entry.itemId), entry.qty)
       }
 
+      // Filling a slot is an observation, same as tapping −/+ (item 4,
+      // fix-plan 2026-08-27): a slot found empty and refilled without ever
+      // touching the stepper is still a slot the operator looked at and
+      // found empty, and must still flag RAN DRY. Only turning Fill *on*
+      // counts as observing every item in the slot — turning it back off
+      // just reverts `after` to `before` and is not a new observation.
+      const nextTouched = turningOn
+        ? new Set([...touched, ...target.map((e) => levelKey(slotNumber, e.itemId))])
+        : touched
+
       setFilled(nextFilled)
       setAfterState(nextAfter)
+      if (turningOn) setTouched(nextTouched)
 
       const isFilled = nextFilled.has(slotNumber)
 
@@ -249,7 +261,7 @@ export function useCounting(runId: Id, machineId: Id) {
           const key = levelKey(slotNumber, entry.itemId)
           await persist(
             slotNumber, entry.itemId,
-            before.get(key) ?? 0, entry.qty, touched.has(key), isFilled,
+            before.get(key) ?? 0, entry.qty, nextTouched.has(key), isFilled,
           )
         }
       } catch (err) {
