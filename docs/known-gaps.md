@@ -27,6 +27,17 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
 
 ## Smaller items
 
+- **Fill fights a product changeover in a mixed slot.** A slot's preference
+  order comes from `SlotConfig.accepts`, and anything not already listed falls
+  back to alphabetical by item name (`src/domain/placement.ts:41-47`). Fill tops
+  up the highest-preference item, and nothing reorders preference —
+  `SlotEditSheet` adds and removes items but passes the existing order straight
+  through. So during a **Coke → Coke + Fanta → Fanta** changeover, "Coke" sorts
+  before "Fanta" and Fill loads the item being drained. The workaround is to
+  avoid Fill on that slot and step the numbers by hand until the outgoing line
+  is gone; no data is lost either way. Left unfixed by operator decision —
+  changeovers are rare enough to work around. Found while designing Phase 2,
+  where mixed slots matter because the sales residual pairs on `(slot, item)`.
 - **Editing an item's `basePar` silently moves the derived capacity** of every
   unpinned slot where that item sorts first. Slot capacity is pinned when
   placements change, but not on a par-only save.
@@ -109,10 +120,20 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
 
 ---
 
-## Open design question
+## Resolved design question
 
 **Should an untouched slot's `CountLine` be distinguishable from a counted one?**
-Every slot is now recorded at finalize, and untouched rows carry `touched: false`
-with `before === after`. Phase 2 must read that flag to tell "confirmed unchanged"
-from "carried forward unseen" — the sales residual in spec §3.3 will otherwise
-treat them identically.
+Every slot is recorded at finalize, and untouched rows carry `touched: false`
+with `before === after`, so "confirmed unchanged" and "carried forward unseen"
+look identical to the sales residual in spec §3.3.
+
+**Resolved 2026-08-27, in the Phase 2 design (§3.3): an untouched slot reports
+zero sold, like any other slot** — on the operator's judgement that an untouched
+row means *seen and unchanged*, not *not looked at*.
+
+The cost stays live, so it is recorded here rather than closed. That judgement
+only holds if every slot really is eyeballed: the counting screen carries last
+visit's level forward and greys untouched rows, so a whole tray can be passed
+without a tap, and it would then report genuine zero demand for Phase 3's
+forecast to learn from. `touched` is still stored on every line, so Phase 3 can
+revisit this without a migration if the assumption stops holding.
