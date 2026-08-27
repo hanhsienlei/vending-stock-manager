@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useStoreroom } from './useStoreroom'
 
 function formatVerifiedAt(timestamp: number | undefined): string {
@@ -11,10 +12,21 @@ function formatVerifiedAt(timestamp: number | undefined): string {
  * carton sizes are entered (spec §5.4 is deferred, not built here). */
 export function StoreroomScreen() {
   const { items, units, verifiedAt, loading, setUnits } = useStoreroom()
+  const [search, setSearch] = useState('')
 
   if (loading) return <div className="p-4">Loading…</div>
 
+  // Counted against every item, never the filtered subset (item 10,
+  // fix-plan 2026-08-27) — otherwise typing a search would make the header
+  // report fewer items counted than actually are.
   const countedCount = verifiedAt.size
+
+  // No tray grouping here, unlike the item list this mirrors (commit
+  // f9e90a7): trays describe a machine's physical layout, and the storeroom
+  // is shelves — its rows have no tray structure to group by. Search alone.
+  const filtered = items.filter((item) =>
+    item.name.toLowerCase().includes(search.trim().toLowerCase()),
+  )
 
   return (
     <div className="p-4">
@@ -24,8 +36,20 @@ export function StoreroomScreen() {
           {countedCount} / {items.length} counted
         </span>
       </div>
+
+      {/* One-handed on a phone: a single full-width field, no extra taps to
+          reach it — same as the item list's search box. */}
+      <input
+        type="search"
+        aria-label="Search storeroom"
+        placeholder="Search storeroom"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="mb-3 w-full rounded-lg border p-3"
+      />
+
       <ul className="flex flex-col gap-2">
-        {items.map((item) => (
+        {filtered.map((item) => (
           <li key={item.id} className="rounded-lg border p-3">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">

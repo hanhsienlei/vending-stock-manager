@@ -123,4 +123,75 @@ describe('StoreroomScreen', () => {
       expect(screen.getByText('1 / 2 counted')).toBeInTheDocument()
     })
   })
+
+  // Item 10, fix-plan 2026-08-27: 60 catalogue items in one flat list with no
+  // way to filter — the same problem the item list had (commit f9e90a7),
+  // fixed here the same way, not by grouping (this is shelves, not a
+  // machine's tray layout — spec §4.1's storeroom has no tray structure to
+  // mirror).
+  describe('search', () => {
+    it('filters the list by name', async () => {
+      const user = userEvent.setup()
+      await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+      await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+
+      render(<StoreroomScreen />)
+      await screen.findByText('Coke')
+
+      await user.type(screen.getByRole('searchbox', { name: /search/i }), 'fan')
+
+      expect(screen.queryByText('Coke')).not.toBeInTheDocument()
+      expect(screen.getByText('Fanta')).toBeInTheDocument()
+    })
+
+    it('is case-insensitive', async () => {
+      const user = userEvent.setup()
+      await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+
+      render(<StoreroomScreen />)
+      await screen.findByText('Coke')
+
+      await user.type(screen.getByRole('searchbox', { name: /search/i }), 'COKE')
+
+      expect(screen.getByText('Coke')).toBeInTheDocument()
+    })
+
+    it('restores the full list when the search is cleared', async () => {
+      const user = userEvent.setup()
+      await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+      await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+
+      render(<StoreroomScreen />)
+      await screen.findByText('Coke')
+
+      const search = screen.getByRole('searchbox', { name: /search/i })
+      await user.type(search, 'fan')
+      expect(screen.queryByText('Coke')).not.toBeInTheDocument()
+
+      await user.clear(search)
+
+      expect(screen.getByText('Coke')).toBeInTheDocument()
+      expect(screen.getByText('Fanta')).toBeInTheDocument()
+    })
+
+    // The one most likely to go wrong: filtering must never change what the
+    // header reports as counted, or the operator would think they had
+    // counted fewer items than they actually had.
+    it("does not change the header's counted total when the list is filtered", async () => {
+      const user = userEvent.setup()
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+      await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+      await setStoreroomBalance(coke.id, 40)
+
+      render(<StoreroomScreen />)
+      expect(await screen.findByText('1 / 2 counted')).toBeInTheDocument()
+
+      await user.type(screen.getByRole('searchbox', { name: /search/i }), 'fan')
+
+      // Fanta (the only row still visible) is itself uncounted, so a total
+      // computed off the filtered subset would misreport "0 / 1" here.
+      expect(screen.queryByText('Coke')).not.toBeInTheDocument()
+      expect(screen.getByText('1 / 2 counted')).toBeInTheDocument()
+    })
+  })
 })
