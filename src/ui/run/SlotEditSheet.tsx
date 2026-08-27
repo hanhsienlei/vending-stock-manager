@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { listPlacements, setPlacement } from '../../data/repositories/placements'
 import { pinSlotCapacities, setSlotConfig } from '../../data/repositories/slotConfigs'
 import { effectivePlacement } from '../../domain/placement'
+import { AdjustmentSheet } from '../adjustments/AdjustmentSheet'
 import type { Id, Item } from '../../domain/types'
 
 export function SlotEditSheet({
@@ -19,6 +20,7 @@ export function SlotEditSheet({
   onCancel: () => void
 }) {
   const [capacityInput, setCapacityInput] = useState(String(capacity))
+  const [adjusting, setAdjusting] = useState<Id | null>(null)
   async function slotsFor(itemId: Id): Promise<number[]> {
     const placements = await listPlacements()
     return effectivePlacement(itemId, machineId, placements)?.slots ?? []
@@ -106,6 +108,13 @@ export function SlotEditSheet({
             <span className="flex-1 text-sm">{item.name}</span>
             <button
               type="button"
+              onClick={() => setAdjusting(item.id)}
+              className="text-xs font-bold text-blue-600"
+            >
+              {`Adjust ${item.name}`}
+            </button>
+            <button
+              type="button"
               onClick={() => void remove(item.id)}
               className="text-xs font-bold text-red-600"
             >
@@ -129,6 +138,18 @@ export function SlotEditSheet({
           </li>
         ))}
       </ul>
+
+      {adjusting !== null && (
+        <AdjustmentSheet
+          location={{ kind: 'machine', machineId, slotNumber }}
+          itemId={adjusting}
+          onSaved={() => {
+            setAdjusting(null)
+            onSaved()
+          }}
+          onCancel={() => setAdjusting(null)}
+        />
+      )}
 
       <button type="button" onClick={onCancel} className="text-sm text-gray-500">
         Close
