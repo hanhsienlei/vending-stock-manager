@@ -36,7 +36,16 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   item has `basePar: 0`. Such slots are countable but not fillable.
 - **The "add item to this slot" affordance only appears when a machine's map is
   completely empty.** Adding a slot number that appears in no map is unreachable
-  once the machine has at least one mapped slot.
+  once the machine has at least one mapped slot. **Not fixed by fix-plan item
+  14**, despite appearances: the map screen now opens the slot-edit sheet from
+  any row, but it only lists slots that are already mapped, so an unmapped slot
+  has no row to tap. The counting screen's "Open slot" field is still the only
+  way in, and it still only shows on a completely empty machine.
+- **The counting screen still never says which machine you are in.** Fix-plan
+  item 5 asked for the level in the header of both the map and the count
+  screens; only the map screen got one (`de949e0`). The count screen has no
+  header at all — it opens straight onto the tray tabs. Fifteen near-identical
+  maps, so this is the same disorientation the map screen had.
 - **`ItemPlacement.scope` is a nested object**, so it cannot be indexed and
   `listPlacements()` full-scans on every map resolution. Any future scope-filtered
   query or sync partition will want a denormalised column plus a data-rewriting
@@ -56,6 +65,23 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
 ---
 
 ## Fixed since this list was written
+
+- **An item's slots are picked, not typed** (`85a7660`). The free-text field
+  is a toggle per physical slot, grouped by tray, several selectable — so Nu
+  Pure Water 48/49, Coke No Sugar 56/57 and Coke 58/59 still work. An invalid
+  slot number is now unreachable rather than rejected after the fact, so the
+  error message is gone with it. Fix-plan item 13.
+- **A slot can be edited from the machine map** (`d35a8b2`, `94cf425`), through
+  the same `SlotEditSheet` the counting screen opens — in addition to spec
+  §5.1's in-place correction, never instead of it. The sheet floats over the
+  map rather than rendering below it. Fix-plan item 14.
+- **The global nav is no longer under the scrolling thumb** (`2299b6f`) — it
+  moved from the bottom edge to the top. Fix-plan item 11.
+- **A mixed slot that ran dry shows red, not blue** (`f31eedb`). It used to
+  emit both border colours and let Tailwind's utility order pick the winner.
+- **The v1→v2 upgrade path is actually tested** (`5f6defc`). The `machineId`
+  index and `storeroomBalances` tests both opened a *fresh* v2 database and
+  wrote their data afterwards, so neither ran the upgrade it was named for.
 
 - **A machine already finished today now shows as finished on the machine
   list** (`8559eb3`). Previously the list never looked at visits, so a
