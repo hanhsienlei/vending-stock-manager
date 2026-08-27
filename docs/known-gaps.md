@@ -9,19 +9,13 @@ Carried out of the Phase 1 execution ledger before its workspace was deleted.
 
 ## Deferred features
 
-**Mixed-slot fill split is not shown or editable.** Spec §5.1 says that when a
-mixed slot is filled, "the resulting split is shown and each sub-row remains
-editable, so an operator loading a different mix can correct it." The arithmetic
-is correct — `after` is computed properly for mixed slots — but it is never
-rendered. Tapping Fill on slot 52 turns the button green and shows nothing else.
-An operator who actually loaded 2 Fanta and 3 Sunkist has no control that records
-that. Deferred because it is a new UI surface rather than a correctness bug.
-
-**No PWA icons, so the app will not install to a home screen.** The manifest
-declares none, and Chrome/Android needs 192px and 512px icons before offering
-installation. Until then it runs in browser chrome with a network cold start —
-the two things spec §8.1 exists to remove. Needs an actual app icon, which is a
-design decision for the operator rather than something to generate.
+**A mixed slot's fill split is shown but not editable.** Half fixed. `after` now
+renders on every slot row including each sub-row of a mixed slot (`1dfd1be`), so
+Fill is no longer invisible. The remaining half of spec §5.1 — "each sub-row
+remains editable, so an operator loading a different mix can correct it" — is
+still missing. Fill always tops up the highest-preference item, so an operator
+who actually loaded 2 Fanta and 3 Sunkist can see what the app assumed but cannot
+correct it. A new UI surface, deferred.
 
 **No error surface for a rejected write.** `CountScreen` swallows rejections with
 an empty catch. After a rollback the displayed number reverts with no
@@ -74,12 +68,18 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   gone.
 - **`visits.machineId` is indexed** and `historyForMachine` queries through it
   (schema v2, `cc43208`), so it no longer scans the whole table.
-- **Items and machines can be deleted** (`366c53e`), cascading atomically.
-  Deleting an item leaves its historical `CountLine` rows untouched — past sales
-  are immutable per spec §7 — and deleting a machine cascades only its *draft*
-  visits, preserving finalized ones. One consequence: a deleted machine's
-  finalized history still exists but is unreachable through the UI, since no
-  screen surfaces orphaned history.
+- **Items can be deleted** (`366c53e`), cascading atomically. An item's
+  historical `CountLine` rows are left untouched — past counts are not rewritten.
+- **Machine delete was built and then removed again** (`366c53e`, reverted in
+  `13f1532`) — an operator decision after the first device test. The whole
+  machine row is the "start count" button, delete sat at its right edge, and on
+  confirm the row re-laid out so Confirm landed roughly where Delete had been. A
+  fast double-tap could delete a machine and cascade its draft count. The roster
+  is fixed at fifteen and created by the seed, so nothing needs it. Removed from
+  the repository as well as the UI, with a tombstone comment in
+  `src/data/repositories/machines.ts` recording why.
+- **PWA icons exist** (`7b8783f`) — placeholder set, installable, trivially
+  replaceable.
 
 ---
 
