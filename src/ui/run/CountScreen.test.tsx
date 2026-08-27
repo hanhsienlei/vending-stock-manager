@@ -82,7 +82,7 @@ describe('CountScreen', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 0, after: 0, touched: true, filled: false, updatedAt: now(),
+      before: 0, after: 0, touched: true, filled: false, price: 0, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 
@@ -180,7 +180,7 @@ describe('CountScreen', () => {
     for (const itemId of [fanta.id, sunkist.id]) {
       await putCountLine({
         id: newId(), visitId: pastVisit.id, slotNumber: 52, itemId,
-        before: 0, after: 0, touched: true, filled: false, updatedAt: now(),
+        before: 0, after: 0, touched: true, filled: false, price: 0, updatedAt: now(),
       })
     }
     await finalizeVisit(pastVisit.id)
@@ -210,7 +210,7 @@ describe('CountScreen', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 6, touched: true, filled: true, updatedAt: now(),
+      before: 2, after: 6, touched: true, filled: true, price: 0, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 
@@ -278,7 +278,7 @@ describe('CountScreen', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 8, touched: true, filled: true, updatedAt: now(),
+      before: 2, after: 8, touched: true, filled: true, price: 0, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 
@@ -360,7 +360,7 @@ describe('CountScreen', () => {
     const priorVisit = await openVisit(priorRun.id, machine.id)
     await putCountLine({
       id: newId(), visitId: priorVisit.id, slotNumber: 52, itemId: ghost.id,
-      before: 1, after: 5, touched: true, filled: true, updatedAt: now(),
+      before: 1, after: 5, touched: true, filled: true, price: 0, updatedAt: now(),
     })
     await finalizeVisit(priorVisit.id)
 
@@ -422,7 +422,7 @@ describe('CountScreen', () => {
     const visit = await openVisit(run.id, machine.id)
     await putCountLine({
       id: newId(), visitId: visit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 2, touched: true, filled: false, updatedAt: now(),
+      before: 2, after: 2, touched: true, filled: false, price: 0, updatedAt: now(),
     })
     await finalizeVisit(visit.id)
 

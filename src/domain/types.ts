@@ -76,6 +76,45 @@ export interface CountLine {
   touched: boolean    // true once the operator alters `before`
   filled: boolean     // true once Fill has been tapped for this slot; shared
                        // by every line of the slot (mild denormalisation)
+  /** The item's price when this line was recorded. Snapshotted so a later
+   * price change cannot re-price past runs and break reconciliation against
+   * machine takings (design §3.6). */
+  price: number
+  updatedAt: number
+}
+
+export type AdjustmentReason =
+  | 'transfer'   // no loss — leaves one location, arrives at another
+  | 'expired'    // write-off
+  | 'damaged'    // write-off
+  | 'missing'    // shrinkage
+  | 'delivery'   // the only reason that increases total stock
+  | 'miscount'   // a data fix, NOT a stock movement — never enters the residual
+
+export type AdjustmentLocationKind = 'machine' | 'storeroom'
+
+/** A stock movement with a reason, at a machine slot or the storeroom
+ * (spec §4.1, §5.3).
+ *
+ * The location is three flat columns rather than a nested object, and that is
+ * deliberate: `ItemPlacement.scope` is nested, cannot be indexed, and forces a
+ * full scan on every map resolution — known-gaps.md calls it "the likeliest
+ * painful migration in the current schema". This does not repeat it. */
+export interface Adjustment {
+  id: Id
+  itemId: Id
+  locationKind: AdjustmentLocationKind
+  machineId?: Id
+  slotNumber?: number
+  reason: AdjustmentReason
+  /** Signed, relative to this location: negative leaves, positive arrives. */
+  units: number
+  /** Links the two rows of one transfer. */
+  transferId?: Id
+  note?: string
+  /** When the adjustment was logged. Set from the clock at write time; there
+   * is no field to change it, so nothing can be backdated (design §4.1). */
+  occurredAt: number
   updatedAt: number
 }
 

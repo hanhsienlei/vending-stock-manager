@@ -44,7 +44,7 @@ describe('useCounting', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 8, touched: true, filled: true, updatedAt: now(),
+      before: 2, after: 8, touched: true, filled: true, price: 0, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 
@@ -168,7 +168,7 @@ describe('useCounting', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 0, after: 0, touched: true, filled: false, updatedAt: now(),
+      before: 0, after: 0, touched: true, filled: false, price: 0, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 
@@ -215,7 +215,7 @@ describe('useCounting', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 0, after: 0, touched: true, filled: false, updatedAt: now(),
+      before: 0, after: 0, touched: true, filled: false, price: 0, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 
@@ -283,7 +283,7 @@ describe('useCounting', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 8, touched: true, filled: true, updatedAt: now(),
+      before: 2, after: 8, touched: true, filled: true, price: 0, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 
@@ -385,11 +385,11 @@ describe('useCounting resuming an open draft visit', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 8, touched: true, filled: true, updatedAt: now(),
+      before: 2, after: 8, touched: true, filled: true, price: 0, updatedAt: now(),
     })
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 59, itemId: coke.id,
-      before: 1, after: 4, touched: true, filled: true, updatedAt: now(),
+      before: 1, after: 4, touched: true, filled: true, price: 0, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 

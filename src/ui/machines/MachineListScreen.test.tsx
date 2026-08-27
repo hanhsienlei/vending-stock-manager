@@ -59,7 +59,7 @@ describe('MachineListScreen', () => {
     const visit = await openVisit(run.id, l7.id)
     await putCountLine({
       id: newId(), visitId: visit.id, slotNumber: 58, itemId: newId(),
-      before: 2, after: 5, touched: true, filled: false, updatedAt: now(),
+      before: 2, after: 5, touched: true, filled: false, price: 0, updatedAt: now(),
     })
     await finalizeVisit(visit.id)
 

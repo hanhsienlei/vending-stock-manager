@@ -24,6 +24,34 @@ function openLegacyV1(): Dexie {
   return legacy
 }
 
+/** The database exactly as version 2 left it — `filled` present on count
+ * lines, `machineId` indexed on visits, `storeroomBalances` present, but no
+ * `price` and no `adjustments`. This is the shape an operator's browser
+ * actually holds after the first real restock run. */
+function openLegacyV2(): Dexie {
+  const legacy = new Dexie(DB_NAME)
+  legacy.version(1).stores({
+    items: 'id, name',
+    machines: 'id, level',
+    placements: 'id, itemId',
+    slotConfigs: 'id, [machineId+slotNumber]',
+    runs: 'id, date',
+    visits: 'id, runId, [runId+machineId]',
+    countLines: 'id, visitId, [visitId+slotNumber]',
+  })
+  legacy.version(2).stores({
+    items: 'id, name',
+    machines: 'id, level',
+    placements: 'id, itemId',
+    slotConfigs: 'id, [machineId+slotNumber]',
+    runs: 'id, date',
+    visits: 'id, runId, [runId+machineId], machineId',
+    countLines: 'id, visitId, [visitId+slotNumber]',
+    storeroomBalances: 'id, itemId',
+  })
+  return legacy
+}
+
 describe('schema version 2 upgrade', () => {
   beforeEach(async () => {
     db.close()
@@ -130,5 +158,108 @@ describe('schema version 2 upgrade', () => {
     const history = await historyForMachine('L7')
     expect(history).toHaveLength(1)
     expect(history[0].lines.map((l) => l.after)).toEqual([8])
+  })
+})
+
+describe('schema version 3 upgrade', () => {
+  beforeEach(async () => {
+    db.close()
+    await Dexie.delete(DB_NAME)
+  })
+
+  // v3 is the first migration to run against real data — v2 was done while
+  // the database was empty, which is why its risk was acceptable then and is
+  // not now. So this writes through v2 first and opens v3 second.
+  it('backfills price on count lines that predate the field', async () => {
+    const legacy = openLegacyV2()
+    await legacy.open()
+    await legacy.table('items').put({
+      id: 'coke', name: 'Coke', price: 4.5, basePar: 5, boxSize: 24, updatedAt: 1,
+    })
+    const lineId = newId()
+    await legacy.table('countLines').put({
+      id: lineId, visitId: 'v1', slotNumber: 58, itemId: 'coke',
+      before: 3, after: 8, touched: true, filled: true, updatedAt: 1,
+    })
+    legacy.close()
+
+    await db.open()
+
+    expect((await db.countLines.get(lineId))?.price).toBe(4.5)
+  })
+
+  it('backfills a deleted item\'s line at zero rather than leaving it undefined', async () => {
+    const legacy = openLegacyV2()
+    await legacy.open()
+    const lineId = newId()
+    // No matching item row: the item was deleted, which deleteItem allows —
+    // it deliberately leaves CountLine rows alone so past counts are not
+    // rewritten.
+    await legacy.table('countLines').put({
+      id: lineId, visitId: 'v1', slotNumber: 58, itemId: 'gone',
+      before: 3, after: 8, touched: true, filled: true, updatedAt: 1,
+    })
+    legacy.close()
+
+    await db.open()
+
+    expect((await db.countLines.get(lineId))?.price).toBe(0)
+  })
+
+  it('leaves a price that is already present untouched', async () => {
+    const legacy = openLegacyV2()
+    await legacy.open()
+    await legacy.table('items').put({
+      id: 'coke', name: 'Coke', price: 9.99, basePar: 5, boxSize: 24, updatedAt: 1,
+    })
+    const lineId = newId()
+    // Simulates a row already migrated once, or written after the upgrade,
+    // at a price that has since changed on the item.
+    await legacy.table('countLines').put({
+      id: lineId, visitId: 'v1', slotNumber: 58, itemId: 'coke',
+      before: 3, after: 8, touched: true, filled: true, price: 4.5, updatedAt: 1,
+    })
+    legacy.close()
+
+    await db.open()
+
+    expect((await db.countLines.get(lineId))?.price).toBe(4.5)
+  })
+
+  it('keeps every pre-upgrade visit and count line', async () => {
+    const legacy = openLegacyV2()
+    await legacy.open()
+    await legacy.table('visits').put({
+      id: 'v1', runId: 'r1', machineId: 'L7',
+      status: 'finalized', finalizedAt: 1, updatedAt: 1,
+    })
+    await legacy.table('countLines').put({
+      id: newId(), visitId: 'v1', slotNumber: 58, itemId: 'coke',
+      before: 3, after: 8, touched: true, filled: true, updatedAt: 1,
+    })
+    legacy.close()
+
+    await db.open()
+
+    expect(await db.visits.toArray()).toHaveLength(1)
+    expect(await db.countLines.toArray()).toHaveLength(1)
+  })
+
+  it('adds an adjustments table indexed for the queries Phase 2 makes', async () => {
+    await db.open()
+
+    await db.adjustments.put({
+      id: newId(), itemId: 'coke', locationKind: 'machine',
+      machineId: 'L7', slotNumber: 58, reason: 'expired', units: -2,
+      occurredAt: 1, updatedAt: 1,
+    })
+
+    expect(await db.adjustments.where('machineId').equals('L7').toArray())
+      .toHaveLength(1)
+    expect(await db.adjustments.where('itemId').equals('coke').toArray())
+      .toHaveLength(1)
+    expect(
+      await db.adjustments.where('[machineId+slotNumber]').equals(['L7', 58]).toArray(),
+    ).toHaveLength(1)
   })
 })

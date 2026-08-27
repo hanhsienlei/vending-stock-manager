@@ -149,6 +149,7 @@ export function useCounting(runId: Id, machineId: Id) {
               after: r.after,
               touched: true,
               filled: true,
+              price: items.get(r.itemId)?.price ?? 0,
               updatedAt: now(),
             })),
           )
@@ -209,10 +210,12 @@ export function useCounting(runId: Id, machineId: Id) {
       if (!visit) return
       await putCountLine({
         id: newId(), visitId: visit.id, slotNumber, itemId,
-        before: b, after: a, touched: isTouched, filled: isFilled, updatedAt: now(),
+        before: b, after: a, touched: isTouched, filled: isFilled,
+        price: items.get(itemId)?.price ?? 0,
+        updatedAt: now(),
       })
     },
-    [visit],
+    [visit, items],
   )
 
   const setBefore = useCallback(
@@ -376,6 +379,7 @@ export function useCounting(runId: Id, machineId: Id) {
             after: after.get(key) ?? 0,
             touched: touched.has(key),
             filled: filled.has(slot.slotNumber),
+            price: items.get(itemId)?.price ?? 0,
             updatedAt: now(),
           }
         }),
@@ -384,7 +388,7 @@ export function useCounting(runId: Id, machineId: Id) {
 
     const finalized = await finalizeVisit(visit.id)
     setVisit(finalized)
-  }, [visit, map, before, after, touched, filled])
+  }, [visit, map, before, after, touched, filled, items])
 
   const ranDry = useCallback(
     (slot: ResolvedSlot) => {
