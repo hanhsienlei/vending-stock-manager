@@ -187,4 +187,25 @@ describe('salesForPeriod', () => {
     // possible, so this is stock that arrived unrecorded, reported as zero.
     expect(result.sold).toBe(0)
   })
+
+  // A draft visit has not closed a period, so there is no bound on "the
+  // window" — without a guard, `to` falls back to an unbounded ceiling and
+  // admits adjustments that belong to a later, still-unopened period. This
+  // proves both the censoring and that the hazard is actually closed.
+  it('censors a draft visit instead of admitting an unbounded window of future adjustments', () => {
+    const draftCurrent: Visit = {
+      id: 'v2', runId: 'r1', machineId: 'L7', status: 'draft', updatedAt: 200,
+    }
+
+    const [result] = salesForPeriod(
+      { visit: visit('v1', 100), lines: [line('v1', 58, 'coke', 3, 10)] },
+      { visit: draftCurrent, lines: [line('v2', 58, 'coke', 4, 4)] },
+      [movement('coke', 58, -2, 'expired', 999_999_999)], // far in the future
+    )
+
+    expect(result.sold).toBeNull()
+    expect(result.revenue).toBeNull()
+    expect(result.censoredReason).toBe('visit-not-finalized')
+    expect(result.movements).toBe(0)
+  })
 })

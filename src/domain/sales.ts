@@ -2,7 +2,10 @@ import { entersResidual } from './adjustments'
 import { levelKey } from './levels'
 import type { Adjustment, CountLine, Id, Visit } from './types'
 
-export type CensoredReason = 'no-previous-visit' | 'left-slot-with-stock'
+export type CensoredReason =
+  | 'no-previous-visit'
+  | 'left-slot-with-stock'
+  | 'visit-not-finalized'
 
 export interface VisitRecord {
   visit: Visit
@@ -45,6 +48,27 @@ export function salesForPeriod(
   const openingAt = new Map<string, number>()
   for (const l of previous?.lines ?? []) {
     openingAt.set(levelKey(l.slotNumber, l.itemId), l.after)
+  }
+
+  // A draft visit has not closed a period, so there is no upper bound for the
+  // movement window: falling back to an unbounded ceiling would admit
+  // adjustments that belong to a later, still-unopened period. Refuse to
+  // guess and censor every line instead — no figure is the honest answer.
+  if (current.visit.status !== 'finalized') {
+    return current.lines
+      .map((l) => ({
+        slotNumber: l.slotNumber,
+        itemId: l.itemId,
+        opening: openingAt.get(levelKey(l.slotNumber, l.itemId)) ?? 0,
+        closing: l.before,
+        movements: 0,
+        sold: null,
+        censoredReason: 'visit-not-finalized' as const,
+        ranDry: l.before === 0,
+        price: l.price,
+        revenue: null,
+      }))
+      .sort((a, b) => a.slotNumber - b.slotNumber || a.itemId.localeCompare(b.itemId))
   }
 
   const closingAt = new Map<string, CountLine>()
