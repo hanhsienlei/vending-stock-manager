@@ -24,6 +24,13 @@ export function AdjustmentSheet({
 }) {
   const [quantity, setQuantity] = useState('1')
   const [reason, setReason] = useState<AdjustmentReason>('expired')
+  // Only meaningful for a reason whose `totalStock` is 'unchanged' and which
+  // is not itself a transfer — i.e. `miscount` today, without hard-coding
+  // that reason string here (see `needsDirection` below). A miscount has no
+  // inherent sign: "totalStock === 'increase'" is false for it, so treating
+  // "not increase" as "decrease" (the brief's original rule) always lowered
+  // the figure, even when the operator counted MORE than was recorded.
+  const [direction, setDirection] = useState<'more' | 'fewer'>('more')
   const [destination, setDestination] = useState<string>('storeroom')
   // Only meaningful once `destination` names a machine (see the field below).
   // Defaults to the source slot when the source is also a machine — the
@@ -41,11 +48,17 @@ export function AdjustmentSheet({
   }, [])
 
   const destinationIsMachine = reason === 'transfer' && destination !== 'storeroom'
+  // A reason with `totalStock === 'unchanged'` has no sign of its own — the
+  // brief's original rule folded that into "not increase", i.e. always
+  // negative, which is wrong for a miscount that corrects the figure
+  // upward. `transfer` is also 'unchanged' but is excluded here: its sign
+  // comes from source/destination, not from an operator-chosen direction.
+  const needsDirection = reasonSpec(reason).totalStock === 'unchanged' && reason !== 'transfer'
 
   async function record() {
     const magnitude = Number(quantity)
-    if (!Number.isFinite(magnitude) || magnitude < 1) {
-      setError('Enter at least one unit.')
+    if (!Number.isInteger(magnitude) || magnitude < 1) {
+      setError('Enter a whole number of at least one unit.')
       return
     }
 
@@ -77,10 +90,14 @@ export function AdjustmentSheet({
     setError(null)
 
     // `delivery` is the only reason that adds stock (spec §5.3); everything
-    // else here removes it. A miscount is signed the same way — it corrects
-    // the record downward — and is excluded from the residual by reason, not
-    // by sign.
-    const signed = reasonSpec(reason).totalStock === 'increase' ? magnitude : -magnitude
+    // else here removes it — except a miscount, whose sign the operator
+    // chooses explicitly via `direction`, since "totalStock === 'unchanged'"
+    // says nothing about which way the correction goes. A miscount is
+    // excluded from the residual by reason, not by sign (see
+    // `entersResidual`).
+    const signed = needsDirection
+      ? (direction === 'more' ? magnitude : -magnitude)
+      : (reasonSpec(reason).totalStock === 'increase' ? magnitude : -magnitude)
 
     await recordAdjustment({
       itemId,
@@ -131,6 +148,21 @@ export function AdjustmentSheet({
           ))}
         </select>
       </label>
+
+      {needsDirection && (
+        <label className="mb-2 flex flex-col gap-1">
+          <span className="text-xs font-bold uppercase text-gray-500">Correction direction</span>
+          <select
+            aria-label="Correction direction"
+            className="rounded-lg border p-2"
+            value={direction}
+            onChange={(e) => setDirection(e.target.value as 'more' | 'fewer')}
+          >
+            <option value="more">There are more than recorded</option>
+            <option value="fewer">There are fewer than recorded</option>
+          </select>
+        </label>
+      )}
 
       {reason === 'transfer' && (
         <label className="mb-2 flex flex-col gap-1">
