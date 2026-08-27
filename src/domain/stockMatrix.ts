@@ -2,12 +2,15 @@ import { levelKey } from './levels'
 import type { Id, Item } from './types'
 
 export interface MatrixRow {
-  /** The slot as locator: `58` for a single-item slot, `52-1` / `52-2` for a
-   * mixed one. */
+  /** The slot as locator: `58` for a single-item slot, `52-1` / `52-2` for
+   * the two occupants of a mixed one, and `58, 59` for an item that lives in
+   * more than one slot — one row still, because it is one item. */
   key: string
   itemId: Id
   itemName: string
   size?: string
+  /** Units of this item in that machine, summed over every slot it occupies
+   * there. */
   perMachine: Map<Id, number>
   storeroom: number
   total: number
@@ -23,13 +26,22 @@ export interface StockMatrixInput {
   storeroomOnHand: Map<Id, number>
 }
 
-/** The paper sheet's layout: one row per item, a column per machine, then the
- * storeroom and a total.
+/** The paper sheet's layout: **one row per item**, a column per machine, then
+ * the storeroom and a total.
  *
- * A mixed slot becomes two rows (`52-1 Fanta`, `52-2 Sunkist`), never a split
- * cell. The operator's reason, from the report notes: you order Fanta, not
- * slot 52, so the Order column has to sit beside the thing being ordered — a
- * split cell forces mental arithmetic while standing in the storeroom. */
+ * One row per item, not per (slot, item): the storeroom holds a quantity of an
+ * item, not a quantity per slot, so a row per slot has to either repeat that
+ * figure — which is what it did, adding the whole balance into each row's
+ * total, reading 124 and 126 for a real holding of 130 — or leave it blank on
+ * all but the first, which asks the operator to add the rows up by hand while
+ * standing in the storeroom. The `Order` column has to sit beside one honest
+ * total, and there is one order per item.
+ *
+ * An item in several slots therefore lists them all in the `Slot` cell
+ * (`58, 59`) and sums its machine columns across them. A mixed slot is still
+ * the one thing that splits, and it splits because two *items* share the
+ * locator (`52-1 Fanta`, `52-2 Sunkist`), never as a split cell — the
+ * operator's reason, from the report notes: you order Fanta, not slot 52. */
 export function buildStockMatrix(input: StockMatrixInput): MatrixRow[] {
   const { items, machineIds, levelsByMachine, slotsByItem, storeroomOnHand } = input
 
@@ -42,34 +54,51 @@ export function buildStockMatrix(input: StockMatrixInput): MatrixRow[] {
     }
   }
 
-  const rows: MatrixRow[] = []
+  // Walking the slots in ascending order, alphabetically within a mixed one,
+  // does two jobs at once: it builds each item's locator parts, and it fixes
+  // the row order — an item takes the position of its lowest slot, which is
+  // where the eye looks for it on the paper sheet.
+  const locatorsByItem = new Map<Id, string[]>()
+  const rowOrder: Item[] = []
 
   for (const [slot, occupants] of [...itemsInSlot].sort((a, b) => a[0] - b[0])) {
     const ordered = [...occupants].sort((a, b) => a.name.localeCompare(b.name))
 
     ordered.forEach((item, index) => {
-      const perMachine = new Map<Id, number>()
-      let inMachines = 0
-
-      for (const machineId of machineIds) {
-        const units = levelsByMachine.get(machineId)?.get(levelKey(slot, item.id)) ?? 0
-        perMachine.set(machineId, units)
-        inMachines += units
+      const locator = ordered.length > 1 ? `${slot}-${index + 1}` : String(slot)
+      const existing = locatorsByItem.get(item.id)
+      if (existing) {
+        existing.push(locator)
+      } else {
+        locatorsByItem.set(item.id, [locator])
+        rowOrder.push(item)
       }
-
-      const storeroom = storeroomOnHand.get(item.id) ?? 0
-
-      rows.push({
-        key: ordered.length > 1 ? `${slot}-${index + 1}` : String(slot),
-        itemId: item.id,
-        itemName: item.name,
-        size: item.size,
-        perMachine,
-        storeroom,
-        total: inMachines + storeroom,
-      })
     })
   }
 
-  return rows
+  return rowOrder.map((item) => {
+    const slots = slotsByItem.get(item.id) ?? []
+    const perMachine = new Map<Id, number>()
+    let inMachines = 0
+
+    for (const machineId of machineIds) {
+      const levels = levelsByMachine.get(machineId)
+      let units = 0
+      for (const slot of slots) units += levels?.get(levelKey(slot, item.id)) ?? 0
+      perMachine.set(machineId, units)
+      inMachines += units
+    }
+
+    const storeroom = storeroomOnHand.get(item.id) ?? 0
+
+    return {
+      key: (locatorsByItem.get(item.id) ?? []).join(', '),
+      itemId: item.id,
+      itemName: item.name,
+      size: item.size,
+      perMachine,
+      storeroom,
+      total: inMachines + storeroom,
+    }
+  })
 }

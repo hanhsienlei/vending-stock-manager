@@ -25,9 +25,10 @@ export interface ReportData {
    * (design §7.2), so it must not vary with `from`/`to`. Exposed under this
    * name because a later task (the stock matrix) consumes it directly. */
   levelsByMachine: Map<Id, Map<string, number>>
-  /** The paper stock sheet's rows, one per item (or per occupant of a mixed
-   * slot) — built once from `levelsByMachine`, `storeroomOnHand` and the
-   * estate's placements. */
+  /** The paper stock sheet's rows, one per item — built once from
+   * `levelsByMachine`, `storeroomOnHand` and the estate's placements. An item
+   * in several slots is one row listing them all, so its storeroom balance is
+   * counted once, not once per slot. */
   matrixRows: MatrixRow[]
   loading: boolean
 }

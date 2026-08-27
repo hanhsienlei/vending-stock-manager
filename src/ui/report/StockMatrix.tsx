@@ -75,7 +75,9 @@ export function StockMatrix({
                 aria-label={`stock row ${row.key}`}
                 className="border-b"
               >
-                <td className="px-2 py-1 font-bold text-gray-500">{row.key}</td>
+                <td className="whitespace-nowrap px-2 py-1 font-bold text-gray-500">
+                  {row.key}
+                </td>
                 <td className="whitespace-nowrap px-2 py-1">{row.itemName}</td>
                 <td className="px-2 py-1 text-gray-500">{row.size ?? ''}</td>
                 {shown.map((m) => (
