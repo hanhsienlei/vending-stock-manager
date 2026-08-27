@@ -72,6 +72,42 @@ describe('MachineMapScreen', () => {
       expect(screen.getByLabelText('Capacity')).toBeInTheDocument()
     })
 
+    // Caught by running the app, not by the tests above: the sheet is the last
+    // thing in the document, so on a fully mapped machine it rendered ~3100px
+    // down an 828px viewport. Every assertion still passed — jsdom has no
+    // scroll position — while tapping ⋯ on screen looked like it did nothing.
+    it('floats the sheet over the map rather than below fifty rows of it', async () => {
+      const user = userEvent.setup()
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+      const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+      await setPlacement(coke.id, { kind: 'base' }, [58])
+
+      render(<MachineMapScreen machine={l7} onBack={vi.fn()} />)
+      await screen.findByText('Tray 5')
+      await user.click(screen.getByLabelText('Edit slot 58'))
+
+      const heading = await screen.findByText('Slot 58')
+      expect(heading.closest('.fixed')).not.toBeNull()
+    })
+
+    it('closes the sheet when the backdrop is tapped', async () => {
+      const user = userEvent.setup()
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+      const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+      await setPlacement(coke.id, { kind: 'base' }, [58])
+
+      render(<MachineMapScreen machine={l7} onBack={vi.fn()} />)
+      await screen.findByText('Tray 5')
+      await user.click(screen.getByLabelText('Edit slot 58'))
+      await screen.findByText('Slot 58')
+
+      await user.click(screen.getByLabelText('Close slot editor'))
+
+      await waitFor(() => {
+        expect(screen.queryByText('Slot 58')).not.toBeInTheDocument()
+      })
+    })
+
     it('adds an item to a slot and shows it on the map without a reload', async () => {
       const user = userEvent.setup()
       const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })

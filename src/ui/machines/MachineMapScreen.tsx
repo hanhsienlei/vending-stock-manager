@@ -73,19 +73,36 @@ export function MachineMapScreen({
         )
       })}
 
+      {/* A floating sheet, not an inline one. The map lists every mapped slot
+          at once, so rendering the sheet in document order put it below all
+          six trays — about 3100px down an 828px viewport on a full machine,
+          which reads as `⋯` doing nothing at all. The counting screen shows
+          one tray at a time and keeps its inline sheet. */}
       {editing && (
-        <SlotEditSheet
-          machineId={machine.id}
-          slotNumber={editing.slotNumber}
-          items={[...items.values()]}
-          currentItemIds={editing.accepts}
-          capacity={editing.capacity}
-          onSaved={() => {
-            setEditingSlot(null)
-            void reload()
-          }}
-          onCancel={() => setEditingSlot(null)}
-        />
+        <div
+          className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 p-2"
+          onClick={() => setEditingSlot(null)}
+          aria-label="Close slot editor"
+          role="presentation"
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <SlotEditSheet
+              machineId={machine.id}
+              slotNumber={editing.slotNumber}
+              items={[...items.values()]}
+              currentItemIds={editing.accepts}
+              capacity={editing.capacity}
+              onSaved={() => {
+                setEditingSlot(null)
+                void reload()
+              }}
+              onCancel={() => setEditingSlot(null)}
+            />
+          </div>
+        </div>
       )}
     </div>
   )
