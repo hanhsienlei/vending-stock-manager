@@ -41,14 +41,6 @@ first follow-up to pick up.**
 
 ## Smaller items
 
-- **`filled` is reconstructed from `after > before`, not stored.** A slot filled
-  while already at capacity comes back un-toggled after a remount. Recorded
-  `after` is unaffected, but correcting the count afterwards then writes
-  `after = before` instead of the fill target. Operator-recoverable by re-tapping
-  Fill. Storing the flag needs a schema change.
-- **`historyForMachine` scans the whole `visits` table** on every screen entry
-  and filters in JS; there is no `machineId` index. The count-line reads are
-  bounded to four visits, but the visit scan is not. An index-only migration.
 - **Editing an item's `basePar` silently moves the derived capacity** of every
   unpinned slot where that item sorts first. Slot capacity is pinned when
   placements change, but not on a par-only save.
@@ -74,6 +66,22 @@ first follow-up to pick up.**
   name or price, with no timestamp and no attachment target of its own.
   Flagging this so a future `Note` implementation doesn't treat `remark` as
   a partial version of it, or vice versa.
+
+---
+
+## Fixed since this list was written
+
+- **`filled` is now stored on `CountLine`** rather than inferred from
+  `after > before` (schema v2, `cc43208`). The at-capacity misclassification is
+  gone.
+- **`visits.machineId` is indexed** and `historyForMachine` queries through it
+  (schema v2, `cc43208`), so it no longer scans the whole table.
+- **Items and machines can be deleted** (`366c53e`), cascading atomically.
+  Deleting an item leaves its historical `CountLine` rows untouched — past sales
+  are immutable per spec §7 — and deleting a machine cascades only its *draft*
+  visits, preserving finalized ones. One consequence: a deleted machine's
+  finalized history still exists but is unreachable through the UI, since no
+  screen surfaces orphaned history.
 
 ---
 
