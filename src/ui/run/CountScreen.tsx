@@ -99,9 +99,13 @@ export function CountScreen({
             ranDry={counting.ranDry(slot)}
             onSetBefore={(slotNumber, itemId, qty) => {
               // useCounting has already rolled local state back to the
-              // pre-change values on a rejected write (e.g. a finalized
-              // visit); swallow here so it isn't an unhandled rejection.
-              // No UI error surface is in scope for this task.
+              // pre-change values on a rejected write — writing to a
+              // finalized visit is not one of the ways this fails any more
+              // (spec §7, amended 2026-08-27: finalizedAt is a marker, not a
+              // lock); a genuine rejection (the visit was deleted, IndexedDB
+              // unavailable) still can, so swallow here rather than leaving
+              // an unhandled rejection. No UI error surface is in scope for
+              // this task.
               counting.setBefore(slotNumber, itemId, qty).catch(() => {})
             }}
             onToggleFill={(slotNumber) => {
@@ -134,9 +138,13 @@ export function CountScreen({
         <button
           type="button"
           onClick={() => {
-            // Same shape as the stepper handlers: finalize is a no-op on an
-            // already-finalized visit, but a rejected write must not surface
-            // as an unhandled rejection and must still leave the machine.
+            // Same shape as the stepper handlers: finalize is not a no-op on
+            // an already-finalized visit — it always re-runs the whole-
+            // machine batch and re-stamps updatedAt/finalizedAt (spec §7,
+            // amended 2026-08-27), including when re-finishing a machine
+            // that was already done. A rejected write must still not
+            // surface as an unhandled rejection, and must still leave the
+            // machine either way.
             void counting.finalize().catch(() => {}).then(onDone)
           }}
           className="w-full rounded-lg bg-blue-600 p-3 font-semibold text-white"

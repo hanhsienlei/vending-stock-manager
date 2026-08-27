@@ -221,10 +221,14 @@ export function useCounting(runId: Id, machineId: Id) {
       const slot = map.find((s) => s.slotNumber === slotNumber)
 
       // Every tap must paint immediately and persist behind it (spec §8.1) —
-      // so we commit optimistically first. If the write is rejected (e.g.
-      // the visit was finalized concurrently), we roll every captured map
-      // back to its pre-change value and rethrow, rather than leaving
-      // in-memory state showing a value the database never accepted.
+      // so we commit optimistically first. Writing to a finalized visit is
+      // no longer one of the ways this can fail (spec §7, amended
+      // 2026-08-27: finalizedAt is a marker, not a lock, and putCountLine no
+      // longer rejects it) — but a write can still be rejected for other
+      // reasons (the visit itself was deleted, IndexedDB is unavailable), so
+      // if it is, we roll every captured map back to its pre-change value
+      // and rethrow, rather than leaving in-memory state showing a value the
+      // database never accepted.
       const prevBefore = before
       const prevAfter = after
       const prevFilled = filled
