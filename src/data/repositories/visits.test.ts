@@ -81,6 +81,50 @@ describe('visits', () => {
     expect(lines[0].after).toBe(8)
   })
 
+  // Item 7, fix-plan 2026-08-27. Spec §7, amended: "an edit re-stamps
+  // updatedAt." Today only finalizeVisit did that; a count edit re-stamped
+  // the CountLine but left Visit.updatedAt stale, weakening visit-level
+  // traceability exactly where the amendment relies on it (edits after
+  // finalize must be traceable since they are no longer blocked).
+  it("re-stamps the visit's updatedAt on a count-line write, including after finalize", async () => {
+    let t = 1_700_000_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => {
+      t += 1000
+      return t
+    })
+
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, 'L7')
+    const finalized = await finalizeVisit(visit.id)
+
+    await putCountLine(lineFor(visit.id, 8))
+
+    const reloaded = await db.visits.get(visit.id)
+    expect(reloaded?.updatedAt).toBeGreaterThan(finalized.updatedAt)
+    // The marker is unaffected by an edit — still finalized, not reverted to draft.
+    expect(reloaded?.status).toBe('finalized')
+
+    vi.restoreAllMocks()
+  })
+
+  it("re-stamps the visit's updatedAt on a draft count-line write too", async () => {
+    let t = 1_700_000_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => {
+      t += 1000
+      return t
+    })
+
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, 'L7')
+
+    await putCountLine(lineFor(visit.id, 8))
+
+    const reloaded = await db.visits.get(visit.id)
+    expect(reloaded?.updatedAt).toBeGreaterThan(visit.updatedAt)
+
+    vi.restoreAllMocks()
+  })
+
   it('rejects a write to an unknown visit', async () => {
     await expect(putCountLine(lineFor('no-such-visit', 8))).rejects.toThrow(/unknown visit/i)
   })

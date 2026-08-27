@@ -34,6 +34,16 @@ export function assertVisitNotFinalized(visit: Visit): void {
   }
 }
 
+/** Spec §7, amended 2026-08-27: "an edit re-stamps updatedAt." That applied
+ * to `finalizeVisit` from the start; a single count-line write (every
+ * stepper tap and Fill, via `useCounting`'s `persist`) did not, so an edit
+ * made after finishing a machine left `Visit.updatedAt` stale — weaker
+ * visit-level traceability than the spec claims, right where it matters most
+ * now that a finalized visit can still be edited. Re-stamps the visit
+ * regardless of its status, in the same transaction as the line write, so a
+ * draft's `updatedAt` also tracks its latest edit rather than only its
+ * finalize. Does not touch `status` or `finalizedAt` — an edit is not a
+ * re-finish. */
 export async function putCountLine(line: CountLine): Promise<void> {
   await db.transaction('rw', db.visits, db.countLines, async () => {
     const visit = await db.visits.get(line.visitId)
@@ -46,6 +56,7 @@ export async function putCountLine(line: CountLine): Promise<void> {
       .find((l) => l.itemId === line.itemId)
 
     await db.countLines.put({ ...line, id: existing?.id ?? line.id })
+    await db.visits.put({ ...visit, updatedAt: now() })
   })
 }
 
