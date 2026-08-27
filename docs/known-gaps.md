@@ -71,6 +71,64 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   it means a bad entry stays visible in the history alongside its correction
   rather than disappearing. No decision to build editing has been made either
   way; this is simply what shipped in Phase 2.
+- **A `miscount` recorded at a machine slot is written and read by nothing.**
+  The slot row's `⋯` sheet offers it, and `recordAdjustment` stores it — and
+  then nothing consumes it. `entersResidual` excludes it by reason (correctly:
+  a miscount is a data fix, not a stock movement), it touches no `CountLine`,
+  so the level it was meant to correct is unchanged, and there is no
+  adjustment-history screen for it to be read back from. The storeroom sheet
+  already withholds `miscount` for exactly this reason; the slot sheet still
+  offers it. Not fixed here because the choice is a design one and either
+  answer is defensible: withhold it at the slot too, matching the storeroom
+  and the fact that the slot's own correction mechanism is editing the count
+  in place (spec §5.1); or keep it and give it a consumer, which means
+  deciding what a miscount at a slot *means* — a note against the period, or
+  an actual correction to the recorded level. Recorded rather than guessed at.
+- **A redistribution can be double-counted.** Spec §3.2 says moving stock
+  between machines during a run is self-recording: the source machine's
+  after-count drops, the destination's rises, and the two counts carry the
+  move on their own. But the same slot row's `⋯` also offers a `transfer`
+  adjustment, and an operator who does both — moves the stock, adjusts the
+  after-counts, then logs the transfer for tidiness — subtracts the move
+  twice. The source's residual clamps at zero, losing genuine sales along
+  with it, and the destination's inflates by the same amount. Nothing warns
+  about it, and after the fact the two records are indistinguishable from a
+  real transfer that happened between visits. The fix is a design decision,
+  not an edit: either the sheet withholds `transfer` at a slot during a run
+  it is counting, or the residual learns to recognise a transfer whose units
+  are already inside two after-counts. Neither is obviously right, so the
+  behaviour is recorded rather than picked.
+- **`setAfter` does not add its key to `touched`.** By the field's literal
+  definition — "true once the operator alters `before`" (`domain/types.ts`) —
+  that is correct: typing an after-count says nothing about the before-count.
+  But it contradicts the rationale §3.3 rests on, where an untouched row means
+  *seen and unchanged* rather than *not looked at*: an operator who typed a
+  hand-entered after-count for a slot has unmistakably looked at it. Phase 3
+  reads `touched`, and rows written now cannot be reconstructed later —
+  nothing else on the line distinguishes "after typed by hand, before left
+  alone" from "never looked at". Left as it is because changing it changes
+  what `touched` means, which is the resolved design question at the bottom
+  of this file and not something to settle in a fix round.
+- **The resume heuristic cannot recognise a hand-entered after-count that
+  equals its before-count.** Resuming a draft rebuilds `afterTouched` from
+  the stored lines as "after differs from before, and Fill is off"
+  (`useCounting.ts`). A slot the operator counted and deliberately typed the
+  same number into is indistinguishable from one carried forward untouched,
+  so leaving the screen and coming back lets the next before-count edit
+  re-derive it. No stored field carries the distinction, so fixing it means
+  adding one — a per-line `afterTouched`, which is a schema change and a
+  migration for a case whose only symptom is a number reverting to the value
+  it already had.
+- **`DatabaseClosedError` appears intermittently in `src/ui/App.e2e.test.tsx`.**
+  Rare and predates this phase: it surfaced once in fourteen full-suite runs
+  during the final fix round, and that run still reported all tests passing —
+  it prints as a serialized stderr error rather than failing anything, which
+  is why a "no warnings" gate on the suite output can trip on a run that is
+  otherwise green. It is a teardown race in the test harness — `db.delete()`/`db.open()`
+  between tests against an in-flight read from a component that has not
+  unmounted yet — not a product defect: nothing in the app closes the database
+  under itself. Recorded so it is recognised as a known flake rather than
+  investigated as a data-loss bug the next time it appears in CI.
 - **The storeroom ledger carries no trolley movements until Phase 3.** Its
   balance is `last verified count + adjustments and deliveries since`
   (design §6), but the trolley — the ledger's largest movement source once
