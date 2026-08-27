@@ -141,7 +141,7 @@ right; only the tests are weak. Details in `docs/pre-run-fixes-report.md`.
 | Device-test fix plan | `docs/fix-plan-2026-08-27.md` |
 | Device-test screenshots | `devs/debug/` |
 | Phase 2 design | `docs/superpowers/specs/2026-08-27-phase-2-understand-design.md` |
-| Report feature notes (folded into Phase 2 §7.3) | `docs/superpowers/specs/2026-08-27-stock-sheet-report-notes.md` |
+| Stock sheet notes (layout folded into Phase 2 §7.3; PDF export held) | `docs/superpowers/specs/2026-08-27-stock-sheet-report-notes.md` |
 | Implementation reports | `docs/*-report.md` |
 
 ---

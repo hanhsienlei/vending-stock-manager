@@ -1,12 +1,19 @@
 # Stock Sheet Report — brainstorming notes (parked)
 
-**Status — updated 2026-08-27:** no longer parked. Folded into the Phase 2
-design as §7.3, on a report page inside History, sequenced after the on-screen
-summary. Two of the three gaps below are closed; see "Gaps found against the
-current data model" for which. **Implement from
+**Status — updated 2026-08-27:** the *layout* is no longer parked; the *PDF
+export* still is.
+
+Phase 2 builds this as an on-screen matrix on a report page inside History
+(design §7.3), with toggleable machine columns and landscape support so a
+screenshot replaces the export. The PDF itself is held by operator decision —
+a screenshot does the job, and generation is the only part of that phase that
+would add a dependency.
+
+Two of the three gaps below are now closed. **Implement from
 `docs/superpowers/specs/2026-08-27-phase-2-understand-design.md`, not from this
 document** — these remain brainstorming notes, kept for the reasoning behind
-the decisions the spec carries forward.
+the decisions the spec carries forward. The no-server decision below is not
+withdrawn; it simply does not apply until the export is picked up.
 
 **Date:** 2026-08-27
 **Reference:** `docs/user-context/stock-sheet-1.heic`, `stock-sheet-2.heic` — the
@@ -41,7 +48,7 @@ emails it — the server still never sees the underlying data.
 
 **One row per item, slot number as the locator.** A mixed slot becomes two rows:
 
-```
+```text
 52-1  Sunkist
 52-2  Fanta
 ```

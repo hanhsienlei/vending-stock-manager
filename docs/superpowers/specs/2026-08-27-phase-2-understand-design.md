@@ -36,8 +36,8 @@ the `Adjustment` entity, and it is the only new table this phase adds.
 - A report page inside History: units and revenue, a per-slot breakdown, stock
   on hand across machines and storeroom, and which slots ran dry — scoped to a
   run by default, or to a chosen start and end date.
-- The stock sheet PDF, on that same page, sequenced after the summary — see
-  §7.3.
+- The stock matrix on that same page — one row per item, a toggleable column
+  per machine, then `GF` and `Total`. See §7.3.
 - The storeroom ledger (spec §6.5): a running balance anchored to the last
   manual count.
 - Pack/loose quantity entry at G (spec §5.4), built into the ledger's input
@@ -56,6 +56,12 @@ the `Adjustment` entity, and it is the only new table this phase adds.
 - **The `Note` entity** (spec §4.1). Not required by any Phase 2 outcome.
 - **Fixing Fill's preference order in a mixed slot.** Found while designing this
   phase, recorded in `known-gaps.md`, deliberately not fixed here — see §9.
+- **The stock sheet PDF export.** Held by operator decision: a screenshot of
+  the on-screen matrix does the job, and the export is the only part of this
+  phase that would add a dependency (a PDF library plus OS share-sheet
+  handling). §7.3 is therefore built to be screenshotted rather than printed.
+  The notes it came from stay on file; nothing about them is contradicted, only
+  deferred.
 
 ---
 
@@ -374,36 +380,49 @@ a **current** figure, read from the latest count of each machine and the
 storeroom balance. It does not vary with the selected range and is labelled
 "now" rather than as belonging to the period.
 
-### 7.3 The stock sheet PDF — the page's second half, built after
+### 7.3 The stock matrix — on screen, made to be screenshotted
 
-`docs/superpowers/specs/2026-08-27-stock-sheet-report-notes.md` describes a
-one-button PDF in the layout of the paper sheet: one row per item, a column per
-machine `L2`–`L16`, then `GF` and `Total`, with `Order` blank for hand-writing.
-It was parked until the logger could fill it. **Phase 2 is what unblocks it**,
-and it belongs on this page.
+`docs/superpowers/specs/2026-08-27-stock-sheet-report-notes.md` describes the
+paper sheet this reproduces: one row per item, a column per machine `L2`–`L16`,
+then `GF` and `Total`, with `Order` blank for hand-writing. It was parked until
+the logger could fill it. **Phase 2 is what unblocks it.**
 
 Two of its three recorded gaps are now closed:
 
 | Gap in the notes | State |
-|---|---|
+| --- | --- |
 | `Item` has no size field for the `Qty` column | Closed — `size?` was added during the catalogue seed |
 | `GF` and `Total` need the storeroom | Closed by this phase's ledger (§6) |
-| `Order` is Phase 3 | Open — ships blank, per the paper |
+| `Order` is Phase 3 | Open — shown blank, per the paper |
 
 That half-answers the notes' own open question: `GF` and `Total` fill
 themselves once this phase lands, so only `Order` waits for Phase 3.
 
-**Sequenced after the summary, deliberately.** The PDF renders the same
-numbers the summary shows, so building the summary first means the figures are
-checked on screen before they are committed to a printed sheet carried around
-the storeroom. It also needs a PDF library and OS share-sheet handling, which
-is the one part of this phase that adds a dependency — worth isolating rather
-than entangling with the residual.
+**Rendered on screen, not exported.** The PDF is held (§2): a screenshot does
+the job, and the export is the only part of this phase that would add a
+dependency. The consequence is a design constraint rather than a smaller
+feature — **the matrix has to be legible in a screenshot**, which a 17-column
+grid on a phone is not.
 
-The notes' other decisions stand and are not revisited here: generated on the
-phone with no server (spec §8.1, local-first), and a mixed slot rendered as two
-rows (`52-1 Sunkist`, `52-2 Fanta`) rather than a split cell, because the
-`Order` column has to sit beside the thing being ordered.
+Three things make it so:
+
+- **Machine columns toggle on and off.** Narrow to the machines you care about
+  and the remaining columns get the width they need. This is what makes a
+  screenshot usable, so it is not optional polish.
+- **It scrolls horizontally**, for when all fifteen are wanted on a larger
+  screen. A screenshot then captures only what is on screen, which is exactly
+  why the toggles exist.
+- **Landscape is supported.** The manifest sets `display: 'standalone'` with no
+  `orientation` key, so rotation already follows the device — nothing to
+  unlock. What does need doing is the app shell: `App.tsx` wraps everything in
+  `mx-auto max-w-lg`, a 512px column that would throw away every pixel landscape
+  buys. The matrix must escape that constraint without disturbing the other
+  screens, which are correct as a phone-width column.
+
+The notes' remaining decision stands and is not revisited: a mixed slot is two
+rows (`52-1 Sunkist`, `52-2 Fanta`), never a split cell, because the `Order`
+column has to sit beside the thing being ordered. Their no-server decision is
+moot for now and applies whenever the export is picked up.
 
 ---
 
@@ -483,6 +502,10 @@ Per spec §9, and following what the codebase already does.
   covering exactly one run's date must produce that run's figures, since
   §5.1 makes them the same computation. And a machine skipped in a run must
   contribute to the run it was next counted in, not the one it was skipped in.
+- **The matrix is tested for the shape the paper needs**: a mixed slot
+  producing two rows (`52-1`, `52-2`) rather than one, `Total` agreeing with
+  the machine columns plus `GF`, and a hidden machine's column leaving the
+  totals unchanged — hiding a column must not quietly change the arithmetic.
 
 ---
 
@@ -505,11 +528,14 @@ lost behind the sections they changed.
    attribution rule, so it is a selector rather than a second implementation —
    but it is what makes the sales data answerable across runs, and it is the
    reason §5.1 exists as a stated rule instead of an assumption.
-4. **Added: the date range and the stock sheet PDF share one report page,
-   inside History** (§7.2, §7.3). Phase 2 is what unparks the stock sheet, by
-   filling its `GF` and `Total` columns. The PDF is sequenced after the
-   summary so the numbers are checked on screen before they are printed, and
-   because it is the only part of this phase that adds a dependency.
+4. **Added: the date range and the stock sheet share one report page, inside
+   History** (§7.2, §7.3). Phase 2 is what unblocks the stock sheet, by filling
+   its `GF` and `Total` columns.
+5. **The PDF export is held** (§2). A screenshot does the job and the export is
+   the only part of this phase that would add a dependency. This is a
+   constraint, not a subtraction: the matrix now has to be legible in a
+   screenshot, which is why toggleable machine columns and landscape are
+   specified rather than left to taste (§7.3).
 
 No open questions remain in this document. One remains in the stock sheet
 notes and is now narrowed: `Order` ships blank for hand-writing until Phase 3
