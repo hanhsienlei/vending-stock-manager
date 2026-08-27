@@ -39,5 +39,13 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Worktrees live at `.claude/worktrees/<name>/`, inside the repository.
+    // Without this, `npm test` in the main checkout also collects every test
+    // file in every worktree — and since each worktree has its own
+    // `node_modules`, the run ends up with two copies of React, so every
+    // hook throws and the suite reports hundreds of phantom failures.
+    // Vitest's defaults are replaced wholesale, not merged, so
+    // `**/node_modules/**` and `**/dist/**` are repeated here.
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.claude/**'],
   },
 })
