@@ -126,6 +126,15 @@ export function useCounting(runId: Id, machineId: Id) {
             itemId, qty: mergedBefore.get(levelKey(slotNumber, itemId)) ?? 0,
           }))
           for (const entry of fillToCapacity(slot, contents)) {
+            // Rule 3, same as `setBefore`: a hand-entered after-count is not
+            // re-derived — not by a before-count edit, and not by this
+            // recompute either. Without this the recompute is a second,
+            // unguarded writer of the same field: a mid-count `reload()`
+            // (saving from the `⋯` sheet does one) would top the typed
+            // figure back to capacity and persist it, and that number is
+            // the next period's opening, so the phantom sales it invents
+            // compound every period after.
+            if (afterTouched.has(levelKey(slotNumber, entry.itemId))) continue
             rewrites.push({
               slotNumber,
               itemId: entry.itemId,
@@ -236,6 +245,7 @@ export function useCounting(runId: Id, machineId: Id) {
     async (slotNumber: number, itemId: Id, qty: number) => {
       const key = levelKey(slotNumber, itemId)
       const clamped = Math.max(0, qty)
+      const slot = map.find((s) => s.slotNumber === slotNumber)
 
       const prevAfter = after
       const prevAfterTouched = afterTouched
@@ -256,6 +266,27 @@ export function useCounting(runId: Id, machineId: Id) {
         await persist(
           slotNumber, itemId, before.get(key) ?? 0, clamped, touched.has(key), false,
         )
+
+        // `filled` is a slot-level fact — `CountLine.filled` is documented as
+        // "shared by every line of the slot" — so turning Fill off has to be
+        // written to every line of the slot, not just the one whose number
+        // was typed. A sibling left saying `filled: true` is a row that
+        // contradicts its own slot: the next screen entry reads it, puts the
+        // slot back into `filled` (the green button reappears), and the
+        // seeding recompute then tops this hand-entered figure back to
+        // capacity. Only the flag moves here — each sibling keeps the
+        // before, after and touched it already had.
+        if (slot && filled.has(slotNumber)) {
+          for (const siblingId of slot.accepts) {
+            if (siblingId === itemId) continue
+            const siblingKey = levelKey(slotNumber, siblingId)
+            await persist(
+              slotNumber, siblingId,
+              before.get(siblingKey) ?? 0, after.get(siblingKey) ?? 0,
+              touched.has(siblingKey), false,
+            )
+          }
+        }
       } catch (err) {
         setAfterState(prevAfter)
         setAfterTouched(prevAfterTouched)
@@ -263,7 +294,7 @@ export function useCounting(runId: Id, machineId: Id) {
         throw err
       }
     },
-    [after, afterTouched, filled, before, touched, persist],
+    [after, afterTouched, filled, before, touched, map, persist],
   )
 
   const setBefore = useCallback(

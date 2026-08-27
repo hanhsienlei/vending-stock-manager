@@ -996,4 +996,79 @@ describe('the editable after-count', () => {
     expect(byItem.get(fanta.id)).toBe(2)
     expect(byItem.get(sunkist.id)).toBe(3)
   })
+  // C1. `CountLine.filled` is documented as a slot-level fact — "shared by
+  // every line of the slot" — so a hand-entered after-count has to clear it
+  // for every line, not only for the item that was typed. A sibling left
+  // saying `filled: true` puts the slot back into `filled` on the next
+  // screen entry, and the seeding effect's recompute then tops the
+  // hand-entered figure back to capacity and persists it. That number is the
+  // next period's opening, so the phantom sales compound every period after.
+  it('keeps a hand-entered after-count in a mixed filled slot across a reload, per key', async () => {
+    const { fanta, sunkist, machine } = await seedMixed()
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const first = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(first.result.current.loading).toBe(false))
+
+    await act(async () => { await first.result.current.toggleFill(52) })
+    await act(async () => { await first.result.current.setAfter(52, fanta.id, 3) })
+
+    // Fill is off for the slot, so it must be off on every line of the slot.
+    const afterEdit = await getCountLines(visit.id)
+    expect(afterEdit.map((l) => l.filled)).toEqual([false, false])
+
+    first.unmount()
+
+    // Back on the machine, then anything that calls reload() — saving from
+    // the `⋯` sheet does — refires the seeding effect and its recompute.
+    const second = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(second.result.current.loading).toBe(false))
+    expect(second.result.current.filled.has(52)).toBe(false)
+
+    await act(async () => { await second.result.current.reload() })
+
+    const lines = await getCountLines(visit.id)
+    const byItem = new Map(lines.map((l) => [l.itemId, l.after]))
+    expect(byItem.get(fanta.id)).toBe(3)
+    expect(byItem.get(sunkist.id)).toBe(0)
+    expect(second.result.current.after.get(`52:${fanta.id}`)).toBe(3)
+  })
+
+  // The same rule from the other side, for rows already on disk: these are
+  // exactly the lines the pre-fix build wrote — one hand-entered line with
+  // Fill cleared, beside a sibling whose `filled: true` was never updated.
+  // Reading them puts the slot back into `filled`, so the recompute runs;
+  // it must still leave the hand-entered figure alone, the way `setBefore`
+  // already does.
+  it('does not re-derive a hand-entered after-count when a stale sibling row still claims the slot was filled', async () => {
+    const { fanta, sunkist, machine } = await seedMixed()
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    // Fanta is the preferred item (alphabetical), so it is the one the
+    // recompute tops up — which makes "the recompute ran" observable.
+    await putCountLine({
+      id: newId(), visitId: visit.id, slotNumber: 52, itemId: fanta.id,
+      before: 0, after: 0, touched: true, filled: true, price: 3.5, updatedAt: now(),
+    })
+    await putCountLine({
+      id: newId(), visitId: visit.id, slotNumber: 52, itemId: sunkist.id,
+      before: 0, after: 2, touched: true, filled: false, price: 3.5, updatedAt: now(),
+    })
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.filled.has(52)).toBe(true)
+
+    await act(async () => { await result.current.reload() })
+
+    // The recompute did run — Fanta went to capacity …
+    await waitFor(() => expect(result.current.after.get(`52:${fanta.id}`)).toBe(5))
+    // … and left the hand-entered figure beside it untouched, on disk.
+    const lines = await getCountLines(visit.id)
+    const byItem = new Map(lines.map((l) => [l.itemId, l.after]))
+    expect(byItem.get(sunkist.id)).toBe(2)
+    expect(result.current.after.get(`52:${sunkist.id}`)).toBe(2)
+  })
 })
