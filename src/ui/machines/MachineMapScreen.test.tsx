@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { db } from '../../data/db'
+import { saveItem } from '../../data/repositories/items'
 import { saveMachine } from '../../data/repositories/machines'
+import { setPlacement } from '../../data/repositories/placements'
 import { MachineMapScreen } from './MachineMapScreen'
 
 beforeEach(async () => {
@@ -31,5 +33,19 @@ describe('MachineMapScreen', () => {
     await screen.findByText('L2')
 
     expect(screen.queryByText('Level 2')).not.toBeInTheDocument()
+  })
+
+  // Same relabelling as the item list (devs/debug/tray-name-should-be-
+  // tray1-tray2-etc.png): physically these are the first through sixth
+  // tray, and 10/20/… are slot-number prefixes, not tray names.
+  it('labels tray sections Tray 1..Tray 6, not Tray 10..Tray 60', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+
+    render(<MachineMapScreen machine={l7} onBack={vi.fn()} />)
+
+    expect(await screen.findByText('Tray 5')).toBeInTheDocument()
+    expect(screen.queryByText('Tray 50')).not.toBeInTheDocument()
   })
 })

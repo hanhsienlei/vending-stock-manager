@@ -1,4 +1,4 @@
-import { TRAYS, trayOf } from '../../domain/trays'
+import { TRAYS, trayOf, trayLabel } from '../../domain/trays'
 import { useMachineMap } from '../useMachineMap'
 import { distinctLabel } from './machineLabel'
 import type { Machine } from '../../domain/types'
@@ -32,7 +32,9 @@ export function MachineMapScreen({
         if (slots.length === 0) return null
         return (
           <section key={tray} className="mb-4">
-            <h3 className="mb-2 text-xs font-bold uppercase text-gray-500">Tray {tray}</h3>
+            <h3 className="mb-2 text-xs font-bold uppercase text-gray-500">
+              {trayLabel(tray)}
+            </h3>
             <ul className="flex flex-col gap-1">
               {slots.map((slot) => (
                 <li

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { trayOf, TRAYS, slotsInTray, isSlotNumber, parseSlotNumbers } from './trays'
+import {
+  trayOf, TRAYS, slotsInTray, isSlotNumber, parseSlotNumbers, trayLabel,
+} from './trays'
 
 describe('trayOf', () => {
   it('maps a slot to its tray', () => {
@@ -48,6 +50,18 @@ describe('isSlotNumber', () => {
   it('rejects non-integers', () => {
     expect(isSlotNumber(58.5)).toBe(false)
     expect(isSlotNumber(Number.NaN)).toBe(false)
+  })
+})
+
+describe('trayLabel', () => {
+  // Physically these are the first through sixth tray; 10/20/…/60 are
+  // slot-number prefixes, not tray names
+  // (devs/debug/tray-name-should-be-tray1-tray2-etc.png). Display only —
+  // slot numbers themselves stay 10–69 everywhere.
+  it('reads the six physical trays as Tray 1 through Tray 6', () => {
+    expect(TRAYS.map(trayLabel)).toEqual([
+      'Tray 1', 'Tray 2', 'Tray 3', 'Tray 4', 'Tray 5', 'Tray 6',
+    ])
   })
 })
 

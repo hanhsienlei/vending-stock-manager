@@ -8,6 +8,16 @@ export function slotsInTray(slots: number[], tray: number): number[] {
   return slots.filter((s) => trayOf(s) === tray).sort((a, b) => a - b)
 }
 
+/** Display label only — slot numbers stay 10–69 everywhere else. Physically
+ * these are the first through sixth tray; 10/20/…/60 are slot-number
+ * prefixes, not tray names, so "Tray 10" on screen reads as a count of
+ * trays rather than an index
+ * (devs/debug/tray-name-should-be-tray1-tray2-etc.png). Shared by the item
+ * list (grouped by tray) and the counting screen's tray tabs. */
+export function trayLabel(tray: number): string {
+  return `Tray ${tray / 10}`
+}
+
 /** The machine's physical slot numbers: 10–14, then 20–29 … 60–69. The first
  * tray is short. */
 export function isSlotNumber(slot: number): boolean {

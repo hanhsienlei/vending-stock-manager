@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
+import { setPlacement } from '../../data/repositories/placements'
 import * as seedRepo from '../../data/repositories/seed'
 import { ItemListScreen } from './ItemListScreen'
 
@@ -116,5 +117,79 @@ describe('ItemListScreen', () => {
     render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
 
     expect(await screen.findByText('Coke')).toBeInTheDocument()
+  })
+
+  // Sixty items in one flat alphabetical list, no way to find one
+  // (devs/debug/should-separate-items-by-category-or-tray-for-easy-search.png).
+  // Operator decision: group by tray — derivable today from base
+  // placements, no schema change — plus a search box.
+  describe('grouping by tray', () => {
+    it('groups items under Tray 1..Tray 6, not Tray 10..Tray 60', async () => {
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+      await setPlacement(coke.id, { kind: 'base' }, [58, 59])
+      const chips = await saveItem({ name: 'Chips', price: 3, basePar: 5, boxSize: 1 })
+      await setPlacement(chips.id, { kind: 'base' }, [10])
+
+      render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+
+      expect(await screen.findByText('Tray 5')).toBeInTheDocument()
+      expect(await screen.findByText('Tray 1')).toBeInTheDocument()
+      expect(screen.queryByText('Tray 50')).not.toBeInTheDocument()
+      expect(screen.queryByText('Tray 10')).not.toBeInTheDocument()
+    })
+
+    it('lists an item under every tray it is placed across', async () => {
+      // A slot list spanning two trays is unusual but the data can do it —
+      // handle it rather than assume one tray per item.
+      const spanning = await saveItem({
+        name: 'Spanning Item', price: 3, basePar: 5, boxSize: 1,
+      })
+      await setPlacement(spanning.id, { kind: 'base' }, [14, 20])
+
+      render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+
+      const tray1 = (await screen.findByText('Tray 1')).closest('section')
+      const tray2 = (await screen.findByText('Tray 2')).closest('section')
+      expect(tray1).toHaveTextContent('Spanning Item')
+      expect(tray2).toHaveTextContent('Spanning Item')
+    })
+
+    it('still shows an item with no placement at all, under an unplaced group', async () => {
+      await saveItem({ name: 'Orphan Item', price: 3, basePar: 5, boxSize: 1 })
+
+      render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+
+      expect(await screen.findByText('Orphan Item')).toBeInTheDocument()
+    })
+  })
+
+  describe('search', () => {
+    it('filters the list by name', async () => {
+      const user = userEvent.setup()
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+      await setPlacement(coke.id, { kind: 'base' }, [58])
+      const fanta = await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+      await setPlacement(fanta.id, { kind: 'base' }, [52])
+
+      render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+      await screen.findByText('Coke')
+
+      await user.type(screen.getByRole('searchbox', { name: /search/i }), 'fan')
+
+      expect(screen.queryByText('Coke')).not.toBeInTheDocument()
+      expect(screen.getByText('Fanta')).toBeInTheDocument()
+    })
+
+    it('is case-insensitive', async () => {
+      const user = userEvent.setup()
+      await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+
+      render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+      await screen.findByText('Coke')
+
+      await user.type(screen.getByRole('searchbox', { name: /search/i }), 'COKE')
+
+      expect(screen.getByText('Coke')).toBeInTheDocument()
+    })
   })
 })
