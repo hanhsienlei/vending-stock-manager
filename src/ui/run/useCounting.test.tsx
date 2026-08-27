@@ -751,3 +751,87 @@ describe('useCounting recording the whole machine on finalize', () => {
     expect(lines.map((l) => l.itemId).sort()).toEqual([fanta.id, sunkist.id].sort())
   })
 })
+
+describe('the price snapshot', () => {
+  it('records the price in force when the slot was counted', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => {
+      await result.current.setBefore(58, coke.id, 3)
+    })
+
+    const [line] = await getCountLines(visit.id)
+    expect(line.price).toBe(4.5)
+  })
+
+  it('records the price on every line at finalize, not just the touched ones', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const chips = await saveItem({ name: 'Chips', price: 3.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    await setPlacement(chips.id, { kind: 'base' }, [12])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => {
+      await result.current.finalize()
+    })
+
+    const lines = await getCountLines(visit.id)
+    const byItem = new Map(lines.map((l) => [l.itemId, l.price]))
+    expect(byItem.get(coke.id)).toBe(4.5)
+    expect(byItem.get(chips.id)).toBe(3.5)
+  })
+
+  // The whole point of the snapshot (design §3.6): a price change must not
+  // reach backwards.
+  it('leaves an already-recorded line at its original price when the item is repriced', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    await act(async () => {
+      await result.current.setBefore(58, coke.id, 3)
+    })
+
+    await saveItem({ id: coke.id, name: 'Coke', price: 5, basePar: 5, boxSize: 24 })
+
+    const [line] = await getCountLines(visit.id)
+    expect(line.price).toBe(4.5)
+  })
+
+  // The third write site: the capacity-change rewrite inside the seeding
+  // effect (see "recomputes a filled slot's after when its capacity changes
+  // mid-count" above). It stamps a line too, off the same items map.
+  it('records the price on a line rewritten by a mid-count capacity change', async () => {
+    const { coke, machine } = await seed()
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, machine.id)
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.toggleFill(58) })
+
+    await setSlotConfig(machine.id, 58, { capacity: 20, accepts: [coke.id] })
+    await act(async () => { await result.current.reload() })
+    await waitFor(() => expect(result.current.after.get(`58:${coke.id}`)).toBe(20))
+
+    const lines = await getCountLines(visit.id)
+    const line = lines.find((l) => l.slotNumber === 58 && l.itemId === coke.id)
+    expect(line?.price).toBe(4.5)
+  })
+})
