@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { TRAYS, trayOf, trayLabel } from '../../domain/trays'
+import { SlotEditSheet } from '../run/SlotEditSheet'
 import { useMachineMap } from '../useMachineMap'
 import { distinctLabel } from './machineLabel'
 import type { Machine } from '../../domain/types'
@@ -9,9 +11,17 @@ export function MachineMapScreen({
   machine: Machine
   onBack: () => void
 }) {
-  const { map, items, loading } = useMachineMap(machine.id)
+  const { map, items, reload, loading } = useMachineMap(machine.id)
+  // Fix-plan item 14. The same sheet the counting screen opens with `⋯`,
+  // reached from the map as well — an addition to spec §5.1's in-place
+  // correction, never a replacement for it.
+  const [editingSlot, setEditingSlot] = useState<number | null>(null)
 
   if (loading) return <div className="p-4">Loading…</div>
+
+  const editing = editingSlot === null
+    ? null
+    : map.find((s) => s.slotNumber === editingSlot)
 
   return (
     <div className="p-4">
@@ -48,12 +58,52 @@ export function MachineMapScreen({
                     {slot.accepts.map((id) => items.get(id)?.name ?? '?').join(' / ')}
                   </span>
                   <span className="text-xs text-gray-400">cap {slot.capacity}</span>
+                  <button
+                    type="button"
+                    aria-label={`Edit slot ${slot.slotNumber}`}
+                    onClick={() => setEditingSlot(slot.slotNumber)}
+                    className="px-1 text-lg text-gray-400"
+                  >
+                    ⋯
+                  </button>
                 </li>
               ))}
             </ul>
           </section>
         )
       })}
+
+      {/* A floating sheet, not an inline one. The map lists every mapped slot
+          at once, so rendering the sheet in document order put it below all
+          six trays — about 3100px down an 828px viewport on a full machine,
+          which reads as `⋯` doing nothing at all. The counting screen shows
+          one tray at a time and keeps its inline sheet. */}
+      {editing && (
+        <div
+          className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 p-2"
+          onClick={() => setEditingSlot(null)}
+          aria-label="Close slot editor"
+          role="presentation"
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <SlotEditSheet
+              machineId={machine.id}
+              slotNumber={editing.slotNumber}
+              items={[...items.values()]}
+              currentItemIds={editing.accepts}
+              capacity={editing.capacity}
+              onSaved={() => {
+                setEditingSlot(null)
+                void reload()
+              }}
+              onCancel={() => setEditingSlot(null)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

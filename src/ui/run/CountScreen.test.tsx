@@ -159,6 +159,40 @@ describe('CountScreen', () => {
     )
   })
 
+  // A mixed slot that also ran dry used to emit `border-red-500` and
+  // `border-blue-500` together. Which one the operator actually saw was
+  // decided by the order Tailwind happened to emit the two utilities, not by
+  // anything in this file — and ran dry is the signal that must survive,
+  // because it is the one that flags lost sales (spec §5.2). A mixed slot is
+  // still legible without its border: it says "2 items" and renders a sub-row
+  // per item.
+  it('shows a mixed slot that ran dry in ran-dry red, not mixed blue', async () => {
+    const fanta = await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(fanta.id, { kind: 'base' }, [52])
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+
+    // A prior visit recorded the slot empty, so it carries forward as ran dry
+    // rather than as a never-counted slot.
+    const past = await createRun('2026-08-22')
+    const pastVisit = await openVisit(past.id, machine.id)
+    for (const itemId of [fanta.id, sunkist.id]) {
+      await putCountLine({
+        id: newId(), visitId: pastVisit.id, slotNumber: 52, itemId,
+        before: 0, after: 0, touched: true, filled: false, updatedAt: now(),
+      })
+    }
+    await finalizeVisit(pastVisit.id)
+
+    const run = await createRun('2026-08-26')
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+
+    const row = (await screen.findByText('RAN DRY')).closest('li')
+    expect(row).toHaveClass('border-red-500')
+    expect(row).not.toHaveClass('border-blue-500')
+  })
+
   it('lets a slot be populated at the machine when nothing is mapped yet', async () => {
     const user = userEvent.setup()
     // A fresh install: the item exists but no placement does, so the resolved

@@ -62,9 +62,12 @@ export default function App() {
   })()
 
   return (
-    <div className="mx-auto max-w-lg pb-16">
-      {body}
-      <nav className="fixed inset-x-0 bottom-0 mx-auto flex max-w-lg border-t bg-white">
+    // The nav sits at the top, clear of where a thumb rests while scrolling a
+    // fifty-slot machine (fix-plan item 11). `pt-14` keeps the body out from
+    // under it; the nav itself is `z-10` so the counting screen's tray tabs
+    // scroll beneath rather than over it.
+    <div className="mx-auto max-w-lg pt-14">
+      <nav className="fixed inset-x-0 top-0 z-10 mx-auto flex max-w-lg border-b bg-white">
         <button
           type="button"
           className="flex-1 p-3 font-semibold"
@@ -87,6 +90,7 @@ export default function App() {
           Storeroom
         </button>
       </nav>
+      {body}
     </div>
   )
 }

@@ -4,8 +4,9 @@ import userEvent from '@testing-library/user-event'
 import { db } from '../data/db'
 import { listMachines, saveMachine } from '../data/repositories/machines'
 import { getOrCreateRun, listRuns } from '../data/repositories/runs'
-import { historyForMachine } from '../data/repositories/visits'
+import { historyForMachine, openVisit, finalizeVisit } from '../data/repositories/visits'
 import { levelKey, lastRecordedLevels } from '../domain/levels'
+import { today } from '../domain/date'
 import App from './App'
 import { CountScreen } from './run/CountScreen'
 
@@ -15,6 +16,32 @@ beforeEach(async () => {
 })
 
 const tomorrow = () => new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
+
+// Fix-plan item 11. The nav used to be pinned to the bottom of the viewport,
+// which on a phone is exactly where the thumb rests while scrolling a
+// fifty-slot machine. Hitting it mid-count loses no data — the count screen
+// restores from the draft — but it throws the operator out of the machine
+// they are standing in front of. Navigation is used three times a run; the
+// scroll area is used constantly, so the rare control is the one that moves.
+describe('the global nav', () => {
+  it('is pinned clear of the thumb at the top, not along the bottom edge', async () => {
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const run = await getOrCreateRun(today())
+    const visit = await openVisit(run.id, machine.id)
+    await finalizeVisit(visit.id)
+
+    render(<App />)
+
+    // The "Finished" badge is the last thing the machine list's load sets, so
+    // waiting for it means no query is still in flight when the next test's
+    // beforeEach closes the database out from under one.
+    await screen.findByText('Finished')
+
+    const nav = screen.getByRole('navigation')
+    expect(nav).toHaveClass('top-0')
+    expect(nav).not.toHaveClass('bottom-0')
+  })
+})
 
 /** Spec §9's one happy path, from an empty database through the shipped
  * screens: catalogue an item into slots, walk to the machine, count it,
@@ -39,7 +66,7 @@ describe('a machine, end to end', () => {
     await user.type(screen.getByLabelText('Price'), '4.50')
     await user.type(screen.getByLabelText('Par level'), '8')
     await user.type(screen.getByLabelText('Box size'), '24')
-    await user.type(screen.getByLabelText('Slots'), '58')
+    await user.click(screen.getByLabelText('Slot 58'))
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await screen.findByRole('button', { name: '+ New' })
 

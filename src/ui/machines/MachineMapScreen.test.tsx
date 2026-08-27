@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
 import { saveMachine } from '../../data/repositories/machines'
@@ -47,5 +48,103 @@ describe('MachineMapScreen', () => {
 
     expect(await screen.findByText('Tray 5')).toBeInTheDocument()
     expect(screen.queryByText('Tray 50')).not.toBeInTheDocument()
+  })
+
+  // Fix-plan item 14. This is *in addition to* correcting the map from the
+  // counting screen, never instead of it — spec §5.1 puts correction on the
+  // counting screen deliberately, because "a separate admin screen will never
+  // get used". The sheet is the same component both paths open.
+  describe('editing the map in place', () => {
+    it('opens the slot edit sheet from a slot row', async () => {
+      const user = userEvent.setup()
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+      const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+      await setPlacement(coke.id, { kind: 'base' }, [58])
+
+      render(<MachineMapScreen machine={l7} onBack={vi.fn()} />)
+      await screen.findByText('Tray 5')
+
+      expect(screen.queryByLabelText('Capacity')).not.toBeInTheDocument()
+
+      await user.click(screen.getByLabelText('Edit slot 58'))
+
+      expect(await screen.findByText('Slot 58')).toBeInTheDocument()
+      expect(screen.getByLabelText('Capacity')).toBeInTheDocument()
+    })
+
+    // Caught by running the app, not by the tests above: the sheet is the last
+    // thing in the document, so on a fully mapped machine it rendered ~3100px
+    // down an 828px viewport. Every assertion still passed — jsdom has no
+    // scroll position — while tapping ⋯ on screen looked like it did nothing.
+    it('floats the sheet over the map rather than below fifty rows of it', async () => {
+      const user = userEvent.setup()
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+      const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+      await setPlacement(coke.id, { kind: 'base' }, [58])
+
+      render(<MachineMapScreen machine={l7} onBack={vi.fn()} />)
+      await screen.findByText('Tray 5')
+      await user.click(screen.getByLabelText('Edit slot 58'))
+
+      const heading = await screen.findByText('Slot 58')
+      expect(heading.closest('.fixed')).not.toBeNull()
+    })
+
+    it('closes the sheet when the backdrop is tapped', async () => {
+      const user = userEvent.setup()
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+      const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+      await setPlacement(coke.id, { kind: 'base' }, [58])
+
+      render(<MachineMapScreen machine={l7} onBack={vi.fn()} />)
+      await screen.findByText('Tray 5')
+      await user.click(screen.getByLabelText('Edit slot 58'))
+      await screen.findByText('Slot 58')
+
+      await user.click(screen.getByLabelText('Close slot editor'))
+
+      await waitFor(() => {
+        expect(screen.queryByText('Slot 58')).not.toBeInTheDocument()
+      })
+    })
+
+    it('adds an item to a slot and shows it on the map without a reload', async () => {
+      const user = userEvent.setup()
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+      await saveItem({ name: 'Fanta', price: 3.5, basePar: 8, boxSize: 24 })
+      const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+      await setPlacement(coke.id, { kind: 'base' }, [58])
+
+      render(<MachineMapScreen machine={l7} onBack={vi.fn()} />)
+      await screen.findByText('Tray 5')
+      await user.click(screen.getByLabelText('Edit slot 58'))
+
+      await user.click(await screen.findByText('Add Fanta'))
+
+      // The sheet closes and the row re-reads from the database.
+      await waitFor(() => {
+        expect(screen.getByText('Coke / Fanta')).toBeInTheDocument()
+      })
+    })
+
+    it('saves a per-slot capacity override from the map screen', async () => {
+      const user = userEvent.setup()
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+      const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+      await setPlacement(coke.id, { kind: 'base' }, [58])
+
+      render(<MachineMapScreen machine={l7} onBack={vi.fn()} />)
+      await screen.findByText('cap 8')
+
+      await user.click(screen.getByLabelText('Edit slot 58'))
+      const capacity = await screen.findByLabelText('Capacity')
+      await user.clear(capacity)
+      await user.type(capacity, '20')
+      await user.click(screen.getByText('Save capacity'))
+
+      await waitFor(() => {
+        expect(screen.getByText('cap 20')).toBeInTheDocument()
+      })
+    })
   })
 })

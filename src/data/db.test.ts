@@ -1,6 +1,7 @@
 import Dexie from 'dexie'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { db } from './db'
+import { historyForMachine } from './repositories/visits'
 import { newId, now } from '../domain/ids'
 
 const DB_NAME = 'vending-stock-manager'
@@ -64,18 +65,70 @@ describe('schema version 2 upgrade', () => {
     expect(byId.get(alreadyMigrated.id)?.filled).toBe(false)
   })
 
-  it('adds the storeroomBalances table', async () => {
+  it('adds the storeroomBalances table to a database that already held data', async () => {
+    const legacy = openLegacyV1()
+    await legacy.open()
+    await legacy.table('items').put({ id: 'coke', name: 'Coke', basePar: 5 })
+    legacy.close()
+
     await db.open()
-    expect(db.storeroomBalances).toBeDefined()
+
     expect(await db.storeroomBalances.toArray()).toEqual([])
+    // The pre-existing row must survive the upgrade that adds the table.
+    expect(await db.items.get('coke')).toMatchObject({ name: 'Coke' })
   })
 
-  it('indexes visits by machineId', async () => {
+  // The point of this test is the *order*: the visits are written through the
+  // version-1 schema, which has no `machineId` index, and only then is the
+  // version-2 database opened. Writing them afterwards would prove nothing —
+  // a fresh v2 database carries the index by declaration. What has to hold is
+  // that the upgrade back-fills the new index from rows already there.
+  //
+  // If it ever did not, `historyForMachine` would return nothing for every
+  // machine, every slot would seed at 0, and finalize would write those zeros
+  // over the operator's carried-forward levels.
+  it('indexes visits that already existed before the upgrade', async () => {
+    const legacy = openLegacyV1()
+    await legacy.open()
+
+    const onL7 = {
+      id: newId(), runId: 'r1', machineId: 'L7',
+      status: 'finalized', finalizedAt: now(), updatedAt: now(),
+    }
+    const onL2 = {
+      id: newId(), runId: 'r1', machineId: 'L2',
+      status: 'finalized', finalizedAt: now(), updatedAt: now(),
+    }
+    await legacy.table('visits').bulkPut([onL7, onL2])
+    legacy.close()
+
     await db.open()
-    await db.visits.put({
-      id: newId(), runId: 'r1', machineId: 'L7', status: 'draft', updatedAt: now(),
-    })
+
     const found = await db.visits.where('machineId').equals('L7').toArray()
-    expect(found).toHaveLength(1)
+    expect(found.map((v) => v.id)).toEqual([onL7.id])
+  })
+
+  // The same guarantee one level up, at the call site that actually depends on
+  // it — a pre-upgrade visit must still be found as history for its machine.
+  it('carries a pre-upgrade visit into historyForMachine', async () => {
+    const legacy = openLegacyV1()
+    await legacy.open()
+
+    const visitId = newId()
+    await legacy.table('visits').put({
+      id: visitId, runId: 'r1', machineId: 'L7',
+      status: 'finalized', finalizedAt: now(), updatedAt: now(),
+    })
+    await legacy.table('countLines').put({
+      id: newId(), visitId, slotNumber: 58, itemId: 'coke',
+      before: 3, after: 8, touched: true, updatedAt: now(),
+    })
+    legacy.close()
+
+    await db.open()
+
+    const history = await historyForMachine('L7')
+    expect(history).toHaveLength(1)
+    expect(history[0].lines.map((l) => l.after)).toEqual([8])
   })
 })

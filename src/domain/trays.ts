@@ -8,6 +8,16 @@ export function slotsInTray(slots: number[], tray: number): number[] {
   return slots.filter((s) => trayOf(s) === tray).sort((a, b) => a - b)
 }
 
+/** Every physical slot number a tray actually has — 10–14 for the short
+ * first tray, ten slots for the rest. This is what the item screen's slot
+ * picker offers (fix-plan item 13); offering exactly these is what makes an
+ * invalid slot number unreachable rather than rejected after the fact. */
+export function allSlotsInTray(tray: number): number[] {
+  if (!(TRAYS as readonly number[]).includes(tray)) return []
+  const last = tray === 10 ? 14 : tray + 9
+  return Array.from({ length: last - tray + 1 }, (_, i) => tray + i)
+}
+
 /** Display label only — slot numbers stay 10–69 everywhere else. Physically
  * these are the first through sixth tray; 10/20/…/60 are slot-number
  * prefixes, not tray names, so "Tray 10" on screen reads as a count of
