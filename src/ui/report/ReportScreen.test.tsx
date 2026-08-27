@@ -93,6 +93,52 @@ describe('ReportScreen', () => {
     expect(await screen.findByLabelText('L7 slot 58 sales')).toHaveTextContent('RAN DRY')
   })
 
+  // Design §7.2 asks for "any censored period (§5.2), each with the reason it
+  // could not be counted". A bare grey "not counted" says nothing about
+  // whether the operator should go and look — and the totals folded the same
+  // lines in at zero, so a range covering a machine's first-ever visit read
+  // "0 units · $0.00", which is exactly the "no figure beats a wrong figure"
+  // rule §5.2 exists to enforce, broken at the last step.
+  it('names the reason a censored period could not be counted', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    // The machine's first-ever visit: no opening count, so nothing to derive.
+    await counted('2026-08-27', l7.id, coke.id, 4, 10)
+
+    render(<ReportScreen />)
+
+    const row = await screen.findByLabelText('L7 slot 58 sales')
+    expect(row).toHaveTextContent(/not counted/i)
+    expect(row).toHaveTextContent(/no previous visit/i)
+  })
+
+  it('counts the censored lines beside the totals, so a partial figure cannot read as a complete one', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await counted('2026-08-27', l7.id, coke.id, 4, 10)
+
+    render(<ReportScreen />)
+
+    const totals = await screen.findByLabelText('report totals')
+    expect(totals).toHaveTextContent(/1 line not counted/i)
+  })
+
+  it('names the reason when an item left a slot still holding stock', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const fanta = await saveItem({ name: 'Fanta', price: 3.5, basePar: 10, boxSize: 24 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await counted('2026-08-20', l7.id, coke.id, 0, 10)
+    // Slot 58 now holds Fanta: the 10 Coke left the slot, and whether they
+    // sold or were pulled out is unknowable (design §3.4).
+    await counted('2026-08-27', l7.id, fanta.id, 4, 10)
+
+    render(<ReportScreen />)
+
+    const rows = await screen.findAllByLabelText('L7 slot 58 sales')
+    expect(rows.map((r) => r.textContent).join(' '))
+      .toMatch(/left the slot holding stock/i)
+  })
+
   // Stock on hand is a current figure and must not look like it belongs to the
   // selected period (design §7.2).
   it('labels stock on hand as now, not as part of the period', async () => {

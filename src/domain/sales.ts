@@ -82,6 +82,16 @@ export function salesForPeriod(
   const from = previous?.visit.finalizedAt ?? 0
   const to = current.visit.finalizedAt ?? Number.MAX_SAFE_INTEGER
 
+  // The window is half-open at the bottom and closed at the top: `occurredAt
+  // === from` is excluded, `occurredAt === to` is included. The asymmetry is
+  // deliberate and load-bearing. An adjustment logged at the instant a visit
+  // is finalized would otherwise fall inside both the period that visit
+  // closes and the one it opens, and be counted twice in revenue. Closed at
+  // the top because that is the period that owns it: it was logged at the
+  // machine during that count, and the closing level it is reconciled
+  // against is this visit's. Two visits finalizing in the same millisecond
+  // is routine with fast, scripted writes, so this is not a theoretical
+  // edge — see the boundary tests in sales.test.ts.
   const movementAt = new Map<string, number>()
   for (const a of adjustments) {
     if (a.slotNumber === undefined) continue

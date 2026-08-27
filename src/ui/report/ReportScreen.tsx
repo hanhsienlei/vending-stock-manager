@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useReport, latestRunDate } from './useReport'
 import { StockMatrix } from './StockMatrix'
+import type { CensoredReason } from '../../domain/sales'
 
 const money = (n: number) => n.toFixed(2)
+
+/** Design §7.2 asks for every censored period "with the reason it could not be
+ * counted". A bare "not counted" leaves the operator no way to tell a slot
+ * worth walking back to from one that simply has no history yet. */
+const CENSORED_REASONS: Record<CensoredReason, string> = {
+  'no-previous-visit': 'no previous visit',
+  'left-slot-with-stock': 'left the slot holding stock',
+  'visit-not-finalized': 'visit not finished',
+}
 
 /** Design §7.2. Scoped to a run by default — which is what close-out wants and
  * needs no input — with a start and end date for the questions a single run
@@ -30,6 +40,13 @@ export function ReportScreen() {
   const allLines = reports.flatMap((r) => r.lines)
   const units = allLines.reduce((sum, l) => sum + (l.sold ?? 0), 0)
   const revenue = allLines.reduce((sum, l) => sum + (l.revenue ?? 0), 0)
+  // A censored line has no figure, and `?? 0` above quietly folds it in as
+  // zero. A range covering a machine's first-ever visit therefore reads
+  // "0 units · $0.00" — indistinguishable from a period that genuinely sold
+  // nothing, which is the confusion §5.2 exists to prevent. The totals stay
+  // as they are (a censored line cannot contribute a number), but they are no
+  // longer allowed to look complete when they are not.
+  const censoredLines = allLines.filter((l) => l.sold === null).length
 
   // Stock on hand is a current figure, not a period one (design §7.2): it is
   // read from each machine's latest recorded levels — never from summing the
@@ -82,6 +99,13 @@ export function ReportScreen() {
             <div className="text-lg font-semibold">
               {units} units · ${money(revenue)}
             </div>
+            {censoredLines > 0 && (
+              <div className="mt-1 text-xs font-semibold text-amber-700">
+                {censoredLines} {censoredLines === 1 ? 'line' : 'lines'} not
+                counted — no figure exists for {censoredLines === 1 ? 'it' : 'them'},
+                so {censoredLines === 1 ? 'it is' : 'they are'} not in the total above
+              </div>
+            )}
           </div>
 
           <div
@@ -119,7 +143,12 @@ export function ReportScreen() {
                       </span>
                     )}
                     {line.sold === null ? (
-                      <span className="text-gray-400">not counted</span>
+                      <span className="text-right text-xs text-gray-500">
+                        not counted —{' '}
+                        {line.censoredReason
+                          ? CENSORED_REASONS[line.censoredReason]
+                          : 'reason not recorded'}
+                      </span>
                     ) : (
                       <span className="font-semibold tabular-nums">
                         {line.sold} · ${money(line.revenue ?? 0)}

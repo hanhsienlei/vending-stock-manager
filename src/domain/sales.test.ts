@@ -188,6 +188,38 @@ describe('salesForPeriod', () => {
     expect(result.sold).toBe(0)
   })
 
+  // The movement window is deliberately asymmetric — half-open at the bottom
+  // (`occurredAt <= from` excluded) and closed at the top (`> to` excluded) —
+  // and that asymmetry is the only thing standing between an adjustment
+  // logged at a finalize instant and being counted in BOTH adjacent periods.
+  // Two visits finalized to the same millisecond is routine, so these are the
+  // boundaries that decide whether revenue is stated once or twice.
+  it('excludes an adjustment logged at the instant the period opened', () => {
+    const [result] = salesForPeriod(
+      { visit: visit('v1', 100), lines: [line('v1', 58, 'coke', 3, 10)] },
+      { visit: visit('v2', 200), lines: [line('v2', 58, 'coke', 4, 4)] },
+      // occurredAt === from: it belongs to the period that just closed, which
+      // has already counted it against its own closing level.
+      [movement('coke', 58, -2, 'expired', 100)],
+    )
+
+    expect(result.movements).toBe(0)
+    expect(result.sold).toBe(6)
+  })
+
+  it('includes an adjustment logged at the instant the period closed', () => {
+    const [result] = salesForPeriod(
+      { visit: visit('v1', 100), lines: [line('v1', 58, 'coke', 3, 10)] },
+      { visit: visit('v2', 200), lines: [line('v2', 58, 'coke', 4, 4)] },
+      // occurredAt === to: logged at the machine during this very count, so
+      // this is the period that owns it.
+      [movement('coke', 58, -2, 'expired', 200)],
+    )
+
+    expect(result.movements).toBe(-2)
+    expect(result.sold).toBe(4)
+  })
+
   // A draft visit has not closed a period, so there is no bound on "the
   // window" — without a guard, `to` falls back to an unbounded ceiling and
   // admits adjustments that belong to a later, still-unopened period. This
