@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
@@ -146,6 +146,45 @@ describe('StoreroomScreen', () => {
     render(<StoreroomScreen />)
 
     expect(await screen.findByLabelText('Coke on hand')).toHaveTextContent('124')
+  })
+
+  // Fix round 1, finding 2: design §7.1 requires the adjustment sheet
+  // reachable "from the storeroom screen" too — the slot-row path already
+  // existed, this one did not.
+  describe('recording an adjustment', () => {
+    it("raises the item's on-hand figure when a delivery is recorded from the storeroom screen", async () => {
+      const user = userEvent.setup()
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+      await setStoreroomBalance(coke.id, 100)
+
+      render(<StoreroomScreen />)
+      expect(await screen.findByLabelText('Coke on hand')).toHaveTextContent('100')
+
+      await user.click(screen.getByRole('button', { name: 'Adjust Coke' }))
+      await user.selectOptions(await screen.findByLabelText('Reason'), 'delivery')
+      await user.clear(screen.getByLabelText('Quantity'))
+      await user.type(screen.getByLabelText('Quantity'), '24')
+      await user.click(screen.getByRole('button', { name: 'Record' }))
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Coke on hand')).toHaveTextContent('124')
+      })
+    })
+
+    // The storeroom's correction mechanism is the manual count above, which
+    // resets the ledger anchor directly. A miscount recorded here would be
+    // excluded from ledgerBalance (fix round 1, finding 1) and so would
+    // silently do nothing — worse than not offering it at all.
+    it('does not offer a miscount reason when adjusting from the storeroom', async () => {
+      const user = userEvent.setup()
+      await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+
+      render(<StoreroomScreen />)
+      await user.click(await screen.findByRole('button', { name: 'Adjust Coke' }))
+
+      const options = within(await screen.findByLabelText('Reason')).getAllByRole('option')
+      expect(options.map((o) => o.textContent)).not.toContain('Miscount correction')
+    })
   })
 
   // Item 10, fix-plan 2026-08-27: 60 catalogue items in one flat list with no

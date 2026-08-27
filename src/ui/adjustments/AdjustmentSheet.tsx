@@ -3,7 +3,7 @@ import { listMachines } from '../../data/repositories/machines'
 import {
   recordAdjustment, recordTransfer, type AdjustmentLocation,
 } from '../../data/repositories/adjustments'
-import { ADJUSTMENT_REASONS, reasonSpec } from '../../domain/adjustments'
+import { ADJUSTMENT_REASONS, reasonSpec, type ReasonSpec } from '../../domain/adjustments'
 import { isSlotNumber } from '../../domain/trays'
 import type { AdjustmentReason, Id, Machine } from '../../domain/types'
 
@@ -15,10 +15,17 @@ import type { AdjustmentReason, Id, Machine } from '../../domain/types'
  * Quantity is entered as a positive magnitude; the sign is decided by the
  * reason, so the operator never types a minus. */
 export function AdjustmentSheet({
-  location, itemId, onSaved, onCancel,
+  location, itemId, reasons = ADJUSTMENT_REASONS, onSaved, onCancel,
 }: {
   location: AdjustmentLocation
   itemId: Id
+  /** Which reasons to offer. Defaults to the full table (spec §5.3). The
+   * storeroom screen passes a narrower list — a `miscount` recorded there
+   * would be excluded from `ledgerBalance` (domain/storeroom.ts, fix round
+   * 1, finding 1) and so would silently do nothing; the storeroom's own
+   * correction mechanism is the manual count, which resets the ledger
+   * anchor directly. */
+  reasons?: ReasonSpec[]
   onSaved: () => void
   onCancel: () => void
 }) {
@@ -143,7 +150,7 @@ export function AdjustmentSheet({
           value={reason}
           onChange={(e) => setReason(e.target.value as AdjustmentReason)}
         >
-          {ADJUSTMENT_REASONS.map((r) => (
+          {reasons.map((r) => (
             <option key={r.reason} value={r.reason}>{r.label}</option>
           ))}
         </select>

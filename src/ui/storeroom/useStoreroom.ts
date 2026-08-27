@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listItems } from '../../data/repositories/items'
 import { listStoreroomBalances, setStoreroomBalance } from '../../data/repositories/storeroom'
 import { storeroomAdjustments } from '../../data/repositories/adjustments'
@@ -12,7 +12,11 @@ import type { Adjustment, Id, Item, StoreroomBalance } from '../../domain/types'
  * `units`/`verifiedAt` back the manual-count input, which stays the
  * anchor-setting control. `onHand` is the separate, ledger-derived figure
  * (spec §6.5): the anchor plus every storeroom movement logged since, via
- * `ledgerBalance` — never a stocktake in its own right. */
+ * `ledgerBalance` — never a stocktake in its own right. `refresh` re-runs
+ * the same load and is exposed for the adjustment sheet (design §7.1,
+ * fix round 1, finding 2): recording an adjustment there does not touch
+ * this hook's state on its own, so the screen calls `refresh` once the
+ * sheet reports a save. */
 export function useStoreroom() {
   const [items, setItems] = useState<Item[]>([])
   const [units, setUnitsState] = useState<Map<Id, number>>(new Map())
@@ -20,39 +24,40 @@ export function useStoreroom() {
   const [anchors, setAnchors] = useState<Map<Id, StoreroomBalance>>(new Map())
   const [movements, setMovements] = useState<Map<Id, Adjustment[]>>(new Map())
   const [loading, setLoading] = useState(true)
+  const mountedRef = useRef(true)
 
-  useEffect(() => {
-    let cancelled = false
+  const load = useCallback(async () => {
+    const [loadedItems, balances, adjustments] = await Promise.all([
+      listItems(), listStoreroomBalances(), storeroomAdjustments(),
+    ])
+    if (!mountedRef.current) return
 
-    async function load() {
-      const [loadedItems, balances, adjustments] = await Promise.all([
-        listItems(), listStoreroomBalances(), storeroomAdjustments(),
-      ])
-      if (cancelled) return
-
-      const movementsByItem = new Map<Id, Adjustment[]>()
-      for (const adjustment of adjustments) {
-        const existing = movementsByItem.get(adjustment.itemId)
-        if (existing) existing.push(adjustment)
-        else movementsByItem.set(adjustment.itemId, [adjustment])
-      }
-
-      setItems(loadedItems)
-      setUnitsState(new Map(balances.map((b) => [b.itemId, b.units])))
-      setVerifiedAtState(new Map(balances.map((b) => [b.itemId, b.verifiedAt])))
-      setAnchors(new Map(balances.map((b) => [b.itemId, b])))
-      setMovements(movementsByItem)
-      setLoading(false)
+    const movementsByItem = new Map<Id, Adjustment[]>()
+    for (const adjustment of adjustments) {
+      const existing = movementsByItem.get(adjustment.itemId)
+      if (existing) existing.push(adjustment)
+      else movementsByItem.set(adjustment.itemId, [adjustment])
     }
 
+    setItems(loadedItems)
+    setUnitsState(new Map(balances.map((b) => [b.itemId, b.units])))
+    setVerifiedAtState(new Map(balances.map((b) => [b.itemId, b.verifiedAt])))
+    setAnchors(new Map(balances.map((b) => [b.itemId, b])))
+    setMovements(movementsByItem)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    mountedRef.current = true
+
     load().catch((err) => {
-      if (!cancelled) throw err
+      if (mountedRef.current) throw err
     })
 
     return () => {
-      cancelled = true
+      mountedRef.current = false
     }
-  }, [])
+  }, [load])
 
   const onHand = useMemo(() => {
     const result = new Map<Id, number>()
@@ -84,5 +89,5 @@ export function useStoreroom() {
     [units, verifiedAt, anchors],
   )
 
-  return { items, units, verifiedAt, onHand, loading, setUnits }
+  return { items, units, verifiedAt, onHand, loading, setUnits, refresh: load }
 }

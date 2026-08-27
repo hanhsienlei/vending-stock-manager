@@ -1,10 +1,23 @@
 import { useState } from 'react'
 import { useStoreroom } from './useStoreroom'
+import { AdjustmentSheet } from '../adjustments/AdjustmentSheet'
+import { ADJUSTMENT_REASONS } from '../../domain/adjustments'
+import type { Id } from '../../domain/types'
 
 function formatVerifiedAt(timestamp: number | undefined): string {
   if (timestamp === undefined) return 'Never verified'
   return `Verified ${new Date(timestamp).toLocaleString()}`
 }
+
+// Design §7.1: the adjustment sheet is reached from the storeroom screen too,
+// but never with `miscount` on offer here. The storeroom's own correction
+// mechanism is the manual count below, which resets the ledger anchor
+// directly; a miscount recorded through the sheet would be excluded from
+// `ledgerBalance` (domain/storeroom.ts, fix round 1, finding 1) and so would
+// silently do nothing — worse than not offering it. Derived from
+// `entersResidual` rather than a hard-coded reason name, so this can never
+// drift from the rule it exists to respect.
+const STOREROOM_ADJUSTMENT_REASONS = ADJUSTMENT_REASONS.filter((r) => r.entersResidual)
 
 /** The storeroom balance is a ledger estimate, not a stocktake (spec §6.5):
  * "on hand" is the last manual count plus every storeroom movement logged
@@ -16,8 +29,9 @@ function formatVerifiedAt(timestamp: number | undefined): string {
  * boxes field would be actively misleading until real carton sizes are
  * entered (spec §5.4 is deferred, not built here). */
 export function StoreroomScreen() {
-  const { items, units, verifiedAt, onHand, loading, setUnits } = useStoreroom()
+  const { items, units, verifiedAt, onHand, loading, setUnits, refresh } = useStoreroom()
   const [search, setSearch] = useState('')
+  const [adjusting, setAdjusting] = useState<Id | null>(null)
 
   if (loading) return <div className="p-4">Loading…</div>
 
@@ -63,6 +77,13 @@ export function StoreroomScreen() {
                   {item.size && <>{item.size} · </>}
                   {formatVerifiedAt(verifiedAt.get(item.id))}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setAdjusting(item.id)}
+                  className="text-xs font-bold text-blue-600"
+                >
+                  {`Adjust ${item.name}`}
+                </button>
               </div>
               <div className="text-right">
                 <div
@@ -94,6 +115,21 @@ export function StoreroomScreen() {
           </li>
         ))}
       </ul>
+
+      {adjusting !== null && (
+        <div className="mt-3">
+          <AdjustmentSheet
+            location={{ kind: 'storeroom' }}
+            itemId={adjusting}
+            reasons={STOREROOM_ADJUSTMENT_REASONS}
+            onSaved={() => {
+              setAdjusting(null)
+              void refresh()
+            }}
+            onCancel={() => setAdjusting(null)}
+          />
+        </div>
+      )}
     </div>
   )
 }

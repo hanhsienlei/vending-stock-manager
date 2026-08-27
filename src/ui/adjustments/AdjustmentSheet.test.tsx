@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
 import { saveMachine } from '../../data/repositories/machines'
 import { listAdjustments } from '../../data/repositories/adjustments'
+import { ADJUSTMENT_REASONS } from '../../domain/adjustments'
 import { AdjustmentSheet } from './AdjustmentSheet'
 
 beforeEach(async () => {
@@ -284,5 +285,51 @@ describe('AdjustmentSheet', () => {
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(onSaved).not.toHaveBeenCalled()
     expect(await listAdjustments()).toEqual([])
+  })
+
+  // Fix round 1, finding 2: the storeroom screen needs a narrower reason
+  // list (no miscount — see StoreroomScreen.test.tsx), reached via a new
+  // `reasons` prop rather than a hard-coded list duplicated at the call
+  // site. The slot-row path (SlotEditSheet) passes nothing, so it must keep
+  // getting the full list — guarded here.
+  it('offers the full reason list by default, unaffected by the new prop', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'machine', machineId: l7.id, slotNumber: 58 }}
+        itemId={coke.id}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    const options = within(screen.getByLabelText('Reason')).getAllByRole('option')
+    expect(options.map((o) => o.textContent)).toEqual([
+      'Move to another machine or the storeroom',
+      'Expired',
+      'Damaged or broken',
+      'Missing or taken',
+      'Delivery arrived',
+      'Miscount correction',
+    ])
+  })
+
+  it('offers only the reasons passed in when a narrower list is given', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'storeroom' }}
+        itemId={coke.id}
+        reasons={ADJUSTMENT_REASONS.filter((r) => r.reason !== 'miscount')}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    const options = within(screen.getByLabelText('Reason')).getAllByRole('option')
+    expect(options.map((o) => o.textContent)).not.toContain('Miscount correction')
   })
 })
