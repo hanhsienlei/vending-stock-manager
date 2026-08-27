@@ -13,6 +13,7 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
   const [price, setPrice] = useState<number | null>(null)
   const [basePar, setBasePar] = useState<number | null>(null)
   const [boxSize, setBoxSize] = useState<number | null>(null)
+  const [size, setSize] = useState('')
   const [remark, setRemark] = useState('')
   const [slots, setSlots] = useState('')
   const [slotError, setSlotError] = useState<string | null>(null)
@@ -29,6 +30,7 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
         setPrice(item.price)
         setBasePar(item.basePar)
         setBoxSize(item.boxSize)
+        setSize(item.size ?? '')
         setRemark(item.remark ?? '')
       }
       setSlots((placement?.slots ?? []).join(', '))
@@ -69,6 +71,7 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
     const machines = await listMachines()
     await pinSlotCapacities(machines.map((m) => m.id), [...added, ...removed])
 
+    const trimmedSize = size.trim()
     const trimmedRemark = remark.trim()
     const item = await saveItem({
       id: itemId,
@@ -76,6 +79,7 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
       price,
       basePar,
       boxSize,
+      ...(trimmedSize === '' ? {} : { size: trimmedSize }),
       ...(trimmedRemark === '' ? {} : { remark: trimmedRemark }),
     })
     await setPlacement(item.id, { kind: 'base' }, parsed)
@@ -131,6 +135,19 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
           value={boxSize ?? ''}
           onChange={(e) => setBoxSize(numberOrNull(e.target.value))}
         />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-bold uppercase text-gray-500">Size</span>
+        <input
+          aria-label="Size"
+          className="rounded-lg border p-2"
+          value={size}
+          onChange={(e) => setSize(e.target.value)}
+        />
+        <span className="text-xs text-gray-400">
+          Optional. The pack size shown on the shelf, e.g. 375ml, 27g.
+        </span>
       </label>
 
       <label className="flex flex-col gap-1">

@@ -214,6 +214,39 @@ describe('ItemEditScreen', () => {
     )
   })
 
+  it('is not required and an item without one still saves', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    render(<ItemEditScreen onDone={onDone} />)
+
+    await fillRequiredFields(user)
+    expect(screen.getByLabelText('Size')).toHaveValue('')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+
+    const [item] = await listItems()
+    expect(item.size).toBeUndefined()
+  })
+
+  it('round-trips a size: saved, then reloaded for editing', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    render(<ItemEditScreen onDone={onDone} />)
+
+    await fillRequiredFields(user)
+    await user.type(screen.getByLabelText('Size'), '375ml')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+
+    const [item] = await listItems()
+    expect(item.size).toBe('375ml')
+
+    render(<ItemEditScreen itemId={item.id} onDone={vi.fn()} />)
+    await waitFor(() =>
+      expect(screen.getAllByLabelText('Size')[1]).toHaveValue('375ml'),
+    )
+  })
+
   it('leaves a slot nobody stocks yet to seed its capacity from this item', async () => {
     const user = userEvent.setup()
     const onDone = vi.fn()

@@ -67,4 +67,26 @@ describe('ItemListScreen', () => {
 
     expect(await screen.findByText('Coke')).toBeInTheDocument()
   })
+
+  it('shows the size when the item has one', async () => {
+    await saveItem({
+      name: 'Coke',
+      price: 4.5,
+      basePar: 8,
+      boxSize: 24,
+      size: '375ml',
+    })
+
+    render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+
+    expect(await screen.findByText(/375ml/)).toBeInTheDocument()
+  })
+
+  it('renders an item with no size without error', async () => {
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+
+    render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+
+    expect(await screen.findByText('Coke')).toBeInTheDocument()
+  })
 })

@@ -66,6 +66,16 @@ describe('seedStarterCatalogue', () => {
     expect(slot52Names).toEqual(['Fanta', 'Sunkist'])
   })
 
+  it('carries the size through to the persisted item', async () => {
+    await seedStarterCatalogue()
+
+    const items = await listItems()
+    const coke = items.find((i) => i.name === 'Coke')
+    expect(coke?.size).toBe('375ml')
+    const redBull = items.find((i) => i.name === 'Red Bull Energy Drink')
+    expect(redBull?.size).toBe('600ml')
+  })
+
   it('is a no-op the second time — safe even if reachable outside the UI gate', async () => {
     await seedStarterCatalogue()
     const second = await seedStarterCatalogue()

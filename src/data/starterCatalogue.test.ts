@@ -49,4 +49,19 @@ describe('starter catalogue data', () => {
     const names = STARTER_ITEMS.map((i) => i.name)
     expect(new Set(names).size).toBe(names.length)
   })
+
+  it('carries the Size column from the transcription verbatim, including the known-wrong 600ml at slot 44', () => {
+    const byName = new Map(STARTER_ITEMS.map((i) => [i.name, i.size]))
+
+    expect(byName.get("Smith's Salt & Vinegar Chips")).toBe('27g')
+    expect(byName.get('Extra Gum Spearmint')).toBe('ea')
+    // Slot 44's Red Bull / Mother pair reads 600ml on the sheet — the
+    // colleague's known error, kept as written rather than corrected here.
+    expect(byName.get('Red Bull Energy Drink')).toBe('600ml')
+    expect(byName.get('Mother Energy Drink')).toBe('600ml')
+    // Slot 45's pair reads 500ml, the same kind of odd-but-as-written value.
+    expect(byName.get('Red Bull No Sugar')).toBe('500ml')
+    expect(byName.get('Mother No Sugar')).toBe('500ml')
+    expect(byName.get('Coke')).toBe('375ml')
+  })
 })

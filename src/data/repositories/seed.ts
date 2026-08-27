@@ -28,6 +28,7 @@ export async function seedStarterCatalogue(): Promise<boolean> {
         price: entry.price,
         basePar: 5,
         boxSize: 1,
+        ...(entry.size ? { size: entry.size } : {}),
         ...(entry.remark ? { remark: entry.remark } : {}),
       }),
     ),

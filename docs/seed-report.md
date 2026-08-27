@@ -251,3 +251,147 @@ Part 2 (this commit):
 `tsconfig.json`, `package.json`, `vite.config.ts`, `src/data/db.ts` schema
 version — all untouched, as required. `pinSlotCapacities` is not called
 anywhere in the seed path.
+
+---
+
+# Addendum — `size` field (2026-08-27)
+
+Closes judgement call #1 above: the transcription's `Size` column is now
+persisted, following the `remark` pattern from commit `7535097` exactly.
+
+## What changed
+
+- `Item.size?: string` added to `src/domain/types.ts`, right next to
+  `boxSize`/`remark`. Optional, free text, display-only — nothing computes
+  with it. No schema migration: `src/data/db.ts` untouched.
+- `src/ui/items/ItemEditScreen.tsx`: a `Size` text input, same shape as
+  `Remark` — loaded from the item on edit, saved only when non-empty (empty
+  input means no `size` key at all, not `undefined` or `''` in storage).
+  Placed above `Remark`, below `Box size`.
+- `src/ui/items/ItemListScreen.tsx`: appended to the existing price/par/
+  box-size line as `· {size}` when present, rather than a new line — keeps
+  that line readable without adding a fourth row per item.
+- `src/data/starterCatalogue.ts`: `StarterCatalogueItem.size?: string` added,
+  and all 60 entries populated verbatim from the `Size` column of
+  `docs/catalogue-transcription.md`, tray by tray. Slots 44 and 45 keep
+  `600ml` and `500ml` as written — the colleague's known error for Red Bull,
+  not corrected here, per the transcription's own "Resolved" note #3. Both
+  already carry the unverified-size `remark` from the earlier seed.
+- `src/data/repositories/seed.ts`: `seedStarterCatalogue()` now forwards
+  `entry.size` into `saveItem` the same way it forwards `entry.remark`
+  (spread-in only when present).
+
+## Judgement calls
+
+1. **Field order in the form**: `Size` placed between `Box size` and
+   `Remark` — it reads as a product attribute, closer to box size than to
+   the free-text remark.
+2. **List placement**: appended to the existing metadata line rather than
+   given its own row, per the brief's "keep that line readable" — a short
+   size label (`375ml`, `27g`, `ea`) reads naturally as a fourth `·`-joined
+   fact alongside price/par/box.
+3. **No new remark wording for size itself.** The existing remark on the
+   four Red Bull/Mother items (added in the prior seed task) already says
+   the size is unverified; adding a second, size-specific remark would
+   duplicate that sentence, so the size value is recorded plainly and the
+   existing remark carries the caveat.
+
+## TDD evidence
+
+All commands run with `npx vitest run --exclude '**/.claude/**'` (same
+exclusion as before, for the same stale-worktree reason recorded above).
+
+### RED
+
+Added tests to `src/ui/items/ItemEditScreen.test.tsx` (not-required save,
+round-trip), `src/ui/items/ItemListScreen.test.tsx` (renders size when
+present, renders fine with none), `src/data/starterCatalogue.test.ts`
+(pins specific sizes including slot 44's `600ml`), and
+`src/data/repositories/seed.test.ts` (size persists through the seed) —
+all against the not-yet-changed `Item` type, screens, and data.
+
+```
+$ npx vitest run --exclude '**/.claude/**' src/ui/items src/data/starterCatalogue.test.ts src/data/repositories/seed.test.ts
+ FAIL  src/data/starterCatalogue.test.ts > starter catalogue data > carries the Size column from the transcription verbatim, including the known-wrong 600ml at slot 44
+ FAIL  src/data/repositories/seed.test.ts > seedStarterCatalogue > carries the size through to the persisted item
+ FAIL  src/ui/items/ItemEditScreen.test.tsx > ItemEditScreen > is not required and an item without one still saves
+ FAIL  src/ui/items/ItemEditScreen.test.tsx > ItemEditScreen > round-trips a size: saved, then reloaded for editing
+ FAIL  src/ui/items/ItemListScreen.test.tsx > ItemListScreen > shows the size when the item has one
+ Test Files  4 failed (4)
+      Tests  5 failed | 27 passed (32)
+```
+
+### GREEN
+
+After adding `Item.size`, the `Size` input to `ItemEditScreen`, the size
+suffix on `ItemListScreen`'s metadata line, the populated `size` field on
+all 60 `STARTER_ITEMS` entries, and forwarding `size` through
+`seedStarterCatalogue`:
+
+```
+$ npx vitest run --exclude '**/.claude/**' src/ui/items src/data/starterCatalogue.test.ts src/data/repositories/seed.test.ts
+ ✓ src/data/starterCatalogue.test.ts (6 tests) 2ms
+ ✓ src/data/repositories/seed.test.ts (6 tests) 130ms
+ ✓ src/ui/items/ItemListScreen.test.tsx (7 tests) 157ms
+ ✓ src/ui/items/ItemEditScreen.test.tsx (13 tests) 930ms
+
+ Test Files  4 passed (4)
+      Tests  32 passed (32)
+```
+
+## Full suite and build
+
+```
+$ npx vitest run --exclude '**/.claude/**'
+ ✓ src/data/starterCatalogue.test.ts (6 tests)
+ ✓ src/domain/placement.test.ts (12 tests)
+ ✓ src/data/repositories/repositories.test.ts (10 tests)
+ ✓ src/data/repositories/visits.test.ts (16 tests)
+ ✓ src/domain/trays.test.ts (12 tests)
+ ✓ src/ui/items/ItemListScreen.test.tsx (7 tests)
+ ✓ src/domain/levels.test.ts (5 tests)
+ ✓ src/domain/fill.test.ts (8 tests)
+ ✓ src/ui/run/SlotEditSheet.test.tsx (5 tests)
+ ✓ src/data/repositories/seed.test.ts (6 tests)
+ ✓ src/ui/run/CountScreen.test.tsx (8 tests)
+ ✓ src/ui/App.e2e.test.tsx (1 test)
+ ✓ src/domain/purity.test.ts (1 test)
+ ✓ src/domain/ids.test.ts (3 tests)
+ ✓ src/ui/useMachineMap.test.tsx (2 tests)
+ ✓ src/ui/items/ItemEditScreen.test.tsx (13 tests)
+ ✓ src/ui/run/useCounting.test.tsx (22 tests)
+
+ Test Files  17 passed (17)
+      Tests  137 passed (137)
+```
+
+137 = 131 baseline + 6 new (2 `ItemEditScreen` size tests, 2
+`ItemListScreen` size tests, 1 `starterCatalogue` size-pinning test, 1
+`seed` size-forwarding test). Checked for clean output with
+`grep -i -E "act\(|warning|unhandled"` against the full captured run — no
+matches.
+
+```
+$ npm run build
+> tsc --noEmit && vite build
+✓ 58 modules transformed.
+✓ built in 571ms
+PWA v0.21.2 — precache 5 entries (323.50 KiB)
+```
+
+Clean, no type errors.
+
+## Files changed (addendum)
+
+- `src/domain/types.ts` — `Item.size?: string`
+- `src/ui/items/ItemEditScreen.tsx`, `src/ui/items/ItemEditScreen.test.tsx`
+- `src/ui/items/ItemListScreen.tsx`, `src/ui/items/ItemListScreen.test.tsx`
+- `src/data/starterCatalogue.ts` — `size` on `StarterCatalogueItem` and all
+  60 entries
+- `src/data/starterCatalogue.test.ts` — size-pinning test
+- `src/data/repositories/seed.ts` — forwards `entry.size`
+- `src/data/repositories/seed.test.ts` — size-through-seed test
+
+Not touched: `tsconfig.json`, `package.json`, `vite.config.ts`,
+`src/data/db.ts` (confirmed via `git diff --stat -- src/data/db.ts`,
+empty).
