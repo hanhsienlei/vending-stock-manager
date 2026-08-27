@@ -137,7 +137,7 @@ actually available in the storeroom.
 | `SlotConfig` | Per-machine slot capacity and accepted-item preference order. |
 | `Run` | One restock round on one date. Contains a trolley and up to 15 visits. |
 | `TrolleyLine` | Per item: needed, taken, and whether the storeroom was emptied. |
-| `Visit` | One machine within a run: count lines, fills, notes. Immutable once finalized. |
+| `Visit` | One machine within a run: count lines, fills, notes. `finalizedAt` marks it done; see §7 — it is a marker, not a lock. |
 | `CountLine` | `slot + item + qty` at count time. The immutable historical record. |
 | `Adjustment` | A stock movement with a reason, at a machine slot or the storeroom. |
 | `StoreroomBalance` | Per item: estimated units on hand, plus when it was last verified. |
@@ -367,8 +367,29 @@ Level G     5. Return leftovers to the storeroom
 Steps 1–3 and 5–7 are unhurried desk work at G. Step 4 is the latency-critical path.
 
 A visit is a draft until finalized; every keystroke is persisted immediately, so
-abandoning mid-machine loses nothing. Once finalized a visit is immutable — later
-corrections are `Adjustment` records, never edits to history.
+abandoning mid-machine loses nothing.
+
+**Finishing a machine is a marker, not a lock** — amended 2026-08-27 after the
+first device test. Originally a finalized visit was immutable and corrections
+had to become `Adjustment` records. In practice that meant finishing a machine,
+noticing a miscount, and finding a screen that silently swallowed every tap.
+
+Immutability protects an audit trail across several people. This is one operator
+correcting their own miscount minutes later, and §5.3 already classes a *miscount
+correction* as "not a stock movement" — conceding that a wrong count is a data
+error rather than history. So `finalizedAt` records that the operator considers
+the machine done; it does not prevent editing, and an edit re-stamps `updatedAt`.
+
+The cost, stated so it is not rediscovered: §3.3's sales residual treats a
+finalized visit as the closing record for a period, and an editable one makes
+that boundary soft. `updatedAt` keeps edits traceable and `touched` still
+separates a counted slot from a carried-forward one, so the residual stays
+computable — but Phase 2 must decide how late an edit may arrive before the
+period it closes is considered settled.
+
+Genuine stock movements after a count are still `Adjustment` records, never
+edits. The amendment covers correcting what was observed, not rewriting what
+happened.
 
 ---
 

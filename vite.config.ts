@@ -11,6 +11,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      includeAssets: ['apple-touch-icon.png'],
       manifest: {
         name: 'Vending Stock Manager',
         short_name: 'Vending',
@@ -18,6 +19,19 @@ export default defineConfig({
         display: 'standalone',
         background_color: '#ffffff',
         theme_color: '#0071e3',
+        // Chrome/Android will not offer "install" without both a 192 and a 512.
+        // The maskable variant keeps its content inside the middle 80% so a
+        // launcher's circle or squircle mask cannot crop it.
+        icons: [
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+          {
+            src: '/icon-512-maskable.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
       },
     }),
   ],
