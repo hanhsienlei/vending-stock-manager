@@ -29,14 +29,6 @@ explanation, and a genuine finalize failure navigates away as if it had
 succeeded, leaving the visit a draft. No data is lost — the batch is atomic and
 `finalizeVisit` is never reached — but the failure is invisible.
 
-**A machine already finished today looks normal but ignores taps.** The machine
-list gives no sign that a machine is done, so it can be re-entered; the button
-still reads "Finish machine" and the steppers reject every tap. Not harmful —
-the record was written completely by the first finalize, so nothing is lost or
-corrupted, and taps visibly bounce via the rollback — but the operator gets no
-explanation. The honest fix is showing which machines are done. **This is the
-first follow-up to pick up.**
-
 ---
 
 ## Smaller items
@@ -71,6 +63,12 @@ first follow-up to pick up.**
 
 ## Fixed since this list was written
 
+- **A machine already finished today now shows as finished on the machine
+  list** (`8559eb3`). Previously the list never looked at visits, so a
+  finished machine was indistinguishable from an untouched one — this was
+  the top item in this list. Re-entering a finished machine still opens it
+  for editing; the badge is a status indicator, never a gate (spec §7,
+  amended 2026-08-27: finalizedAt is a marker, not a lock).
 - **`filled` is now stored on `CountLine`** rather than inferred from
   `after > before` (schema v2, `cc43208`). The at-capacity misclassification is
   gone.
