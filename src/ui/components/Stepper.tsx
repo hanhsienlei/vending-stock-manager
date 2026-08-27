@@ -27,7 +27,7 @@ export function Stepper({
       <span
         aria-label={label}
         className={`min-w-8 text-center text-lg font-bold ${
-          dimmed ? 'text-gray-400' : emerald ? 'text-emerald-700' : 'text-gray-900'
+          emerald ? 'text-emerald-700' : dimmed ? 'text-gray-400' : 'text-gray-900'
         }`}
       >
         {value}
