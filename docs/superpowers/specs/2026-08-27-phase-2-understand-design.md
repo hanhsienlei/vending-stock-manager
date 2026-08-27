@@ -33,9 +33,11 @@ the `Adjustment` entity, and it is the only new table this phase adds.
 - `Adjustment` — a stock movement with a reason, at a machine slot or the
   storeroom (spec §4.1, §5.3).
 - The sales residual (spec §3.3), derived per slot per period.
-- A summary at G: units and revenue, a per-slot breakdown, stock on hand
-  across machines and storeroom, and which slots ran dry — scoped to a run by
-  default, or to a chosen start and end date.
+- A report page inside History: units and revenue, a per-slot breakdown, stock
+  on hand across machines and storeroom, and which slots ran dry — scoped to a
+  run by default, or to a chosen start and end date.
+- The stock sheet PDF, on that same page, sequenced after the summary — see
+  §7.3.
 - The storeroom ledger (spec §6.5): a running balance anchored to the last
   manual count.
 - Pack/loose quantity entry at G (spec §5.4), built into the ledger's input
@@ -340,10 +342,16 @@ context, then quantity and reason. Choosing `transfer` reveals a destination.
 
 Nothing is added to the counting screen itself.
 
-### 7.2 Summary
+### 7.2 The report page
 
-At G, during close-out — step 9 of the run flow, *"units sold and revenue this
-period; stock on hand: machines, storeroom, total"*. It shows:
+**Lives inside History, as a second view alongside the run receipts** built on
+2026-08-27 (`7f34187`). History is already where recorded data is looked at
+rather than entered, and the receipts answer *"did it keep what I typed?"*
+while the report answers *"what does it add up to?"* — the same question at
+two zoom levels. This also keeps the nav at four items.
+
+It serves step 9 of the run flow, *"units sold and revenue this period; stock
+on hand: machines, storeroom, total"*, and shows:
 
 - Units and revenue, per machine and totalled
 - A per-slot breakdown — the data Phase 3's forecast reads
@@ -353,18 +361,49 @@ period; stock on hand: machines, storeroom, total"*. It shows:
   with the reason it could not be counted
 
 **Scoped to a run by default, with a start and end date available.** Opening
-the summary after a run shows that run, which is what close-out wants and
-needs no input. A date range answers the questions a single run cannot —
-what a month sold, or how two weeks compare.
+it after a run shows that run, which is what close-out wants and needs no
+input. A date range answers what a single run cannot — what a month sold, or
+how two weeks compare.
 
 The two are the same computation, not two code paths: §5.1 attributes each
 period to the run of its closing visit, so a run is simply the range covering
 that run's date. Only the selector differs.
 
-Stock on hand is the exception, and the screen must not pretend otherwise: it
-is a **current** figure, read from the latest count of each machine and the
-storeroom balance. It does not vary with the selected range and is labelled as
+Stock on hand is the exception, and the page must not pretend otherwise: it is
+a **current** figure, read from the latest count of each machine and the
+storeroom balance. It does not vary with the selected range and is labelled
 "now" rather than as belonging to the period.
+
+### 7.3 The stock sheet PDF — the page's second half, built after
+
+`docs/superpowers/specs/2026-08-27-stock-sheet-report-notes.md` describes a
+one-button PDF in the layout of the paper sheet: one row per item, a column per
+machine `L2`–`L16`, then `GF` and `Total`, with `Order` blank for hand-writing.
+It was parked until the logger could fill it. **Phase 2 is what unblocks it**,
+and it belongs on this page.
+
+Two of its three recorded gaps are now closed:
+
+| Gap in the notes | State |
+|---|---|
+| `Item` has no size field for the `Qty` column | Closed — `size?` was added during the catalogue seed |
+| `GF` and `Total` need the storeroom | Closed by this phase's ledger (§6) |
+| `Order` is Phase 3 | Open — ships blank, per the paper |
+
+That half-answers the notes' own open question: `GF` and `Total` fill
+themselves once this phase lands, so only `Order` waits for Phase 3.
+
+**Sequenced after the summary, deliberately.** The PDF renders the same
+numbers the summary shows, so building the summary first means the figures are
+checked on screen before they are committed to a printed sheet carried around
+the storeroom. It also needs a PDF library and OS share-sheet handling, which
+is the one part of this phase that adds a dependency — worth isolating rather
+than entangling with the residual.
+
+The notes' other decisions stand and are not revisited here: generated on the
+phone with no server (spec §8.1, local-first), and a mixed slot rendered as two
+rows (`52-1 Sunkist`, `52-2 Fanta`) rather than a split cell, because the
+`Order` column has to sit beside the thing being ordered.
 
 ---
 
@@ -462,10 +501,16 @@ lost behind the sections they changed.
    §5.1 makes this well-defined by attributing each period to the run of its
    closing visit, so a machine skipped in a run contributes nothing to it
    rather than a double-length period.
-3. **Added: a start and end date on the summary** (§7.2). It falls out of the
-   same attribution rule, so it is a selector rather than a second
-   implementation — but it is what makes the sales data answerable across
-   runs, and it is the reason §5.1 exists as a stated rule instead of an
-   assumption.
+3. **Added: a start and end date** (§7.2). It falls out of the same
+   attribution rule, so it is a selector rather than a second implementation —
+   but it is what makes the sales data answerable across runs, and it is the
+   reason §5.1 exists as a stated rule instead of an assumption.
+4. **Added: the date range and the stock sheet PDF share one report page,
+   inside History** (§7.2, §7.3). Phase 2 is what unparks the stock sheet, by
+   filling its `GF` and `Total` columns. The PDF is sequenced after the
+   summary so the numbers are checked on screen before they are printed, and
+   because it is the only part of this phase that adds a dependency.
 
-No open questions remain.
+No open questions remain in this document. One remains in the stock sheet
+notes and is now narrowed: `Order` ships blank for hand-writing until Phase 3
+fills it, since `GF` and `Total` no longer have to wait.

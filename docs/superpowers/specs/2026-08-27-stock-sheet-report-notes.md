@@ -1,8 +1,12 @@
 # Stock Sheet Report — brainstorming notes (parked)
 
-**Status:** Design notes only. Deferred by the user until the stock logger
-(Phase 1, and the Phase 2/3 work that fills the remaining columns) is finished.
-Not a spec. Not planned. Do not implement from this document.
+**Status — updated 2026-08-27:** no longer parked. Folded into the Phase 2
+design as §7.3, on a report page inside History, sequenced after the on-screen
+summary. Two of the three gaps below are closed; see "Gaps found against the
+current data model" for which. **Implement from
+`docs/superpowers/specs/2026-08-27-phase-2-understand-design.md`, not from this
+document** — these remain brainstorming notes, kept for the reasoning behind
+the decisions the spec carries forward.
 
 **Date:** 2026-08-27
 **Reference:** `docs/user-context/stock-sheet-1.heic`, `stock-sheet-2.heic` — the
@@ -57,19 +61,21 @@ layout but not that ambiguity.
 
 ## Gaps found against the current data model
 
-1. **`Item` has no size field.** The sheet's `Qty` column carries `27g`,
-   `250ml`, `ea` — how a product is identified on a shelf. `Item` currently holds
-   name, price, `basePar` and `boxSize`. Needs one more field.
-2. **`GF` and `Total` need the storeroom**, which is Phase 2. Phase 1 knows every
-   machine's levels and nothing about the ground floor.
-3. **`Order` is Phase 3**, where the supplier order suggestion lives.
+1. ~~**`Item` has no size field.**~~ **Closed.** `size?` was added during the
+   catalogue seed and carries exactly this — `375ml`, `27g`, `ea`.
+2. ~~**`GF` and `Total` need the storeroom**, which is Phase 2.~~ **Closed by
+   the Phase 2 design** — the storeroom ledger and balance are specified in
+   its §6, so both columns fill automatically.
+3. **`Order` is Phase 3**, where the supplier order suggestion lives. Still
+   open; ships blank.
 
-## Open question
+## Open question — now narrowed
 
 Whether to ship the report with `Order` and `GF` blank for hand-writing —
 mirroring the paper exactly, which is how it works today — or to wait until
-Phase 2 and 3 fill them automatically. Shipping earlier gets the operator off
-the clipboard sooner and the columns fill themselves later; waiting means
-building it once.
+Phase 2 and 3 fill them automatically.
 
-Unanswered. Revisit when the logger is done.
+**Half-answered, 2026-08-27.** `GF` and `Total` no longer have to wait: Phase 2
+fills them, and the report is being built as part of that phase. Only `Order`
+remains, and it ships blank for hand-writing until Phase 3 — which is the paper
+sheet's own behaviour, so nothing is lost against how the job works today.
