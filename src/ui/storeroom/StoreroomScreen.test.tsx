@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
 import { setStoreroomBalance, listStoreroomBalances } from '../../data/repositories/storeroom'
+import { recordAdjustment } from '../../data/repositories/adjustments'
 import { StoreroomScreen } from './StoreroomScreen'
 
 beforeEach(async () => {
@@ -122,6 +123,29 @@ describe('StoreroomScreen', () => {
     await waitFor(() => {
       expect(screen.getByText('1 / 2 counted')).toBeInTheDocument()
     })
+  })
+
+  it('shows a delivery on top of the last counted figure', async () => {
+    // Sequential Date.now() calls in this environment can land in the same
+    // millisecond, which would make the delivery collide with the count's
+    // verifiedAt and get excluded by ledgerBalance's exact-instant rule
+    // (spec §6.5 — the count is the later truth only when it strictly is).
+    // Pin the clock apart, same pattern as visits.test.ts and
+    // useCounting.test.tsx.
+    let t = 1_700_000_000_000
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => (t += 1000))
+
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    await setStoreroomBalance(coke.id, 100)
+    await recordAdjustment({
+      itemId: coke.id, locationKind: 'storeroom', reason: 'delivery', units: 24,
+    })
+
+    clock.mockRestore()
+
+    render(<StoreroomScreen />)
+
+    expect(await screen.findByLabelText('Coke on hand')).toHaveTextContent('124')
   })
 
   // Item 10, fix-plan 2026-08-27: 60 catalogue items in one flat list with no

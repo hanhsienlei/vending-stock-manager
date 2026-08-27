@@ -6,12 +6,17 @@ function formatVerifiedAt(timestamp: number | undefined): string {
   return `Verified ${new Date(timestamp).toLocaleString()}`
 }
 
-/** Manual storeroom count only (spec §6.5) — no trolley, no deliveries, no
- * pick list. Plain units, not boxes + loose: every seeded item has
- * `boxSize: 1`, so a boxes field would be actively misleading until real
- * carton sizes are entered (spec §5.4 is deferred, not built here). */
+/** The storeroom balance is a ledger estimate, not a stocktake (spec §6.5):
+ * "on hand" is the last manual count plus every storeroom movement logged
+ * since. The manual-count input beside it stays the anchor-setting
+ * control — the operator's word for what the shelf actually holds right
+ * now, resetting the ledger from that instant.
+ *
+ * Plain units, not boxes + loose: every seeded item has `boxSize: 1`, so a
+ * boxes field would be actively misleading until real carton sizes are
+ * entered (spec §5.4 is deferred, not built here). */
 export function StoreroomScreen() {
-  const { items, units, verifiedAt, loading, setUnits } = useStoreroom()
+  const { items, units, verifiedAt, onHand, loading, setUnits } = useStoreroom()
   const [search, setSearch] = useState('')
 
   if (loading) return <div className="p-4">Loading…</div>
@@ -59,24 +64,32 @@ export function StoreroomScreen() {
                   {formatVerifiedAt(verifiedAt.get(item.id))}
                 </div>
               </div>
-              <input
-                aria-label={`${item.name} units`}
-                type="number"
-                inputMode="numeric"
-                min={0}
-                className="w-20 rounded-lg border p-2 text-right"
-                value={units.get(item.id) ?? 0}
-                onFocus={(e) => e.currentTarget.select()}
-                onChange={(e) => {
-                  const parsed = Number.parseInt(e.target.value, 10)
-                  const qty = Number.isFinite(parsed) ? Math.max(0, parsed) : 0
-                  // Same shape as useCounting's steppers: commit optimistically,
-                  // persist behind it, swallow a rejected write here rather than
-                  // let it surface as an unhandled rejection (no error surface
-                  // is in scope for this screen either — see known-gaps.md).
-                  void setUnits(item.id, qty).catch(() => {})
-                }}
-              />
+              <div className="text-right">
+                <div
+                  aria-label={`${item.name} on hand`}
+                  className="text-sm font-semibold"
+                >
+                  {onHand.get(item.id) ?? 0}
+                </div>
+                <input
+                  aria-label={`${item.name} units`}
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  className="w-20 rounded-lg border p-2 text-right"
+                  value={units.get(item.id) ?? 0}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) => {
+                    const parsed = Number.parseInt(e.target.value, 10)
+                    const qty = Number.isFinite(parsed) ? Math.max(0, parsed) : 0
+                    // Same shape as useCounting's steppers: commit optimistically,
+                    // persist behind it, swallow a rejected write here rather than
+                    // let it surface as an unhandled rejection (no error surface
+                    // is in scope for this screen either — see known-gaps.md).
+                    void setUnits(item.id, qty).catch(() => {})
+                  }}
+                />
+              </div>
             </div>
           </li>
         ))}
