@@ -52,7 +52,10 @@ export function SlotEditSheet({
    * call is needed here. */
   async function saveCapacity() {
     const value = Number(capacityInput)
-    if (!Number.isFinite(value) || value < 0) return
+    // Capacity 0 (item 8, fix-plan 2026-08-27) would fill the slot to
+    // nothing and can never be legitimate — a slot that genuinely holds
+    // nothing is "not stocked" (empty `accepts`), not a zero-deep one.
+    if (!Number.isFinite(value) || value < 1) return
     await setSlotConfig(machineId, slotNumber, { capacity: value, accepts: currentItemIds })
     onSaved()
   }
@@ -82,7 +85,7 @@ export function SlotEditSheet({
             aria-label="Capacity"
             type="number"
             inputMode="numeric"
-            min={0}
+            min={1}
             className="rounded-lg border p-2"
             value={capacityInput}
             onChange={(e) => setCapacityInput(e.target.value)}

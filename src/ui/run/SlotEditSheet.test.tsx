@@ -173,6 +173,47 @@ describe('SlotEditSheet', () => {
     expect((await resolvedSlot('L9', 52))?.capacity).toBe(5)
   })
 
+  // Item 8, fix-plan 2026-08-27: saveCapacity rejected only `value < 0`, so
+  // a slot could be saved at capacity 0 and then fill to nothing.
+  it('refuses to save a capacity of zero', async () => {
+    const user = userEvent.setup()
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+
+    const onSaved = renderSheet({
+      slotNumber: 52, items: await listItems(), currentItemIds: [sunkist.id], capacity: 5,
+    })
+
+    const input = screen.getByLabelText('Capacity')
+    await user.clear(input)
+    await user.type(input, '0')
+    await user.click(screen.getByRole('button', { name: 'Save capacity' }))
+
+    // Give any (wrongly) in-flight write a turn to land before asserting.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(onSaved).not.toHaveBeenCalled()
+    expect((await resolvedSlot('L7', 52))?.capacity).toBe(5)
+  })
+
+  it('refuses to save a negative capacity', async () => {
+    const user = userEvent.setup()
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+
+    const onSaved = renderSheet({
+      slotNumber: 52, items: await listItems(), currentItemIds: [sunkist.id], capacity: 5,
+    })
+
+    const input = screen.getByLabelText('Capacity')
+    await user.clear(input)
+    await user.type(input, '-3')
+    await user.click(screen.getByRole('button', { name: 'Save capacity' }))
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(onSaved).not.toHaveBeenCalled()
+    expect((await resolvedSlot('L7', 52))?.capacity).toBe(5)
+  })
+
   it('keeps the preference order when only capacity is overridden', async () => {
     const user = userEvent.setup()
     const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
