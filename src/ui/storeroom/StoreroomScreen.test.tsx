@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
@@ -82,6 +82,29 @@ describe('StoreroomScreen', () => {
       expect(balances.filter((b) => b.itemId === coke.id)).toHaveLength(1)
       expect(balances.find((b) => b.itemId === coke.id)?.units).toBe(9)
     })
+  })
+
+  // A number input's leading digit sits immediately left of the caret when the
+  // field shows "0" for an uncounted item. Without select-on-focus, a tap that
+  // lands just left of that zero and a single typed digit appends rather than
+  // replaces — "4" becomes "40". Asserting the handler calls `select()` rather
+  // than inspecting jsdom's selection state directly: `type="number"` inputs
+  // do not reliably support `selectionStart`/`selectionEnd` across browsers
+  // (and jsdom's own emulation of that restriction), so a real-selection
+  // assertion would be testing jsdom's quirks rather than the fix.
+  it('selects the field on focus, so the first keystroke replaces rather than appends', async () => {
+    const user = userEvent.setup()
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+
+    const selectSpy = vi.spyOn(HTMLInputElement.prototype, 'select').mockImplementation(() => {})
+
+    render(<StoreroomScreen />)
+    const input = await screen.findByLabelText('Coke units')
+    await user.click(input)
+
+    expect(selectSpy).toHaveBeenCalled()
+
+    selectSpy.mockRestore()
   })
 
   it('shows a visible count of distinct items counted', async () => {

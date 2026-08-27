@@ -42,6 +42,7 @@ export function StoreroomScreen() {
                 min={0}
                 className="w-20 rounded-lg border p-2 text-right"
                 value={units.get(item.id) ?? 0}
+                onFocus={(e) => e.currentTarget.select()}
                 onChange={(e) => {
                   const parsed = Number.parseInt(e.target.value, 10)
                   const qty = Number.isFinite(parsed) ? Math.max(0, parsed) : 0
