@@ -6,6 +6,7 @@ import { saveItem } from '../../data/repositories/items'
 import { saveMachine } from '../../data/repositories/machines'
 import { createRun } from '../../data/repositories/runs'
 import { openVisit, putCountLine, finalizeVisit } from '../../data/repositories/visits'
+import { setPlacement } from '../../data/repositories/placements'
 import { newId, now } from '../../domain/ids'
 import { ReportScreen } from './ReportScreen'
 
@@ -128,5 +129,17 @@ describe('ReportScreen', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('stock on hand')).toHaveTextContent('Machines 10')
     })
+  })
+
+  it('shows the stock matrix under the sales breakdown', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    await counted('2026-08-20', l7.id, coke.id, 0, 10)
+    await counted('2026-08-27', l7.id, coke.id, 4, 10)
+
+    render(<ReportScreen />)
+
+    expect(await screen.findByLabelText('stock row 58')).toHaveTextContent('Coke')
   })
 })

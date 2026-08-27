@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { listItems } from '../../data/repositories/items'
 import { listMachines } from '../../data/repositories/machines'
+import { listPlacements } from '../../data/repositories/placements'
 import { listRuns } from '../../data/repositories/runs'
 import { salesForRange, type PeriodReport } from '../../data/repositories/sales'
 import { storeroomAdjustments } from '../../data/repositories/adjustments'
 import { listStoreroomBalances } from '../../data/repositories/storeroom'
 import { historyForMachine } from '../../data/repositories/visits'
 import { lastRecordedLevels } from '../../domain/levels'
+import { effectivePlacement } from '../../domain/placement'
 import { ledgerBalance } from '../../domain/storeroom'
+import { buildStockMatrix, type MatrixRow } from '../../domain/stockMatrix'
 import type { Id, Item, Machine } from '../../domain/types'
 
 export interface ReportData {
@@ -22,22 +25,28 @@ export interface ReportData {
    * (design §7.2), so it must not vary with `from`/`to`. Exposed under this
    * name because a later task (the stock matrix) consumes it directly. */
   levelsByMachine: Map<Id, Map<string, number>>
+  /** The paper stock sheet's rows, one per item (or per occupant of a mixed
+   * slot) — built once from `levelsByMachine`, `storeroomOnHand` and the
+   * estate's placements. */
+  matrixRows: MatrixRow[]
   loading: boolean
 }
 
 export function useReport(from: string, to: string) {
   const [data, setData] = useState<ReportData>({
     reports: [], items: new Map(), machines: [],
-    storeroomOnHand: new Map(), levelsByMachine: new Map(), loading: true,
+    storeroomOnHand: new Map(), levelsByMachine: new Map(), matrixRows: [],
+    loading: true,
   })
 
   const load = useCallback(async () => {
-    const [reports, items, machines, balances, movements] = await Promise.all([
+    const [reports, items, machines, balances, movements, placements] = await Promise.all([
       from && to ? salesForRange(from, to) : Promise.resolve([]),
       listItems(),
       listMachines(),
       listStoreroomBalances(),
       storeroomAdjustments(),
+      listPlacements(),
     ])
 
     const byItem = new Map<Id, typeof movements>()
@@ -59,15 +68,39 @@ export function useReport(from: string, to: string) {
       ),
     )
 
+    const storeroomOnHand = new Map(items.map((i) => [
+      i.id,
+      ledgerBalance(balances.find((b) => b.itemId === i.id), byItem.get(i.id) ?? []),
+    ]))
+
+    // Which slots each item occupies, anywhere in the estate — the base
+    // placement unless a machine overrides it (`effectivePlacement`), unioned
+    // across every machine so the matrix shows an item wherever it lives.
+    const slotsByItem = new Map<Id, number[]>()
+    for (const item of items) {
+      const slots = new Set<number>()
+      for (const machine of machines) {
+        const placement = effectivePlacement(item.id, machine.id, placements)
+        for (const slot of placement?.slots ?? []) slots.add(slot)
+      }
+      slotsByItem.set(item.id, [...slots])
+    }
+
+    const matrixRows = buildStockMatrix({
+      items,
+      machineIds: machines.map((m) => m.id),
+      levelsByMachine,
+      slotsByItem,
+      storeroomOnHand,
+    })
+
     setData({
       reports,
       items: new Map(items.map((i) => [i.id, i])),
       machines,
-      storeroomOnHand: new Map(items.map((i) => [
-        i.id,
-        ledgerBalance(balances.find((b) => b.itemId === i.id), byItem.get(i.id) ?? []),
-      ])),
+      storeroomOnHand,
       levelsByMachine,
+      matrixRows,
       loading: false,
     })
   }, [from, to])

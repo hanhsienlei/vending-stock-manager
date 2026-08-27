@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useReport, latestRunDate } from './useReport'
+import { StockMatrix } from './StockMatrix'
 
 const money = (n: number) => n.toFixed(2)
 
@@ -21,7 +22,7 @@ export function ReportScreen() {
     })()
   }, [])
 
-  const { reports, items, machines, storeroomOnHand, levelsByMachine, loading } =
+  const { reports, items, machines, storeroomOnHand, levelsByMachine, matrixRows, loading } =
     useReport(from, to)
 
   if (!ready || loading) return <div className="p-4">Loading…</div>
@@ -129,6 +130,11 @@ export function ReportScreen() {
               }),
             )}
           </ul>
+
+          <div className="mt-4">
+            <div className="mb-2 font-semibold">Stock matrix</div>
+            <StockMatrix rows={matrixRows} machines={machines} />
+          </div>
         </>
       )}
     </div>

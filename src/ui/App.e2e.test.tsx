@@ -56,6 +56,16 @@ describe('the global nav', () => {
     expect(nav).toHaveClass('top-0')
     expect(nav).not.toHaveClass('bottom-0')
   })
+
+  it('lets a wide screen render wider than the phone column', async () => {
+    render(<App />)
+    await screen.findByRole('button', { name: 'History' })
+
+    // Every screen is a phone-width column except the matrix, which would throw
+    // away everything landscape buys if it inherited max-w-lg.
+    const shell = screen.getByRole('navigation').parentElement
+    expect(shell).toHaveClass('lg:max-w-none')
+  })
 })
 
 /** Spec §9's one happy path, from an empty database through the shipped
