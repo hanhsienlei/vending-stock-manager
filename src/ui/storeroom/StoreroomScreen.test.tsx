@@ -280,6 +280,21 @@ describe('StoreroomScreen', () => {
         expect(balance.units).toBe(123)
       })
     })
+
+    it('renders a real multiplication sign between the boxes and loose fields', async () => {
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+      await setStoreroomBalance(coke.id, 137)
+
+      render(<StoreroomScreen />)
+      const boxes = await screen.findByLabelText('Coke boxes')
+      const row = boxes.closest('.flex')
+
+      // JSX text is not an expression, so an escape written literally
+      // as \u00d7 there renders as those six characters rather than
+      // the actual glyph -- this is what would have caught that regression.
+      expect(row?.textContent).toContain('×')
+      expect(row?.textContent).not.toContain('\\u00d7')
+    })
   })
 
   // Item 10, fix-plan 2026-08-27: 60 catalogue items in one flat list with no

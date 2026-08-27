@@ -197,7 +197,7 @@ function QuantityField({
           onChange(fromBoxesAndLoose(parseQuantity(e.target.value), loose, item.boxSize))}
       />
       <span className="whitespace-nowrap text-xs text-gray-500">
-        \u00d7{item.boxSize} +
+        ×{item.boxSize} +
       </span>
       <input
         aria-label={`${item.name} loose`}
