@@ -44,11 +44,18 @@ atomically in one Dexie transaction (`c6b30dc`).
 
 **The storeroom ledger** (`615d69a`): `balance = last verified manual count +
 Σ signed adjustments since`. The manual count built during the pre-run work
-is the anchor, not something this phase replaces. Pack/loose entry (spec §5.4)
-is built into the ledger's quantity field rather than shipped separately —
-every item's `boxSize` is currently 1, so it degrades to plain units today and
-starts working the day real carton sizes are entered, with no second visit to
-the code.
+is the anchor, not something this phase replaces.
+
+Pack/loose entry (spec §5.4) is the ledger's quantity field rather than a
+feature beside it. **This claim was false when first written** and is corrected
+here: `domain/packs.ts` shipped tested but with no production caller, and the
+storeroom screen carried a comment saying the opposite — "spec §5.4 is deferred,
+not built here". Found in the final review and actually wired: the field now
+shows a plain units box at `boxSize: 1` and boxes + loose above it, writing
+one number either way, because what is stored is always units. Every seeded
+item is `boxSize: 1` today, so what the operator sees has not changed — which
+is the design's own argument (§8) for building it in now rather than
+retrofitting it the day real carton sizes are entered.
 
 **The report page inside History** (`03a329c`), alongside the run receipts
 built the same day. Units and revenue, a per-slot breakdown, which slots ran

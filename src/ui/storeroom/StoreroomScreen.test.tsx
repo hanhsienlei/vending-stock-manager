@@ -34,8 +34,8 @@ describe('StoreroomScreen', () => {
   })
 
   it('pre-fills the last recorded balance, and shows blank state for a never-counted item', async () => {
-    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
-    await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 1 })
+    await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 1 })
     await setStoreroomBalance(coke.id, 40)
 
     render(<StoreroomScreen />)
@@ -47,7 +47,7 @@ describe('StoreroomScreen', () => {
 
   it('persists a change immediately, with no Save button', async () => {
     const user = userEvent.setup()
-    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 1 })
 
     render(<StoreroomScreen />)
     const input = await screen.findByLabelText('Coke units')
@@ -65,7 +65,7 @@ describe('StoreroomScreen', () => {
 
   it('updates the same row in place rather than creating a second one on repeated edits', async () => {
     const user = userEvent.setup()
-    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 1 })
 
     render(<StoreroomScreen />)
     const input = await screen.findByLabelText('Coke units')
@@ -95,7 +95,7 @@ describe('StoreroomScreen', () => {
   // assertion would be testing jsdom's quirks rather than the fix.
   it('selects the field on focus, so the first keystroke replaces rather than appends', async () => {
     const user = userEvent.setup()
-    await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 1 })
 
     const selectSpy = vi.spyOn(HTMLInputElement.prototype, 'select').mockImplementation(() => {})
 
@@ -110,8 +110,8 @@ describe('StoreroomScreen', () => {
 
   it('shows a visible count of distinct items counted', async () => {
     const user = userEvent.setup()
-    await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
-    await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 1 })
+    await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 1 })
 
     render(<StoreroomScreen />)
     expect(await screen.findByText('0 / 2 counted')).toBeInTheDocument()
@@ -216,6 +216,69 @@ describe('StoreroomScreen', () => {
 
       const options = within(await screen.findByLabelText('Reason')).getAllByRole('option')
       expect(options.map((o) => o.textContent)).not.toContain('Miscount correction')
+    })
+  })
+
+  // Spec §5.4 and design §8: every quantity entered AT THE STOREROOM is boxes
+  // + loose with the units computed — "5 boxes + 17 rather than counting to
+  // 137". It is the ledger's quantity field, not a separate feature, which is
+  // why it is built in rather than retrofitted. Machine screens stay in loose
+  // units: a vending slot contains no boxes.
+  describe('pack and loose entry', () => {
+    // Every seeded item has boxSize 1 today, so this is the case the operator
+    // sees now — and a boxes field here would be actively misleading.
+    it('stays a plain units field while a box holds one', async () => {
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+      await setStoreroomBalance(coke.id, 137)
+
+      render(<StoreroomScreen />)
+
+      expect(await screen.findByLabelText('Coke units')).toHaveValue(137)
+      expect(screen.queryByLabelText('Coke boxes')).not.toBeInTheDocument()
+    })
+
+    it('splits the balance into boxes and loose once the item has a real carton size', async () => {
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+      await setStoreroomBalance(coke.id, 137)
+
+      render(<StoreroomScreen />)
+
+      expect(await screen.findByLabelText('Coke boxes')).toHaveValue(5)
+      expect(screen.getByLabelText('Coke loose')).toHaveValue(17)
+      expect(screen.queryByLabelText('Coke units')).not.toBeInTheDocument()
+    })
+
+    it('records the computed unit total when a box count is entered', async () => {
+      const user = userEvent.setup()
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+      await setStoreroomBalance(coke.id, 137)
+
+      render(<StoreroomScreen />)
+      const boxes = await screen.findByLabelText('Coke boxes')
+      await user.clear(boxes)
+      await user.type(boxes, '6')
+
+      // 6 × 24 + 17, computed rather than counted.
+      await waitFor(async () => {
+        const [balance] = await listStoreroomBalances()
+        expect(balance.units).toBe(161)
+      })
+    })
+
+    it('records the computed unit total when a loose count is entered', async () => {
+      const user = userEvent.setup()
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+      await setStoreroomBalance(coke.id, 137)
+
+      render(<StoreroomScreen />)
+      const loose = await screen.findByLabelText('Coke loose')
+      await user.clear(loose)
+      await user.type(loose, '3')
+
+      await waitFor(async () => {
+        const [balance] = await listStoreroomBalances()
+        expect(balance.units).toBe(123)
+      })
     })
   })
 
