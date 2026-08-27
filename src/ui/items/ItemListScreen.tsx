@@ -34,6 +34,9 @@ export function ItemListScreen({
               <div className="text-xs text-gray-500">
                 ${item.price.toFixed(2)} · par {item.basePar} · box of {item.boxSize}
               </div>
+              {item.remark && (
+                <div className="text-xs italic text-amber-700">{item.remark}</div>
+              )}
             </button>
           </li>
         ))}

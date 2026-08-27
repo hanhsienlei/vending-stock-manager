@@ -6,6 +6,7 @@ export interface Item {
   price: number       // dollars, e.g. 4.5
   basePar: number     // operator-set; seeds SlotConfig.capacity on first assignment
   boxSize: number     // units per supplier box; used from Phase 2
+  remark?: string      // optional free-text note on the catalogue entry itself
   updatedAt: number
 }
 

@@ -13,6 +13,7 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
   const [price, setPrice] = useState<number | null>(null)
   const [basePar, setBasePar] = useState<number | null>(null)
   const [boxSize, setBoxSize] = useState<number | null>(null)
+  const [remark, setRemark] = useState('')
   const [slots, setSlots] = useState('')
   const [slotError, setSlotError] = useState<string | null>(null)
 
@@ -28,6 +29,7 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
         setPrice(item.price)
         setBasePar(item.basePar)
         setBoxSize(item.boxSize)
+        setRemark(item.remark ?? '')
       }
       setSlots((placement?.slots ?? []).join(', '))
     })()
@@ -67,7 +69,15 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
     const machines = await listMachines()
     await pinSlotCapacities(machines.map((m) => m.id), [...added, ...removed])
 
-    const item = await saveItem({ id: itemId, name: name.trim(), price, basePar, boxSize })
+    const trimmedRemark = remark.trim()
+    const item = await saveItem({
+      id: itemId,
+      name: name.trim(),
+      price,
+      basePar,
+      boxSize,
+      ...(trimmedRemark === '' ? {} : { remark: trimmedRemark }),
+    })
     await setPlacement(item.id, { kind: 'base' }, parsed)
     onDone()
   }
@@ -121,6 +131,19 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
           value={boxSize ?? ''}
           onChange={(e) => setBoxSize(numberOrNull(e.target.value))}
         />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-bold uppercase text-gray-500">Remark</span>
+        <input
+          aria-label="Remark"
+          className="rounded-lg border p-2"
+          value={remark}
+          onChange={(e) => setRemark(e.target.value)}
+        />
+        <span className="text-xs text-gray-400">
+          Optional. A durable note about the product itself, e.g. an unverified size.
+        </span>
       </label>
 
       <label className="flex flex-col gap-1">

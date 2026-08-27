@@ -176,6 +176,44 @@ describe('ItemEditScreen', () => {
     }
   })
 
+  it('is not required and an item without one still saves', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    render(<ItemEditScreen onDone={onDone} />)
+
+    await fillRequiredFields(user)
+    expect(screen.getByLabelText('Remark')).toHaveValue('')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+
+    const [item] = await listItems()
+    expect(item.remark).toBeUndefined()
+  })
+
+  it('round-trips a remark: saved, then reloaded for editing', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    render(<ItemEditScreen onDone={onDone} />)
+
+    await fillRequiredFields(user)
+    await user.type(
+      screen.getByLabelText('Remark'),
+      'Size on the stock sheet is unverified',
+    )
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+
+    const [item] = await listItems()
+    expect(item.remark).toBe('Size on the stock sheet is unverified')
+
+    render(<ItemEditScreen itemId={item.id} onDone={vi.fn()} />)
+    await waitFor(() =>
+      expect(screen.getAllByLabelText('Remark')[1]).toHaveValue(
+        'Size on the stock sheet is unverified',
+      ),
+    )
+  })
+
   it('leaves a slot nobody stocks yet to seed its capacity from this item', async () => {
     const user = userEvent.setup()
     const onDone = vi.fn()
