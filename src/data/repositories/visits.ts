@@ -40,6 +40,43 @@ export async function putCountLine(line: CountLine): Promise<void> {
   })
 }
 
+/** Upserts a whole machine's worth of count lines in one transaction — one
+ * index read for the visit plus a single bulk write, rather than ~54 awaited
+ * round trips. Same key as `putCountLine`: an existing row for
+ * (visitId, slotNumber, itemId) keeps its id, so re-recording a row the
+ * operator already touched updates it rather than duplicating it.
+ *
+ * Used at finalize, where every slot in the machine is recorded whether it was
+ * touched or not, so the next visit always finds a level for every slot and
+ * Phase 2's sales residual has an opening and a closing for each. */
+export async function putCountLines(lines: CountLine[]): Promise<void> {
+  if (lines.length === 0) return
+
+  await db.transaction('rw', db.visits, db.countLines, async () => {
+    const visitIds = [...new Set(lines.map((l) => l.visitId))]
+
+    for (const visitId of visitIds) {
+      const visit = await db.visits.get(visitId)
+      if (!visit) throw new Error(`Unknown visit ${visitId}`)
+      if (visit.status === 'finalized') {
+        throw new Error(`Visit ${visitId} is finalized and cannot be modified`)
+      }
+    }
+
+    const existing = await db.countLines.where('visitId').anyOf(visitIds).toArray()
+    const idFor = new Map(
+      existing.map((l) => [`${l.visitId}:${l.slotNumber}:${l.itemId}`, l.id]),
+    )
+
+    await db.countLines.bulkPut(
+      lines.map((line) => ({
+        ...line,
+        id: idFor.get(`${line.visitId}:${line.slotNumber}:${line.itemId}`) ?? line.id,
+      })),
+    )
+  })
+}
+
 export async function finalizeVisit(visitId: Id): Promise<Visit> {
   const visit = await db.visits.get(visitId)
   if (!visit) throw new Error(`Unknown visit ${visitId}`)

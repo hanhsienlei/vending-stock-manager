@@ -306,3 +306,134 @@ describe('useCounting resuming an open draft visit', () => {
     expect(result.current.filled.has(58)).toBe(false)
   })
 })
+
+/** Spec §3.1: slots that sold nothing need zero taps, so most of a machine is
+ * walked past untouched. Recording only the touched ones leaves ~80% of every
+ * machine with no row at all — Phase 2's sales residual has no opening or
+ * closing level to work from, and a slow mover left untouched for four visits
+ * falls out of the lookback window entirely, seeding 0 and RAN DRY on a slot
+ * that is physically full. */
+describe('useCounting recording the whole machine on finalize', () => {
+  async function seedMachine() {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const fanta = await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58, 59])
+    await setPlacement(fanta.id, { kind: 'base' }, [52])
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+    return { coke, fanta, sunkist, machine }
+  }
+
+  /** One visit, start to finish: open the screen, optionally work a row,
+   * finalize, and leave — exactly what the operator does per machine. */
+  async function visit(
+    machineId: string,
+    date: string,
+    work?: (counting: ReturnType<typeof useCounting>) => Promise<void>,
+  ) {
+    const run = await createRun(date)
+    // Opened up front so the test can read the visit's lines afterwards; the
+    // hook reuses it rather than opening a second.
+    const opened = await openVisit(run.id, machineId)
+    const hook = renderHook(() => useCounting(run.id, machineId))
+    await waitFor(() => expect(hook.result.current.loading).toBe(false))
+    if (work) await act(async () => { await work(hook.result.current) })
+    await act(async () => { await hook.result.current.finalize() })
+    hook.unmount()
+    return opened
+  }
+
+  const keyOf = (line: { slotNumber: number; itemId: string }) =>
+    `${line.slotNumber}:${line.itemId}`
+
+  it('records a line for every slot in the map, not only the touched one', async () => {
+    const { coke, fanta, sunkist, machine } = await seedMachine()
+    const run = await createRun('2026-08-26')
+    const opened = await openVisit(run.id, machine.id)
+
+    const hook = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(hook.result.current.loading).toBe(false))
+    await act(async () => { await hook.result.current.setBefore(58, coke.id, 3) })
+    await act(async () => { await hook.result.current.finalize() })
+    hook.unmount()
+
+    const lines = await getCountLines(opened.id)
+    // One row per slot/item pair — the mixed slot contributes one per item.
+    expect(lines.map(keyOf).sort()).toEqual([
+      `52:${fanta.id}`, `52:${sunkist.id}`, `58:${coke.id}`, `59:${coke.id}`,
+    ].sort())
+  })
+
+  it('marks the untouched rows as untouched and the worked row as touched', async () => {
+    const { coke, machine } = await seedMachine()
+    const run = await createRun('2026-08-26')
+    const opened = await openVisit(run.id, machine.id)
+
+    const hook = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(hook.result.current.loading).toBe(false))
+    await act(async () => { await hook.result.current.setBefore(58, coke.id, 3) })
+    await act(async () => { await hook.result.current.finalize() })
+    hook.unmount()
+
+    const lines = await getCountLines(opened.id)
+    const byKey = new Map(lines.map((l) => [keyOf(l), l]))
+    expect(byKey.get(`58:${coke.id}`)).toMatchObject({ touched: true, before: 3, after: 3 })
+    expect(byKey.get(`59:${coke.id}`)?.touched).toBe(false)
+    expect(byKey.get(`52:${coke.id}`)).toBeUndefined()
+  })
+
+  it('records the level that was on screen for an untouched slot, not zero', async () => {
+    const { coke, machine } = await seedMachine()
+
+    // Left at 7 last visit and walked past this time.
+    await visit(machine.id, '2026-08-22', async (c) => {
+      await c.setBefore(59, coke.id, 7)
+    })
+
+    const opened = await visit(machine.id, '2026-08-26')
+
+    const line = (await getCountLines(opened.id)).find((l) => l.slotNumber === 59)
+    expect(line).toMatchObject({ before: 7, after: 7, touched: false })
+  })
+
+  it('keeps a slow mover at its real level across more visits than the history window', async () => {
+    const { coke, machine } = await seedMachine()
+
+    await visit(machine.id, '2026-08-01', async (c) => {
+      await c.setBefore(59, coke.id, 7)
+    })
+    // Five more visits, never touching slot 59 — more than HISTORY_LIMIT, so
+    // the visit that last recorded 7 has fallen out of the lookback entirely.
+    for (const day of ['02', '03', '04', '05', '06']) {
+      await visit(machine.id, `2026-08-${day}`)
+    }
+
+    const run = await createRun('2026-08-07')
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.before.get(`59:${coke.id}`)).toBe(7)
+    expect(result.current.touched.has(`59:${coke.id}`)).toBe(false)
+    expect(result.current.ranDry({ slotNumber: 59, capacity: 8, accepts: [coke.id] }))
+      .toBe(false)
+  })
+
+  it('records a filled slot at capacity for every item in it', async () => {
+    const { fanta, sunkist, machine } = await seedMachine()
+    const run = await createRun('2026-08-26')
+    const opened = await openVisit(run.id, machine.id)
+
+    const hook = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(hook.result.current.loading).toBe(false))
+    await act(async () => { await hook.result.current.toggleFill(52) })
+    await act(async () => { await hook.result.current.finalize() })
+    hook.unmount()
+
+    const lines = (await getCountLines(opened.id)).filter((l) => l.slotNumber === 52)
+    expect(lines).toHaveLength(2)
+    const total = lines.reduce((sum, l) => sum + l.after, 0)
+    expect(total).toBe(5)
+    expect(lines.map((l) => l.itemId).sort()).toEqual([fanta.id, sunkist.id].sort())
+  })
+})

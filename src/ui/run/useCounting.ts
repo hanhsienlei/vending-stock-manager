@@ -4,7 +4,7 @@ import { levelKey, lastRecordedLevels } from '../../domain/levels'
 import { fillToCapacity, slotTotal, type SlotContents } from '../../domain/fill'
 import { newId, now } from '../../domain/ids'
 import {
-  finalizeVisit, getCountLines, historyForMachine, openVisit, putCountLine,
+  finalizeVisit, getCountLines, historyForMachine, openVisit, putCountLine, putCountLines,
 } from '../../data/repositories/visits'
 import type { Id, ResolvedSlot, Visit } from '../../domain/types'
 
@@ -238,9 +238,43 @@ export function useCounting(runId: Id, machineId: Id) {
 
   const finalize = useCallback(async () => {
     if (!visit) return
+
+    // Record the whole machine, not just the rows the operator worked. Spec
+    // §3.1 makes untouched the common case — a slot that sold nothing needs
+    // zero taps — so touched-only recording leaves most of the machine with no
+    // row for the period: nothing for Phase 2's sales residual to difference,
+    // and nothing for the next visit's seed to find once the slot drops out of
+    // the history window, which shows a full slot as 0 and RAN DRY.
+    //
+    // Written uniformly rather than diffed against what is already stored:
+    // `putCountLines` upserts on (visitId, slotNumber, itemId), so a row the
+    // operator did touch is rewritten from the same state it was written from.
+    // `touched` is carried through, so the distinction survives into Phase 2.
+    //
+    // This must land before the visit is finalized — a finalized visit rejects
+    // writes, so the reverse order would throw with the visit half-recorded.
+    // It runs once per machine, off the tapping path, as a single batch.
+    await putCountLines(
+      map.flatMap((slot) =>
+        slot.accepts.map((itemId) => {
+          const key = levelKey(slot.slotNumber, itemId)
+          return {
+            id: newId(),
+            visitId: visit.id,
+            slotNumber: slot.slotNumber,
+            itemId,
+            before: before.get(key) ?? 0,
+            after: after.get(key) ?? 0,
+            touched: touched.has(key),
+            updatedAt: now(),
+          }
+        }),
+      ),
+    )
+
     const finalized = await finalizeVisit(visit.id)
     setVisit(finalized)
-  }, [visit])
+  }, [visit, map, before, after, touched])
 
   const ranDry = useCallback(
     (slot: ResolvedSlot) => slotTotal(contentsOf(slot, before)) === 0,

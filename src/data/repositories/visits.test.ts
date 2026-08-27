@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { db } from '../db'
 import { createRun, getOrCreateRun, listRuns } from './runs'
 import {
-  openVisit, getCountLines, putCountLine, finalizeVisit, historyForMachine,
+  openVisit, getCountLines, putCountLine, putCountLines, finalizeVisit, historyForMachine,
 } from './visits'
 import { newId, now } from '../../domain/ids'
 import { lastRecordedLevels, levelKey } from '../../domain/levels'
@@ -117,6 +117,38 @@ describe('visits', () => {
 
     const lines = await getCountLines(visit.id)
     expect(lines).toHaveLength(2)
+  })
+
+  it('writes a batch of lines in one go, upserting the ones already stored', async () => {
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, 'L7')
+
+    // The operator touched slot 58 during the walk.
+    await putCountLine(lineFor(visit.id, 8))
+
+    // Finalize records the whole machine, including that row again.
+    await putCountLines([
+      { ...lineFor(visit.id, 8), id: newId() },
+      { ...lineFor(visit.id, 4), id: newId(), slotNumber: 59, touched: false },
+      { ...lineFor(visit.id, 2), id: newId(), slotNumber: 52, itemId: 'fanta' },
+      { ...lineFor(visit.id, 1), id: newId(), slotNumber: 52, itemId: 'sunkist' },
+    ])
+
+    const lines = await getCountLines(visit.id)
+    expect(lines).toHaveLength(4)
+    expect(lines.filter((l) => l.slotNumber === 58)).toHaveLength(1)
+    expect(lines.find((l) => l.slotNumber === 59)).toMatchObject({
+      after: 4, touched: false,
+    })
+  })
+
+  it('rejects a batch aimed at a finalized visit', async () => {
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, 'L7')
+    await finalizeVisit(visit.id)
+
+    await expect(putCountLines([lineFor(visit.id, 8)])).rejects.toThrow(/finalized/i)
+    expect(await getCountLines(visit.id)).toEqual([])
   })
 
   it('does not re-stamp an already-finalized visit', async () => {
