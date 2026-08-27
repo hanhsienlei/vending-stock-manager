@@ -70,8 +70,17 @@ export default function App() {
     // fifty-slot machine (fix-plan item 11). `pt-14` keeps the body out from
     // under it; the nav itself is `z-10` so the counting screen's tray tabs
     // scroll beneath rather than over it.
-    <div className="mx-auto max-w-lg pt-14 lg:max-w-none">
-      <nav className="fixed inset-x-0 top-0 z-10 mx-auto flex max-w-lg border-b bg-white lg:max-w-none">
+    //
+    // `lg:max-w-none` only applies on History: that is where the stock
+    // matrix lives, and it is the one screen that needs the wide viewport.
+    // Every other screen stays a phone-width column (StockMatrix.tsx's
+    // comment says the same from the other side).
+    <div
+      className={`mx-auto max-w-lg pt-14 ${screen.name === 'history' ? 'lg:max-w-none' : ''}`}
+    >
+      <nav
+        className={`fixed inset-x-0 top-0 z-10 mx-auto flex max-w-lg border-b bg-white ${screen.name === 'history' ? 'lg:max-w-none' : ''}`}
+      >
         <button
           type="button"
           className="flex-1 p-3 font-semibold"

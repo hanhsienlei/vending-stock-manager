@@ -57,14 +57,27 @@ describe('the global nav', () => {
     expect(nav).not.toHaveClass('bottom-0')
   })
 
-  it('lets a wide screen render wider than the phone column', async () => {
+  it('lets the History screen render wider than the phone column', async () => {
+    const user = userEvent.setup()
     render(<App />)
     await screen.findByRole('button', { name: 'History' })
 
-    // Every screen is a phone-width column except the matrix, which would throw
-    // away everything landscape buys if it inherited max-w-lg.
+    // Every screen is a phone-width column except the matrix on History,
+    // which would throw away everything landscape buys if it stayed capped.
+    await user.click(screen.getByRole('button', { name: 'History' }))
+
     const shell = screen.getByRole('navigation').parentElement
     expect(shell).toHaveClass('lg:max-w-none')
+  })
+
+  it('keeps the Machines screen a phone-width column even on a wide viewport', async () => {
+    render(<App />)
+    await screen.findByRole('button', { name: 'History' })
+
+    // The Machines screen is the default on load; it must not inherit the
+    // History screen's widening.
+    const shell = screen.getByRole('navigation').parentElement
+    expect(shell).not.toHaveClass('lg:max-w-none')
   })
 })
 
