@@ -171,6 +171,38 @@ describe('StoreroomScreen', () => {
       })
     })
 
+    // The same bug found and fixed on the machine map (94cf425): a sheet
+    // rendered in document order after the list sits below all sixty
+    // catalogue rows, so tapping "Adjust Coke" near the top mounts it several
+    // screens below the fold — from the operator's position, a button that
+    // does nothing.
+    it('floats the adjustment sheet over the list rather than below it', async () => {
+      const user = userEvent.setup()
+      await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+
+      render(<StoreroomScreen />)
+      await user.click(await screen.findByRole('button', { name: 'Adjust Coke' }))
+
+      const heading = await screen.findByRole('heading', { name: 'Adjust storeroom stock' })
+      const overlay = heading.closest('.fixed')
+      expect(overlay).not.toBeNull()
+      expect(overlay).toHaveClass('inset-0')
+    })
+
+    it('closes the floating sheet when the backdrop is tapped', async () => {
+      const user = userEvent.setup()
+      await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+
+      render(<StoreroomScreen />)
+      await user.click(await screen.findByRole('button', { name: 'Adjust Coke' }))
+      expect(await screen.findByLabelText('Reason')).toBeInTheDocument()
+
+      await user.click(screen.getByLabelText('Close adjustment sheet'))
+      await waitFor(() => {
+        expect(screen.queryByLabelText('Reason')).not.toBeInTheDocument()
+      })
+    })
+
     // The storeroom's correction mechanism is the manual count above, which
     // resets the ledger anchor directly. A miscount recorded here would be
     // excluded from ledgerBalance (fix round 1, finding 1) and so would

@@ -8,7 +8,28 @@ import { listAdjustments } from '../../data/repositories/adjustments'
 import { ADJUSTMENT_REASONS } from '../../domain/adjustments'
 import { AdjustmentSheet } from './AdjustmentSheet'
 
+/** Lets one test force the rejection `recordTransfer` really throws, without
+ * taking the real write away from every other test in this file. */
+const transferStub = vi.hoisted(() => ({ fail: false }))
+
+vi.mock('../../data/repositories/adjustments', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../data/repositories/adjustments')>()
+  return {
+    ...actual,
+    recordTransfer: (params: Parameters<typeof actual.recordTransfer>[0]) => {
+      if (transferStub.fail) {
+        return Promise.reject(
+          new Error('A transfer must not start and end at the same location'),
+        )
+      }
+      return actual.recordTransfer(params)
+    },
+  }
+})
+
 beforeEach(async () => {
+  transferStub.fail = false
   await db.delete()
   await db.open()
 })
@@ -331,5 +352,65 @@ describe('AdjustmentSheet', () => {
 
     const options = within(screen.getByLabelText('Reason')).getAllByRole('option')
     expect(options.map((o) => o.textContent)).not.toContain('Miscount correction')
+  })
+  // The storeroom screen offers `transfer`, and "Storeroom G" was the
+  // Destination select's first option — so the form's initial state was
+  // storeroom-to-storeroom, which `recordTransfer` refuses. Nothing stopped
+  // the operator submitting it.
+  it('does not offer the storeroom as the destination of a transfer out of the storeroom', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'storeroom' }}
+        itemId={coke.id}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    await user.selectOptions(screen.getByLabelText('Reason'), 'transfer')
+    const destination = await screen.findByLabelText('Destination')
+    await waitFor(() => {
+      expect(within(destination).queryByRole('option', { name: 'Storeroom G' }))
+        .not.toBeInTheDocument()
+    })
+    // …and it starts on a destination that can actually receive the stock.
+    expect((destination as HTMLSelectElement).value).toBe(l7.id)
+  })
+
+  // `record()` had no try/catch and the onClick discarded the rejection, so a
+  // refused write left the sheet open, the alert empty and nothing recorded —
+  // indistinguishable from a dead button. Every other failure here sets
+  // `error`.
+  it('surfaces a rejected write rather than failing silently', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const onSaved = vi.fn()
+    transferStub.fail = true
+
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'storeroom' }}
+        itemId={coke.id}
+        onSaved={onSaved}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    await user.selectOptions(screen.getByLabelText('Reason'), 'transfer')
+    await user.selectOptions(await screen.findByLabelText('Destination'), l7.id)
+    const slotField = await screen.findByLabelText('Destination slot')
+    await user.clear(slotField)
+    await user.type(slotField, '58')
+    await user.click(screen.getByRole('button', { name: 'Record' }))
+
+    expect(await screen.findByRole('alert'))
+      .toHaveTextContent('A transfer must not start and end at the same location')
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(await listAdjustments()).toEqual([])
   })
 })

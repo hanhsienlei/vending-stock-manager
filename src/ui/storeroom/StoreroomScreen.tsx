@@ -116,18 +116,34 @@ export function StoreroomScreen() {
         ))}
       </ul>
 
+      {/* A floating sheet, not an inline one — the same fix the machine map
+          needed (94cf425). This list is the whole sixty-item catalogue, so a
+          sheet rendered in document order after it opens thousands of pixels
+          below the "Adjust" button that was tapped: from where the operator
+          is standing, a button that does nothing. Anchored to the bottom,
+          capped at 80vh, scrollable, and dismissed by tapping the backdrop. */}
       {adjusting !== null && (
-        <div className="mt-3">
-          <AdjustmentSheet
-            location={{ kind: 'storeroom' }}
-            itemId={adjusting}
-            reasons={STOREROOM_ADJUSTMENT_REASONS}
-            onSaved={() => {
-              setAdjusting(null)
-              void refresh()
-            }}
-            onCancel={() => setAdjusting(null)}
-          />
+        <div
+          className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 p-2"
+          onClick={() => setAdjusting(null)}
+          aria-label="Close adjustment sheet"
+          role="presentation"
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <AdjustmentSheet
+              location={{ kind: 'storeroom' }}
+              itemId={adjusting}
+              reasons={STOREROOM_ADJUSTMENT_REASONS}
+              onSaved={() => {
+                setAdjusting(null)
+                void refresh()
+              }}
+              onCancel={() => setAdjusting(null)}
+            />
+          </div>
         </div>
       )}
     </div>

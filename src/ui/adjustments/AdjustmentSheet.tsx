@@ -7,6 +7,16 @@ import { ADJUSTMENT_REASONS, reasonSpec, type ReasonSpec } from '../../domain/ad
 import { isSlotNumber } from '../../domain/trays'
 import type { AdjustmentReason, Id, Machine } from '../../domain/types'
 
+/** What to show the operator when a write is refused. The repository's own
+ * message is the specific one ("a transfer must not start and end at the same
+ * location"); anything without a message falls back to a plain sentence
+ * rather than "[object Object]". */
+function messageFor(err: unknown): string {
+  return err instanceof Error && err.message
+    ? err.message
+    : 'Could not record that. Nothing was saved.'
+}
+
 /** One sheet, both locations (design §7.1). Reached from `⋯` on a slot row and
  * from the storeroom screen, with the location already known from where it was
  * opened — nothing is added to the counting flow itself, which stays the
@@ -38,7 +48,14 @@ export function AdjustmentSheet({
   // "not increase" as "decrease" (the brief's original rule) always lowered
   // the figure, even when the operator counted MORE than was recorded.
   const [direction, setDirection] = useState<'more' | 'fewer'>('more')
-  const [destination, setDestination] = useState<string>('storeroom')
+  // Empty when the source is the storeroom: the storeroom cannot be its own
+  // destination, so there is nothing valid to default to until the machine
+  // list lands (see the effect below). Starting it at 'storeroom' made the
+  // form's *initial* state invalid — Record then threw and, before this
+  // sheet caught anything, did so silently.
+  const [destination, setDestination] = useState<string>(
+    location.kind === 'storeroom' ? '' : 'storeroom',
+  )
   // Only meaningful once `destination` names a machine (see the field below).
   // Defaults to the source slot when the source is also a machine — the
   // common case of moving stock to the same slot number in a different
@@ -51,7 +68,13 @@ export function AdjustmentSheet({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    void (async () => setMachines(await listMachines()))()
+    void (async () => {
+      const loaded = await listMachines()
+      setMachines(loaded)
+      // A transfer out of the storeroom has to land at a machine, so the
+      // select opens on the first one rather than on nothing.
+      setDestination((current) => current || loaded[0]?.id || '')
+    })()
   }, [])
 
   const destinationIsMachine = reason === 'transfer' && destination !== 'storeroom'
@@ -71,6 +94,10 @@ export function AdjustmentSheet({
 
     if (reason === 'transfer') {
       let to: AdjustmentLocation
+      if (destination === '') {
+        setError('Choose where the stock is going.')
+        return
+      }
       if (destination === 'storeroom') {
         to = { kind: 'storeroom' }
       } else {
@@ -89,7 +116,16 @@ export function AdjustmentSheet({
         to = { kind: 'machine', machineId: destination, slotNumber: slot }
       }
       setError(null)
-      await recordTransfer({ itemId, units: magnitude, from: location, to })
+      // A rejected write must say so. Without this the rejection was
+      // discarded by the onClick — the sheet stayed open, the alert stayed
+      // empty and nothing was recorded, which from the operator's side is a
+      // button that does nothing.
+      try {
+        await recordTransfer({ itemId, units: magnitude, from: location, to })
+      } catch (err) {
+        setError(messageFor(err))
+        return
+      }
       onSaved()
       return
     }
@@ -106,18 +142,23 @@ export function AdjustmentSheet({
       ? (direction === 'more' ? magnitude : -magnitude)
       : (reasonSpec(reason).totalStock === 'increase' ? magnitude : -magnitude)
 
-    await recordAdjustment({
-      itemId,
-      ...(location.kind === 'storeroom'
-        ? { locationKind: 'storeroom' as const }
-        : {
-            locationKind: 'machine' as const,
-            machineId: location.machineId,
-            slotNumber: location.slotNumber,
-          }),
-      reason,
-      units: signed,
-    })
+    try {
+      await recordAdjustment({
+        itemId,
+        ...(location.kind === 'storeroom'
+          ? { locationKind: 'storeroom' as const }
+          : {
+              locationKind: 'machine' as const,
+              machineId: location.machineId,
+              slotNumber: location.slotNumber,
+            }),
+        reason,
+        units: signed,
+      })
+    } catch (err) {
+      setError(messageFor(err))
+      return
+    }
     onSaved()
   }
 
@@ -180,7 +221,12 @@ export function AdjustmentSheet({
             value={destination}
             onChange={(e) => setDestination(e.target.value)}
           >
-            <option value="storeroom">Storeroom G</option>
+            {/* The storeroom is only a destination when it is not also the
+                source — a transfer that starts and ends in the same place is
+                refused by `recordTransfer`, so it must not be offerable. */}
+            {location.kind !== 'storeroom' && (
+              <option value="storeroom">Storeroom G</option>
+            )}
             {machines
               .filter((m) => location.kind !== 'machine' || m.id !== location.machineId)
               .map((m) => (
