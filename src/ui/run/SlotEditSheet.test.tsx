@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem, listItems } from '../../data/repositories/items'
+import { saveMachine } from '../../data/repositories/machines'
 import { setPlacement, listPlacements } from '../../data/repositories/placements'
 import { listSlotConfigs } from '../../data/repositories/slotConfigs'
 import { effectivePlacement, resolveMachineMap } from '../../domain/placement'
@@ -237,5 +238,27 @@ describe('SlotEditSheet', () => {
     const slot = await resolvedSlot('L7', 52)
     expect(slot?.capacity).toBe(9)
     expect(slot?.accepts).toEqual([sunkist.id, coke.id])
+  })
+
+  it('opens the adjustment sheet for an item in the slot', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+
+    render(
+      <SlotEditSheet
+        machineId={machine.id}
+        slotNumber={58}
+        items={[coke]}
+        currentItemIds={[coke.id]}
+        capacity={5}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Adjust Coke' }))
+
+    expect(await screen.findByLabelText('Reason')).toBeInTheDocument()
   })
 })

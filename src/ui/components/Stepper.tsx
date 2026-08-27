@@ -1,5 +1,5 @@
 export function Stepper({
-  value, onChange, min = 0, max = 99, label, dimmed = false,
+  value, onChange, min = 0, max = 99, label, dimmed = false, emerald = false,
 }: {
   value: number
   onChange: (next: number) => void
@@ -8,6 +8,10 @@ export function Stepper({
   label: string
   /** Greys the value to mark it as carried forward, not yet confirmed. */
   dimmed?: boolean
+  /** Colours the value emerald, distinguishing an after-count stepper from a
+   * before-count one sitting beside it (spec §3.2). Takes precedence over
+   * `dimmed`, matching the always-emerald readout this stepper replaced. */
+  emerald?: boolean
 }) {
   const clamp = (n: number) => Math.min(max, Math.max(min, n))
   return (
@@ -23,7 +27,7 @@ export function Stepper({
       <span
         aria-label={label}
         className={`min-w-8 text-center text-lg font-bold ${
-          dimmed ? 'text-gray-400' : 'text-gray-900'
+          emerald ? 'text-emerald-700' : dimmed ? 'text-gray-400' : 'text-gray-900'
         }`}
       >
         {value}

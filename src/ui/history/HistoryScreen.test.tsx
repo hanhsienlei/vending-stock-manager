@@ -56,7 +56,7 @@ describe('HistoryScreen', () => {
     const visit = await openVisit(run.id, machine.id)
     await putCountLine({
       id: newId(), visitId: visit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 5, touched: true, filled: true, updatedAt: now(),
+      before: 2, after: 5, touched: true, filled: true, price: 0, updatedAt: now(),
     })
     await finalizeVisit(visit.id)
 
@@ -103,6 +103,20 @@ describe('HistoryScreen', () => {
     expect(await screen.findByLabelText('visit to L7')).toBeInTheDocument()
 
     await user.click(screen.getByText('← Back'))
+    expect(await screen.findByLabelText('run 2026-08-27')).toBeInTheDocument()
+  })
+
+  it('switches between the receipts and the report', async () => {
+    const user = userEvent.setup()
+    await createRun('2026-08-27')
+
+    render(<HistoryScreen />)
+    await screen.findByLabelText('run 2026-08-27')
+
+    await user.click(screen.getByRole('button', { name: 'Report' }))
+    expect(await screen.findByLabelText('From')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Receipts' }))
     expect(await screen.findByLabelText('run 2026-08-27')).toBeInTheDocument()
   })
 })

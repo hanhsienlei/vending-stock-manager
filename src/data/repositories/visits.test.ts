@@ -11,7 +11,7 @@ import type { CountLine } from '../../domain/types'
 
 const lineFor = (visitId: string, after: number): CountLine => ({
   id: newId(), visitId, slotNumber: 58, itemId: 'coke',
-  before: 3, after, touched: true, filled: false, updatedAt: now(),
+  before: 3, after, touched: true, filled: false, price: 0, updatedAt: now(),
 })
 
 beforeEach(async () => {

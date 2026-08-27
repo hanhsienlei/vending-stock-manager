@@ -9,14 +9,6 @@ Carried out of the Phase 1 execution ledger before its workspace was deleted.
 
 ## Deferred features
 
-**A mixed slot's fill split is shown but not editable.** Half fixed. `after` now
-renders on every slot row including each sub-row of a mixed slot (`1dfd1be`), so
-Fill is no longer invisible. The remaining half of spec §5.1 — "each sub-row
-remains editable, so an operator loading a different mix can correct it" — is
-still missing. Fill always tops up the highest-preference item, so an operator
-who actually loaded 2 Fanta and 3 Sunkist can see what the app assumed but cannot
-correct it. A new UI surface, deferred.
-
 **No error surface for a rejected write.** `CountScreen` swallows rejections with
 an empty catch. After a rollback the displayed number reverts with no
 explanation, and a genuine finalize failure navigates away as if it had
@@ -72,6 +64,80 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   name or price, with no timestamp and no attachment target of its own.
   Flagging this so a future `Note` implementation doesn't treat `remark` as
   a partial version of it, or vice versa.
+- **`Adjustment` has no edit or delete path.** A mistaken adjustment — wrong
+  quantity, wrong reason, logged against the wrong slot — is corrected by
+  logging its opposite, not by fixing the original row. This keeps the ledger
+  an append-only log rather than something that can be quietly rewritten, but
+  it means a bad entry stays visible in the history alongside its correction
+  rather than disappearing. No decision to build editing has been made either
+  way; this is simply what shipped in Phase 2.
+- **A `miscount` recorded at a machine slot is written and read by nothing.**
+  The slot row's `⋯` sheet offers it, and `recordAdjustment` stores it — and
+  then nothing consumes it. `entersResidual` excludes it by reason (correctly:
+  a miscount is a data fix, not a stock movement), it touches no `CountLine`,
+  so the level it was meant to correct is unchanged, and there is no
+  adjustment-history screen for it to be read back from. The storeroom sheet
+  already withholds `miscount` for exactly this reason; the slot sheet still
+  offers it. Not fixed here because the choice is a design one and either
+  answer is defensible: withhold it at the slot too, matching the storeroom
+  and the fact that the slot's own correction mechanism is editing the count
+  in place (spec §5.1); or keep it and give it a consumer, which means
+  deciding what a miscount at a slot *means* — a note against the period, or
+  an actual correction to the recorded level. Recorded rather than guessed at.
+- **A redistribution can be double-counted.** Spec §3.2 says moving stock
+  between machines during a run is self-recording: the source machine's
+  after-count drops, the destination's rises, and the two counts carry the
+  move on their own. But the same slot row's `⋯` also offers a `transfer`
+  adjustment, and an operator who does both — moves the stock, adjusts the
+  after-counts, then logs the transfer for tidiness — subtracts the move
+  twice. The source's residual clamps at zero, losing genuine sales along
+  with it, and the destination's inflates by the same amount. Nothing warns
+  about it, and after the fact the two records are indistinguishable from a
+  real transfer that happened between visits. The fix is a design decision,
+  not an edit: either the sheet withholds `transfer` at a slot during a run
+  it is counting, or the residual learns to recognise a transfer whose units
+  are already inside two after-counts. Neither is obviously right, so the
+  behaviour is recorded rather than picked.
+- **`setAfter` does not add its key to `touched`.** By the field's literal
+  definition — "true once the operator alters `before`" (`domain/types.ts`) —
+  that is correct: typing an after-count says nothing about the before-count.
+  But it contradicts the rationale §3.3 rests on, where an untouched row means
+  *seen and unchanged* rather than *not looked at*: an operator who typed a
+  hand-entered after-count for a slot has unmistakably looked at it. Phase 3
+  reads `touched`, and rows written now cannot be reconstructed later —
+  nothing else on the line distinguishes "after typed by hand, before left
+  alone" from "never looked at". Left as it is because changing it changes
+  what `touched` means, which is the resolved design question at the bottom
+  of this file and not something to settle in a fix round.
+- **The resume heuristic cannot recognise a hand-entered after-count that
+  equals its before-count.** Resuming a draft rebuilds `afterTouched` from
+  the stored lines as "after differs from before, and Fill is off"
+  (`useCounting.ts`). A slot the operator counted and deliberately typed the
+  same number into is indistinguishable from one carried forward untouched,
+  so leaving the screen and coming back lets the next before-count edit
+  re-derive it. No stored field carries the distinction, so fixing it means
+  adding one — a per-line `afterTouched`, which is a schema change and a
+  migration for a case whose only symptom is a number reverting to the value
+  it already had.
+- **`DatabaseClosedError` appears intermittently in `src/ui/App.e2e.test.tsx`.**
+  Rare and predates this phase: it surfaced once in fourteen full-suite runs
+  during the final fix round, and that run still reported all tests passing —
+  it prints as a serialized stderr error rather than failing anything, which
+  is why a "no warnings" gate on the suite output can trip on a run that is
+  otherwise green. It is a teardown race in the test harness — `db.delete()`/`db.open()`
+  between tests against an in-flight read from a component that has not
+  unmounted yet — not a product defect: nothing in the app closes the database
+  under itself. Recorded so it is recognised as a known flake rather than
+  investigated as a data-loss bug the next time it appears in CI.
+- **The storeroom ledger carries no trolley movements until Phase 3.** Its
+  balance is `last verified count + adjustments and deliveries since`
+  (design §6), but the trolley — the ledger's largest movement source once
+  built — waits for Phase 3's allocation and pick-list work (spec §6). Until
+  then the ledger under-represents genuine stock movement between the
+  storeroom and the machines whenever it happens via the trolley rather than
+  a logged transfer. Expected, not a gap: recorded in the Phase 2 design
+  (§2) as explicitly out of scope, and repeated here so it reads as a known
+  boundary rather than a rediscovered omission.
 
 ---
 
@@ -93,6 +159,19 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
 - **The v1→v2 upgrade path is actually tested** (`5f6defc`). The `machineId`
   index and `storeroomBalances` tests both opened a *fresh* v2 database and
   wrote their data afterwards, so neither ran the upgrade it was named for.
+- **A mixed slot's fill split is shown but not editable.** `after` had already
+  started rendering on every slot row, including each sub-row of a mixed slot
+  (`1dfd1be`), so Fill was no longer invisible — but it stayed a read-only span
+  with exactly two reachable values, before or capacity, so an operator who
+  actually loaded 2 Fanta and 3 Sunkist could see what the app assumed but
+  could not correct it, and stock redistributed between machines could not be
+  recorded at all. Now fully fixed (`d37c7c7`, task 4b, 2026-08-27): the after-count is an
+  editable `Stepper` on every row, wired through `useCounting`'s new
+  `setAfter`, floored at zero and free to land above or below the
+  before-count. A hand-entered figure turns Fill off and is not re-derived by
+  a later before-count edit; tapping Fill clears it and resumes the derived
+  behaviour. Spec §3.2 amended; spec §5.1's "each sub-row remains editable" is
+  now fully met, not half.
 
 - **A machine already finished today now shows as finished on the machine
   list** (`8559eb3`). Previously the list never looked at visits, so a
@@ -117,6 +196,16 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   `src/data/repositories/machines.ts` recording why.
 - **PWA icons exist** (`7b8783f`) — placeholder set, installable, trivially
   replaceable.
+- **Sales are now derived, and stock is now visible.** Phase 2 added
+  `Adjustment` (schema v3, `492d36a`), the sales residual (`4775e46`), period
+  pairing and a date range (`d7b7b4d`), the adjustment sheet reachable from a
+  slot and from the storeroom (`3c1b897`, `a605685`), a storeroom ledger
+  anchored to the last manual count (`615d69a`), and a report page with a
+  stock matrix inside History (`03a329c`, `108d604`). This was the gap this
+  list was written to hold: "the app records what was in every slot but
+  cannot yet answer what sold or where the stock is." See
+  `docs/phase-2-report.md` for the decisions, their costs, and the bugs caught
+  during implementation.
 
 ---
 

@@ -79,7 +79,7 @@ describe('deleteItem', () => {
     const visit = await openVisit(run.id, machine.id)
     await putCountLine({
       id: newId(), visitId: visit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 6, touched: true, filled: true, updatedAt: now(),
+      before: 2, after: 6, touched: true, filled: true, price: 0, updatedAt: now(),
     })
     await finalizeVisit(visit.id)
 

@@ -82,7 +82,7 @@ describe('CountScreen', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 0, after: 0, touched: true, filled: false, updatedAt: now(),
+      before: 0, after: 0, touched: true, filled: false, price: 0, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 
@@ -180,7 +180,7 @@ describe('CountScreen', () => {
     for (const itemId of [fanta.id, sunkist.id]) {
       await putCountLine({
         id: newId(), visitId: pastVisit.id, slotNumber: 52, itemId,
-        before: 0, after: 0, touched: true, filled: false, updatedAt: now(),
+        before: 0, after: 0, touched: true, filled: false, price: 0, updatedAt: now(),
       })
     }
     await finalizeVisit(pastVisit.id)
@@ -210,7 +210,7 @@ describe('CountScreen', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 6, touched: true, filled: true, updatedAt: now(),
+      before: 2, after: 6, touched: true, filled: true, price: 0, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 
@@ -278,7 +278,7 @@ describe('CountScreen', () => {
     const pastVisit = await openVisit(past.id, machine.id)
     await putCountLine({
       id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 8, touched: true, filled: true, updatedAt: now(),
+      before: 2, after: 8, touched: true, filled: true, price: 0, updatedAt: now(),
     })
     await finalizeVisit(pastVisit.id)
 
@@ -360,7 +360,7 @@ describe('CountScreen', () => {
     const priorVisit = await openVisit(priorRun.id, machine.id)
     await putCountLine({
       id: newId(), visitId: priorVisit.id, slotNumber: 52, itemId: ghost.id,
-      before: 1, after: 5, touched: true, filled: true, updatedAt: now(),
+      before: 1, after: 5, touched: true, filled: true, price: 0, updatedAt: now(),
     })
     await finalizeVisit(priorVisit.id)
 
@@ -422,7 +422,7 @@ describe('CountScreen', () => {
     const visit = await openVisit(run.id, machine.id)
     await putCountLine({
       id: newId(), visitId: visit.id, slotNumber: 58, itemId: coke.id,
-      before: 2, after: 2, touched: true, filled: false, updatedAt: now(),
+      before: 2, after: 2, touched: true, filled: false, price: 0, updatedAt: now(),
     })
     await finalizeVisit(visit.id)
 
@@ -441,5 +441,24 @@ describe('CountScreen', () => {
 
     const lines = await getCountLines(visit.id)
     expect(lines.find((l) => l.slotNumber === 58)?.before).toBe(3)
+  })
+
+  it('lets the after-count be typed on a slot row', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, machine.id)
+
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    await screen.findByText('Coke')
+
+    await user.click(screen.getByLabelText('slot 58 after increase'))
+    await user.click(screen.getByLabelText('slot 58 after increase'))
+
+    await waitFor(async () => {
+      expect((await getCountLines(visit.id))[0]?.after).toBe(2)
+    })
   })
 })

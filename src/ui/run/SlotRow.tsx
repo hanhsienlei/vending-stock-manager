@@ -2,30 +2,17 @@ import { Stepper } from '../components/Stepper'
 import { levelKey } from '../../domain/levels'
 import type { Id, Item, ResolvedSlot } from '../../domain/types'
 
-/** Shows the after-count beside the before-count: before is what the operator
- * found, after is what they will leave — the only feedback Fill gives besides
- * its own button colour (spec §3.2). Read-only in this task; spec §5.1's
- * editable mixed split is deferred. */
-function AfterReadout({ label, value }: { label: string; value: number }) {
-  return (
-    <span
-      aria-label={label}
-      className="min-w-8 text-center text-sm font-bold text-emerald-700"
-    >
-      → {value}
-    </span>
-  )
-}
-
 export function SlotRow({
-  slot, items, before, after, touched, isFilled, ranDry, onSetBefore, onToggleFill, onEdit,
+  slot, items, before, after, touched, isFilled, ranDry,
+  onSetBefore, onSetAfter, onToggleFill, onEdit,
 }: {
   slot: ResolvedSlot
   items: Map<Id, Item>
   before: Map<string, number>
-  /** The derived leave-behind level (spec §3.2) — capacity on Fill, mirrors
-   * `before` otherwise. Rendered next to `before` on every row so Fill's
-   * effect is visible without a database read. */
+  /** What the operator will leave behind (spec §3.2, amended 2026-08-27) —
+   * editable on every row, not just derived from Fill. This run's after-count
+   * is next run's opening, so it must be able to record a partial refill or a
+   * redistribution, not just "capacity" or "unchanged". */
   after: Map<string, number>
   /** Level keys the operator has actually worked this visit. Everything else
    * is last visit's level carried forward, and is greyed to say so
@@ -34,6 +21,7 @@ export function SlotRow({
   isFilled: boolean
   ranDry: boolean
   onSetBefore: (slotNumber: number, itemId: Id, qty: number) => void
+  onSetAfter: (slotNumber: number, itemId: Id, qty: number) => void
   onToggleFill: (slotNumber: number) => void
   onEdit: (slotNumber: number) => void
 }) {
@@ -82,9 +70,12 @@ export function SlotRow({
               dimmed={!touched.has(levelKey(slot.slotNumber, slot.accepts[0]))}
               onChange={(qty) => onSetBefore(slot.slotNumber, slot.accepts[0], qty)}
             />
-            <AfterReadout
+            <Stepper
               label={`slot ${slot.slotNumber} after`}
               value={after.get(levelKey(slot.slotNumber, slot.accepts[0])) ?? 0}
+              max={Math.max(99, slot.capacity)}
+              emerald
+              onChange={(qty) => onSetAfter(slot.slotNumber, slot.accepts[0], qty)}
             />
           </>
         )}
@@ -121,9 +112,12 @@ export function SlotRow({
               dimmed={!touched.has(levelKey(slot.slotNumber, itemId))}
               onChange={(qty) => onSetBefore(slot.slotNumber, itemId, qty)}
             />
-            <AfterReadout
+            <Stepper
               label={`slot ${slot.slotNumber} ${items.get(itemId)?.name ?? ''} after`}
               value={after.get(levelKey(slot.slotNumber, itemId)) ?? 0}
+              max={Math.max(99, slot.capacity)}
+              emerald
+              onChange={(qty) => onSetAfter(slot.slotNumber, itemId, qty)}
             />
           </div>
         ))}

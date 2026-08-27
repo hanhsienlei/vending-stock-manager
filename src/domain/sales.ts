@@ -1,0 +1,165 @@
+import { entersResidual } from './adjustments'
+import { levelKey } from './levels'
+import type { Adjustment, CountLine, Id, Visit } from './types'
+
+export type CensoredReason =
+  | 'no-previous-visit'
+  | 'left-slot-with-stock'
+  | 'visit-not-finalized'
+
+export interface VisitRecord {
+  visit: Visit
+  lines: CountLine[]
+}
+
+export interface SalesLine {
+  slotNumber: number
+  itemId: Id
+  /** What the previous visit left in the slot. */
+  opening: number
+  /** What this visit found. */
+  closing: number
+  /** Net signed adjustments in the period, miscounts excluded. */
+  movements: number
+  /** Units sold, or null when the period is censored. */
+  sold: number | null
+  censoredReason?: CensoredReason
+  ranDry: boolean
+  price: number
+  revenue: number | null
+}
+
+/** The residual for one period — the gap between two consecutive finalized
+ * visits to one machine (spec §3.3).
+ *
+ *     sales = opening − closing + Σ signed movements
+ *
+ * Signed units collapse the spec's longer formula into that one sum: 2 expired
+ * is −2, 3 transferred in is +3. Fills need no term of their own, because a
+ * fill happens *at* a visit and is therefore already inside `previous.after`;
+ * adding one would double-count it.
+ *
+ * Pure: takes plain data, returns plain data, reads no database. */
+export function salesForPeriod(
+  previous: VisitRecord | null,
+  current: VisitRecord,
+  adjustments: Adjustment[],
+): SalesLine[] {
+  const openingAt = new Map<string, number>()
+  for (const l of previous?.lines ?? []) {
+    openingAt.set(levelKey(l.slotNumber, l.itemId), l.after)
+  }
+
+  // A draft visit has not closed a period, so there is no upper bound for the
+  // movement window: falling back to an unbounded ceiling would admit
+  // adjustments that belong to a later, still-unopened period. Refuse to
+  // guess and censor every line instead — no figure is the honest answer.
+  if (current.visit.status !== 'finalized') {
+    return current.lines
+      .map((l) => ({
+        slotNumber: l.slotNumber,
+        itemId: l.itemId,
+        opening: openingAt.get(levelKey(l.slotNumber, l.itemId)) ?? 0,
+        closing: l.before,
+        movements: 0,
+        sold: null,
+        censoredReason: 'visit-not-finalized' as const,
+        ranDry: l.before === 0,
+        price: l.price,
+        revenue: null,
+      }))
+      .sort((a, b) => a.slotNumber - b.slotNumber || a.itemId.localeCompare(b.itemId))
+  }
+
+  const closingAt = new Map<string, CountLine>()
+  for (const l of current.lines) {
+    closingAt.set(levelKey(l.slotNumber, l.itemId), l)
+  }
+
+  // The period runs from the previous visit being finished to this one being
+  // finished. `occurredAt` is the moment the adjustment was logged (design
+  // §4.1), so one logged at the machine during this count falls inside it.
+  const from = previous?.visit.finalizedAt ?? 0
+  const to = current.visit.finalizedAt ?? Number.MAX_SAFE_INTEGER
+
+  // The window is half-open at the bottom and closed at the top: `occurredAt
+  // === from` is excluded, `occurredAt === to` is included. The asymmetry is
+  // deliberate and load-bearing. An adjustment logged at the instant a visit
+  // is finalized would otherwise fall inside both the period that visit
+  // closes and the one it opens, and be counted twice in revenue. Closed at
+  // the top because that is the period that owns it: it was logged at the
+  // machine during that count, and the closing level it is reconciled
+  // against is this visit's. Two visits finalizing in the same millisecond
+  // is routine with fast, scripted writes, so this is not a theoretical
+  // edge — see the boundary tests in sales.test.ts.
+  const movementAt = new Map<string, number>()
+  for (const a of adjustments) {
+    if (a.slotNumber === undefined) continue
+    if (!entersResidual(a.reason)) continue
+    if (a.occurredAt <= from || a.occurredAt > to) continue
+    const key = levelKey(a.slotNumber, a.itemId)
+    movementAt.set(key, (movementAt.get(key) ?? 0) + a.units)
+  }
+
+  const keys = new Set([...openingAt.keys(), ...closingAt.keys()])
+  const results: SalesLine[] = []
+
+  for (const key of keys) {
+    const closingLine = closingAt.get(key)
+    const opening = openingAt.get(key) ?? 0
+    const movements = movementAt.get(key) ?? 0
+
+    // The item is no longer in this slot. Its own last recorded level decides
+    // whether that is knowable: drained to zero before removal is the normal
+    // changeover and means zero sold; removed while still holding stock could
+    // equally be a sale or a pull-out, so it is censored (design §3.4).
+    if (!closingLine) {
+      const [slotPart, itemPart] = splitKey(key)
+      results.push({
+        slotNumber: slotPart,
+        itemId: itemPart,
+        opening,
+        closing: 0,
+        movements,
+        sold: opening > 0 ? null : 0,
+        censoredReason: opening > 0 ? 'left-slot-with-stock' : undefined,
+        ranDry: false,
+        price: 0,
+        revenue: opening > 0 ? null : 0,
+      })
+      continue
+    }
+
+    const closing = closingLine.before
+    const censored: CensoredReason | undefined =
+      previous === null ? 'no-previous-visit' : undefined
+
+    // Clamped at zero: a negative residual means stock arrived without being
+    // recorded, which is not a negative sale.
+    const sold = censored ? null : Math.max(0, opening - closing + movements)
+
+    results.push({
+      slotNumber: closingLine.slotNumber,
+      itemId: closingLine.itemId,
+      opening,
+      closing,
+      movements,
+      sold,
+      censoredReason: censored,
+      ranDry: closing === 0,
+      price: closingLine.price,
+      revenue: sold === null ? null : sold * closingLine.price,
+    })
+  }
+
+  return results.sort(
+    (a, b) => a.slotNumber - b.slotNumber || a.itemId.localeCompare(b.itemId),
+  )
+}
+
+/** `levelKey` is `${slotNumber}:${itemId}`, and an itemId is a UUID that may
+ * itself contain no colon — so the first colon is the boundary. */
+function splitKey(key: string): [number, Id] {
+  const at = key.indexOf(':')
+  return [Number(key.slice(0, at)), key.slice(at + 1)]
+}
