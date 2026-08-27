@@ -442,4 +442,23 @@ describe('CountScreen', () => {
     const lines = await getCountLines(visit.id)
     expect(lines.find((l) => l.slotNumber === 58)?.before).toBe(3)
   })
+
+  it('lets the after-count be typed on a slot row', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, machine.id)
+
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    await screen.findByText('Coke')
+
+    await user.click(screen.getByLabelText('slot 58 after increase'))
+    await user.click(screen.getByLabelText('slot 58 after increase'))
+
+    await waitFor(async () => {
+      expect((await getCountLines(visit.id))[0]?.after).toBe(2)
+    })
+  })
 })

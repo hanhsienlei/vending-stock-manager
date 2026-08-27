@@ -108,6 +108,9 @@ export function CountScreen({
               // this task.
               counting.setBefore(slotNumber, itemId, qty).catch(() => {})
             }}
+            onSetAfter={(slotNumber, itemId, qty) => {
+              counting.setAfter(slotNumber, itemId, qty).catch(() => {})
+            }}
             onToggleFill={(slotNumber) => {
               counting.toggleFill(slotNumber).catch(() => {})
             }}

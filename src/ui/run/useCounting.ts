@@ -15,6 +15,11 @@ export function useCounting(runId: Id, machineId: Id) {
   const [after, setAfterState] = useState<Map<string, number>>(new Map())
   const [filled, setFilled] = useState<Set<number>>(new Set())
   const [touched, setTouched] = useState<Set<string>>(new Set())
+  // Level keys whose after-count the operator typed themselves. Once a key is
+  // here, nothing derives its after-count any more — not a before-count change
+  // and not the fill recompute — until Fill is tapped, which clears it
+  // (spec §3.2, amended 2026-08-27).
+  const [afterTouched, setAfterTouched] = useState<Set<string>>(new Set())
   // Level keys for which some prior finalized visit recorded a level, even
   // 0 — i.e. `lastRecordedLevels(history)` has an entry for the key. Used to
   // tell "never counted" (seeded at 0 from empty history) apart from
@@ -173,6 +178,15 @@ export function useCounting(runId: Id, machineId: Id) {
         if (filledSlots.length > 0) {
           setFilled((prev) => new Set([...prev, ...filledSlots]))
         }
+
+        // Rule 5: a stored line whose after differs from its before without
+        // `filled` was typed by hand, not derived — resuming a draft must
+        // not let the next before-count edit silently overwrite it.
+        setAfterTouched(new Set(
+          draftLines
+            .filter((l) => l.after !== l.before && !l.filled)
+            .map((l) => levelKey(l.slotNumber, l.itemId)),
+        ))
       }
 
       applied = true
@@ -218,6 +232,40 @@ export function useCounting(runId: Id, machineId: Id) {
     [visit, items],
   )
 
+  const setAfter = useCallback(
+    async (slotNumber: number, itemId: Id, qty: number) => {
+      const key = levelKey(slotNumber, itemId)
+      const clamped = Math.max(0, qty)
+
+      const prevAfter = after
+      const prevAfterTouched = afterTouched
+      const prevFilled = filled
+
+      const nextAfter = new Map(after).set(key, clamped)
+      const nextAfterTouched = new Set(afterTouched).add(key)
+      // A hand-entered figure overrides the Fill shortcut: the green button
+      // must stop claiming this slot was topped to capacity.
+      const nextFilled = new Set(filled)
+      nextFilled.delete(slotNumber)
+
+      setAfterState(nextAfter)
+      setAfterTouched(nextAfterTouched)
+      setFilled(nextFilled)
+
+      try {
+        await persist(
+          slotNumber, itemId, before.get(key) ?? 0, clamped, touched.has(key), false,
+        )
+      } catch (err) {
+        setAfterState(prevAfter)
+        setAfterTouched(prevAfterTouched)
+        setFilled(prevFilled)
+        throw err
+      }
+    },
+    [after, afterTouched, filled, before, touched, persist],
+  )
+
   const setBefore = useCallback(
     async (slotNumber: number, itemId: Id, qty: number) => {
       const key = levelKey(slotNumber, itemId)
@@ -252,7 +300,10 @@ export function useCounting(runId: Id, machineId: Id) {
 
       const nextAfter = new Map(after)
       for (const entry of affected) {
-        nextAfter.set(levelKey(slotNumber, entry.itemId), entry.qty)
+        const entryKey = levelKey(slotNumber, entry.itemId)
+        // Rule 3: a hand-entered after-count is not re-derived.
+        if (afterTouched.has(entryKey)) continue
+        nextAfter.set(entryKey, entry.qty)
       }
 
       setBeforeState(nextBefore)
@@ -264,9 +315,13 @@ export function useCounting(runId: Id, machineId: Id) {
       try {
         for (const entry of affected) {
           const entryKey = levelKey(slotNumber, entry.itemId)
+          // Rule 3: persist whatever nextAfter actually holds for this key —
+          // the derived value, unless it was left alone above because the
+          // operator had typed it by hand.
           await persist(
             slotNumber, entry.itemId,
-            nextBefore.get(entryKey) ?? 0, entry.qty, nextTouched.has(entryKey), isFilled,
+            nextBefore.get(entryKey) ?? 0, nextAfter.get(entryKey) ?? entry.qty,
+            nextTouched.has(entryKey), isFilled,
           )
         }
       } catch (err) {
@@ -277,7 +332,7 @@ export function useCounting(runId: Id, machineId: Id) {
         throw err
       }
     },
-    [before, after, filled, touched, map, contentsOf, persist],
+    [before, after, afterTouched, filled, touched, map, contentsOf, persist],
   )
 
   const toggleFill = useCallback(
@@ -289,6 +344,7 @@ export function useCounting(runId: Id, machineId: Id) {
       const prevAfter = after
       const prevFilled = filled
       const prevTouched = touched
+      const prevAfterTouched = afterTouched
 
       const turningOn = !filled.has(slotNumber)
       const nextFilled = new Set(filled)
@@ -303,6 +359,18 @@ export function useCounting(runId: Id, machineId: Id) {
       for (const entry of target) {
         nextAfter.set(levelKey(slotNumber, entry.itemId), entry.qty)
       }
+
+      // Rule 4: Fill is how a hand-entered after-count is undone. Turning it
+      // on clears every one of the slot's keys out of afterTouched, so the
+      // derived behaviour resumes — turning it off is not an undo and leaves
+      // afterTouched alone.
+      const nextAfterTouched = new Set(afterTouched)
+      if (turningOn) {
+        for (const itemId of slot.accepts) {
+          nextAfterTouched.delete(levelKey(slotNumber, itemId))
+        }
+      }
+      setAfterTouched(nextAfterTouched)
 
       // Filling a slot is an observation, same as tapping −/+ (item 4,
       // fix-plan 2026-08-27): a slot found empty and refilled without ever
@@ -333,10 +401,11 @@ export function useCounting(runId: Id, machineId: Id) {
         setAfterState(prevAfter)
         setFilled(prevFilled)
         setTouched(prevTouched)
+        setAfterTouched(prevAfterTouched)
         throw err
       }
     },
-    [map, filled, after, before, touched, contentsOf, persist],
+    [map, filled, after, before, touched, afterTouched, contentsOf, persist],
   )
 
   const finalize = useCallback(async () => {
@@ -411,6 +480,6 @@ export function useCounting(runId: Id, machineId: Id) {
   return {
     loading: loading || mapLoading,
     map, items, before, after, filled, touched,
-    setBefore, toggleFill, finalize, ranDry, reload,
+    setBefore, setAfter, toggleFill, finalize, ranDry, reload,
   }
 }

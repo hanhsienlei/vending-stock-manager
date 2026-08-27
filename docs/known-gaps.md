@@ -9,14 +9,6 @@ Carried out of the Phase 1 execution ledger before its workspace was deleted.
 
 ## Deferred features
 
-**A mixed slot's fill split is shown but not editable.** Half fixed. `after` now
-renders on every slot row including each sub-row of a mixed slot (`1dfd1be`), so
-Fill is no longer invisible. The remaining half of spec §5.1 — "each sub-row
-remains editable, so an operator loading a different mix can correct it" — is
-still missing. Fill always tops up the highest-preference item, so an operator
-who actually loaded 2 Fanta and 3 Sunkist can see what the app assumed but cannot
-correct it. A new UI surface, deferred.
-
 **No error surface for a rejected write.** `CountScreen` swallows rejections with
 an empty catch. After a rollback the displayed number reverts with no
 explanation, and a genuine finalize failure navigates away as if it had
@@ -93,6 +85,19 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
 - **The v1→v2 upgrade path is actually tested** (`5f6defc`). The `machineId`
   index and `storeroomBalances` tests both opened a *fresh* v2 database and
   wrote their data afterwards, so neither ran the upgrade it was named for.
+- **A mixed slot's fill split is shown but not editable.** `after` had already
+  started rendering on every slot row, including each sub-row of a mixed slot
+  (`1dfd1be`), so Fill was no longer invisible — but it stayed a read-only span
+  with exactly two reachable values, before or capacity, so an operator who
+  actually loaded 2 Fanta and 3 Sunkist could see what the app assumed but
+  could not correct it, and stock redistributed between machines could not be
+  recorded at all. Now fully fixed (task 4b, 2026-08-27): the after-count is an
+  editable `Stepper` on every row, wired through `useCounting`'s new
+  `setAfter`, floored at zero and free to land above or below the
+  before-count. A hand-entered figure turns Fill off and is not re-derived by
+  a later before-count edit; tapping Fill clears it and resumes the derived
+  behaviour. Spec §3.2 amended; spec §5.1's "each sub-row remains editable" is
+  now fully met, not half.
 
 - **A machine already finished today now shows as finished on the machine
   list** (`8559eb3`). Previously the list never looked at visits, so a

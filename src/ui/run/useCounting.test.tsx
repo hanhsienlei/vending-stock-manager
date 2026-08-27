@@ -835,3 +835,165 @@ describe('the price snapshot', () => {
     expect(line?.price).toBe(4.5)
   })
 })
+
+describe('the editable after-count', () => {
+  it('records a partial refill, above the before-count but below capacity', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setBefore(58, coke.id, 4) })
+    await act(async () => { await result.current.setAfter(58, coke.id, 8) })
+
+    const [line] = await getCountLines(visit.id)
+    expect(line.before).toBe(4)
+    expect(line.after).toBe(8)
+  })
+
+  // Redistribution: stock taken out of this machine for another one.
+  it('allows an after-count below the before-count', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setBefore(58, coke.id, 9) })
+    await act(async () => { await result.current.setAfter(58, coke.id, 5) })
+
+    const [line] = await getCountLines(visit.id)
+    expect(line.after).toBe(5)
+  })
+
+  it('never records a negative after-count', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setAfter(58, coke.id, -3) })
+
+    const [line] = await getCountLines(visit.id)
+    expect(line.after).toBe(0)
+  })
+
+  // Rule 3. Without it, entering the after-count before the before-count
+  // silently discards the after-count.
+  it('keeps a hand-entered after-count when the before-count changes afterwards', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setAfter(58, coke.id, 8) })
+    await act(async () => { await result.current.setBefore(58, coke.id, 3) })
+
+    const [line] = await getCountLines(visit.id)
+    expect(line.before).toBe(3)
+    expect(line.after).toBe(8)
+  })
+
+  // Rule 2. The green Fill button must stop claiming a slot was topped to
+  // capacity once the operator has said otherwise.
+  it('turns Fill off when the after-count is entered by hand', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.toggleFill(58) })
+    expect(result.current.filled.has(58)).toBe(true)
+
+    await act(async () => { await result.current.setAfter(58, coke.id, 7) })
+
+    expect(result.current.filled.has(58)).toBe(false)
+    const [line] = await getCountLines(visit.id)
+    expect(line.after).toBe(7)
+    expect(line.filled).toBe(false)
+  })
+
+  // Rule 4. Fill is how a hand-entered figure is undone.
+  it('restores the derived after-count when Fill is tapped again', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setAfter(58, coke.id, 7) })
+    await act(async () => { await result.current.toggleFill(58) })
+
+    const [line] = await getCountLines(visit.id)
+    expect(line.after).toBe(10)
+
+    // And the before-count now drives it again.
+    await act(async () => { await result.current.setBefore(58, coke.id, 2) })
+    const [again] = await getCountLines(visit.id)
+    expect(again.after).toBe(10)
+  })
+
+  // Rule 5.
+  it('treats a resumed draft\'s hand-entered after-count as still hand-entered', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+    await putCountLine({
+      id: newId(), visitId: visit.id, slotNumber: 58, itemId: coke.id,
+      before: 3, after: 8, touched: true, filled: false, price: 4.5, updatedAt: now(),
+    })
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setBefore(58, coke.id, 5) })
+
+    const [line] = await getCountLines(visit.id)
+    expect(line.after).toBe(8)
+  })
+
+  it('gives each item of a mixed slot its own after-count', async () => {
+    const fanta = await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(fanta.id, { kind: 'base' }, [52])
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setAfter(52, fanta.id, 2) })
+    await act(async () => { await result.current.setAfter(52, sunkist.id, 3) })
+
+    const lines = await getCountLines(visit.id)
+    const byItem = new Map(lines.map((l) => [l.itemId, l.after]))
+    expect(byItem.get(fanta.id)).toBe(2)
+    expect(byItem.get(sunkist.id)).toBe(3)
+  })
+})
