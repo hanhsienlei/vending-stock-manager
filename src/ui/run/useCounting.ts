@@ -86,7 +86,17 @@ export function useCounting(runId: Id, machineId: Id) {
       // Recomputed fresh from `historyForMachine` every time, including on a
       // `reload()`-driven re-seed: it depends only on finalized history, never
       // on in-session edits, so there is nothing to merge.
-      setHasHistory(new Set(levels.keys()))
+      //
+      // Excludes the visit being viewed from its own history (item 3,
+      // fix-plan 2026-08-27): finalize() now writes a CountLine for every
+      // slot, touched or not, so once this visit is finalized it satisfies
+      // `lastRecordedLevels` for the whole map — re-opening a machine
+      // finished earlier the same day (ordinary now that finalizedAt is a
+      // marker, not a lock) would otherwise flag every untouched slot RAN
+      // DRY again. The draft lines above still seed `before`/`after` from
+      // this same visit — only the history judgement changes.
+      const historyExcludingSelf = history.filter((h) => h.visit.id !== openedVisit.id)
+      setHasHistory(new Set(lastRecordedLevels(historyExcludingSelf).keys()))
 
       if (firstEntry) {
         // Both `touched` and `filled` are recorded on the line itself (spec

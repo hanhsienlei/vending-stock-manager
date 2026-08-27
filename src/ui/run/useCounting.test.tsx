@@ -181,6 +181,56 @@ describe('useCounting', () => {
     expect(result.current.ranDry(slot)).toBe(true)
   })
 
+  // Item 3, fix-plan 2026-08-27: finalize() now writes a CountLine for every
+  // slot, including untouched ones at 0 — so a machine's own open visit,
+  // once finalized, satisfies `lastRecordedLevels` for every slot in the
+  // map. Re-opening a machine finished earlier the same day (an ordinary
+  // workflow now that finalizedAt is a marker, not a lock — spec §7) must
+  // not let that self-history flag every untouched slot RAN DRY again.
+  it('does not count a machine\'s own open visit as prior history for ran-dry', async () => {
+    const { coke, machine } = await seed()
+    const run = await createRun('2026-08-26')
+
+    const first = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(first.result.current.loading).toBe(false))
+    // Finish immediately, touching nothing — slot 58 records before=0,
+    // after=0, touched=false, exactly like every other never-counted slot.
+    await act(async () => { await first.result.current.finalize() })
+    first.unmount()
+
+    const second = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(second.result.current.loading).toBe(false))
+
+    const slot = second.result.current.map.find((s) => s.slotNumber === 58)!
+    expect(second.result.current.before.get(`58:${coke.id}`)).toBe(0)
+    expect(second.result.current.touched.has(`58:${coke.id}`)).toBe(false)
+    expect(second.result.current.ranDry(slot)).toBe(false)
+  })
+
+  it('still flags ran dry on reopen when a genuinely earlier finalized visit recorded the slot empty', async () => {
+    const { coke, machine } = await seed()
+
+    const past = await createRun('2026-08-22')
+    const pastVisit = await openVisit(past.id, machine.id)
+    await putCountLine({
+      id: newId(), visitId: pastVisit.id, slotNumber: 58, itemId: coke.id,
+      before: 0, after: 0, touched: true, filled: false, updatedAt: now(),
+    })
+    await finalizeVisit(pastVisit.id)
+
+    const run = await createRun('2026-08-26')
+    const first = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(first.result.current.loading).toBe(false))
+    await act(async () => { await first.result.current.finalize() })
+    first.unmount()
+
+    const second = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(second.result.current.loading).toBe(false))
+
+    const slot = second.result.current.map.find((s) => s.slotNumber === 58)!
+    expect(second.result.current.ranDry(slot)).toBe(true)
+  })
+
   it('brings a mixed slot total to capacity on fill, not each item to capacity', async () => {
     const { fanta, sunkist, machine } = await seedMixed()
     const run = await createRun('2026-08-26')
