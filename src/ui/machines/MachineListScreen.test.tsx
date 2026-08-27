@@ -1,14 +1,13 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveMachine } from '../../data/repositories/machines'
-import { createRun } from '../../data/repositories/runs'
+import { createRun, getRun } from '../../data/repositories/runs'
 import { openVisit, putCountLine, finalizeVisit } from '../../data/repositories/visits'
 import { newId, now } from '../../domain/ids'
+import { today } from '../../domain/date'
 import { MachineListScreen } from './MachineListScreen'
-
-const today = () => new Date().toISOString().slice(0, 10)
 
 beforeEach(async () => {
   await db.delete()
@@ -117,5 +116,60 @@ describe('MachineListScreen', () => {
     render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
 
     expect(await screen.findByText('Lift lobby')).toBeInTheDocument()
+  })
+
+  // fix-plan 2026-08-27, item 1 (critical). Before the fix, `today()` used
+  // `toISOString()` (UTC). At 2026-08-28T00:30 Australia/Adelaide — before
+  // the operator's real 09:30 start, and a plausible time to open the app —
+  // that is still 2026-08-27T15:00Z, so the broken version would start
+  // (and look up finished machines against) the *previous* local day's run:
+  // tonight's device-test run, not tomorrow's real one.
+  describe('local calendar day, not UTC (fix-plan 2026-08-27, item 1)', () => {
+    const originalTZ = process.env.TZ
+
+    beforeEach(() => {
+      process.env.TZ = 'Australia/Adelaide'
+      // Only fake `Date` — leaving timers real lets the async IndexedDB
+      // reads and `findBy*` polling underneath this screen resolve normally.
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-08-27T15:00:00Z')) // 2026-08-28T00:30 local
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+      process.env.TZ = originalTZ
+    })
+
+    it('starts a run dated the local day, not the UTC day', async () => {
+      const user = userEvent.setup()
+      await saveMachine({ label: 'Lift lobby', level: 7 })
+      const onCount = vi.fn()
+
+      render(<MachineListScreen onCount={onCount} onViewMap={vi.fn()} />)
+      await screen.findByText('L7')
+
+      await user.click(screen.getByRole('button', { name: /^L7/ }))
+      await vi.waitFor(() => expect(onCount).toHaveBeenCalled())
+
+      const run = await getRun(onCount.mock.calls[0][1])
+      expect(run?.date).toBe('2026-08-28')
+      expect(run?.date).not.toBe('2026-08-27')
+    })
+
+    it('marks a machine finished against the local day\'s run, not the UTC day\'s', async () => {
+      // This is the dangerous half of the bug: a machine finalized under
+      // tonight's *local* run date must still show as finished when the
+      // list is viewed at this same local instant. A UTC-based lookup would
+      // miss it (wrong run) and, worse, a UTC-based `startCount` would
+      // resurrect *yesterday's* run and silently upsert into it instead.
+      const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+      const run = await createRun(today())
+      const visit = await openVisit(run.id, l7.id)
+      await finalizeVisit(visit.id)
+
+      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+      const l7Row = (await screen.findByRole('button', { name: /^L7/ })).closest('li')
+      expect(l7Row).toHaveTextContent(/finished/i)
+    })
   })
 })

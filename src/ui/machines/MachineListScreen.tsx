@@ -3,9 +3,8 @@ import { listMachines } from '../../data/repositories/machines'
 import { getOrCreateRun, getRunForDate } from '../../data/repositories/runs'
 import { listVisitsForRun } from '../../data/repositories/visits'
 import { distinctLabel } from './machineLabel'
+import { today } from '../../domain/date'
 import type { Id, Machine } from '../../domain/types'
-
-const today = () => new Date().toISOString().slice(0, 10)
 
 export function MachineListScreen({
   onCount, onViewMap,
