@@ -3,8 +3,10 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { listItems, saveItem } from '../../data/repositories/items'
+import { saveMachine } from '../../data/repositories/machines'
 import { listPlacements, setPlacement } from '../../data/repositories/placements'
-import { effectivePlacement } from '../../domain/placement'
+import { listSlotConfigs } from '../../data/repositories/slotConfigs'
+import { effectivePlacement, resolveMachineMap } from '../../domain/placement'
 import { ItemEditScreen } from './ItemEditScreen'
 
 beforeEach(async () => {
@@ -110,5 +112,56 @@ describe('ItemEditScreen', () => {
 
     const placements = await listPlacements()
     expect(effectivePlacement(coke.id, 'any-machine', placements)?.slots).toEqual([])
+  })
+
+  it('keeps every machine capacity when a base placement adds a second item', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    // A base placement lands on all fifteen machines at once, so an unpinned
+    // slot moves capacity estate-wide. Coke sorts first alphabetically and
+    // pars higher, so slot 52 would deepen from 5 to 8 on every machine.
+    const l5 = await saveMachine({ label: 'Lift lobby', level: 5 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+
+    render(<ItemEditScreen itemId={coke.id} onDone={onDone} />)
+    await waitFor(() => expect(screen.getByLabelText('Slots')).toHaveValue(''))
+
+    await user.type(screen.getByLabelText('Slots'), '52')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+
+    const [items, placements, configs] = await Promise.all([
+      listItems(), listPlacements(), listSlotConfigs(),
+    ])
+    for (const machine of [l5, l7]) {
+      const slot = resolveMachineMap(machine.id, items, placements, configs)
+        .find((s) => s.slotNumber === 52)
+      expect(slot?.capacity).toBe(5)
+      expect(slot?.accepts).toEqual([sunkist.id, coke.id])
+    }
+  })
+
+  it('leaves a slot nobody stocks yet to seed its capacity from this item', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+
+    render(<ItemEditScreen itemId={coke.id} onDone={onDone} />)
+    await waitFor(() => expect(screen.getByLabelText('Slots')).toHaveValue(''))
+
+    await user.type(screen.getByLabelText('Slots'), '41')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+
+    const [items, placements, configs] = await Promise.all([
+      listItems(), listPlacements(), listSlotConfigs(),
+    ])
+    const slot = resolveMachineMap(l7.id, items, placements, configs)
+      .find((s) => s.slotNumber === 41)
+    expect(slot?.capacity).toBe(8)
   })
 })

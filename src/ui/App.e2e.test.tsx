@@ -70,7 +70,10 @@ describe('a machine, end to end', () => {
     // --- Fill and finalize --------------------------------------------------
     await user.click(screen.getByLabelText('Fill slot 58'))
     await user.click(screen.getByRole('button', { name: 'Finish machine' }))
-    await screen.findByRole('button', { name: 'Add' })
+    // Wait for the machine row, not just the screen: the row is what the
+    // machine list's own load produces, so waiting on it keeps that update
+    // inside the test rather than landing after it.
+    await screen.findByRole('button', { name: 'L7 Lift lobby' })
 
     // One run for the day, one finalized visit, counted 3 and left at 8.
     expect(await listRuns()).toHaveLength(1)

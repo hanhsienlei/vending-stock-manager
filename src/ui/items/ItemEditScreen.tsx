@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { getItem, saveItem } from '../../data/repositories/items'
+import { listMachines } from '../../data/repositories/machines'
 import { getBasePlacement, setPlacement } from '../../data/repositories/placements'
+import { pinSlotCapacities } from '../../data/repositories/slotConfigs'
 import { parseSlotNumbers } from '../../domain/trays'
 import type { Id } from '../../domain/types'
 
@@ -49,6 +51,17 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
       return
     }
     setSlotError(null)
+
+    // A base placement lands on all fifteen machines at once, so every slot
+    // this edit newly occupies has to have its physical capacity pinned first
+    // — on every machine — or adding this item's label re-derives the slot's
+    // capacity from whichever item now sorts first. Pinned before the item is
+    // saved, so a par edited in the same pass cannot leak into the pin.
+    // Slots already in the placement are unchanged and need no new pin.
+    const existingSlots = itemId ? (await getBasePlacement(itemId))?.slots ?? [] : []
+    const added = parsed.filter((slot) => !existingSlots.includes(slot))
+    const machines = await listMachines()
+    await pinSlotCapacities(machines.map((m) => m.id), added)
 
     const item = await saveItem({ id: itemId, name: name.trim(), price, basePar, boxSize })
     await setPlacement(item.id, { kind: 'base' }, parsed)

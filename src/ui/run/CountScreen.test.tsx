@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
@@ -17,6 +17,19 @@ beforeEach(async () => {
   await db.delete()
   await db.open()
 })
+
+/** A map correction saves, reloads the map, and the counting hook re-seeds
+ * behind that. The first two steps change pixels; the re-seed does not —
+ * mounting gates the screen on `loading`, but a reload deliberately does not,
+ * so there is no DOM signal marking the re-seed's end. Left alone it lands in
+ * the gap between two awaits, outside act. Holding an act window open across
+ * it is what makes it land inside the test. Call this with no await between it
+ * and the preceding assertion, so no database callback can slip in first. */
+async function settleReSeed() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  })
+}
 
 describe('CountScreen', () => {
   it('renders slots and persists a decrement without any save action', async () => {
@@ -98,7 +111,9 @@ describe('CountScreen', () => {
     const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
     const run = await createRun('2026-08-26')
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    const { unmount } = render(
+      <CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />,
+    )
 
     expect(await screen.findByText(/no slots/i)).toBeInTheDocument()
 
@@ -106,11 +121,26 @@ describe('CountScreen', () => {
     await user.click(screen.getByRole('button', { name: 'Open slot' }))
     await user.click(await screen.findByRole('button', { name: 'Add Coke' }))
 
-    await screen.findByText('Coke')
-    expect(screen.getByLabelText('slot 58')).toBeInTheDocument()
+    // Wait on the row's stepper, not on the text "Coke" — the sheet lists that
+    // name too, so it is present before the map has reloaded.
+    const row = await screen.findByLabelText('slot 58')
+    await settleReSeed()
+
+    expect(row).toBeInTheDocument()
+    expect(screen.getByText('Coke')).toBeInTheDocument()
 
     const placements = await listPlacements()
     expect(effectivePlacement(coke.id, machine.id, placements)?.slots).toEqual([58])
+
+    // The slot just mapped is countable straight away.
+    const visit = await openVisit(run.id, machine.id)
+    await user.click(screen.getByLabelText('slot 58 increase'))
+    expect(screen.getByLabelText('slot 58')).toHaveTextContent('1')
+    await waitFor(async () => {
+      expect((await getCountLines(visit.id))[0]?.before).toBe(1)
+    })
+
+    unmount()
   })
 
   it('rejects a slot number outside the machine trays in the empty state', async () => {

@@ -1,16 +1,13 @@
 import { listPlacements, setPlacement } from '../../data/repositories/placements'
-import { ensureSlotConfig } from '../../data/repositories/slotConfigs'
+import { pinSlotCapacities } from '../../data/repositories/slotConfigs'
 import { effectivePlacement } from '../../domain/placement'
 import type { Id, Item } from '../../domain/types'
 
 export function SlotEditSheet({
-  machineId, slotNumber, capacity, items, currentItemIds, onSaved, onCancel,
+  machineId, slotNumber, items, currentItemIds, onSaved, onCancel,
 }: {
   machineId: Id
   slotNumber: number
-  /** The slot's resolved capacity *before* this edit, or null when the slot
-   * holds nothing yet and therefore has no capacity to preserve. */
-  capacity: number | null
   items: Item[]
   currentItemIds: Id[]
   onSaved: () => void
@@ -21,18 +18,11 @@ export function SlotEditSheet({
     return effectivePlacement(itemId, machineId, placements)?.slots ?? []
   }
 
-  /** Capacity is physical and shared across everything in the slot (spec §4.3),
-   * so it must not move because a label was added or removed. Without a
-   * SlotConfig the resolved capacity falls back to the basePar of whichever
-   * item happens to sort first, which changes the moment the membership does.
-   * Materialising the config with the pre-change capacity and the current
-   * accepts order pins both — and gives Fill a real preference order instead
-   * of an alphabetical accident. */
+  /** This edit changes what one slot on one machine holds, so pin that slot's
+   * physical capacity first. The same helper serves the base-placement editor,
+   * which pins the same slot across every machine. */
   async function pinSlot() {
-    if (capacity === null) return   // nothing placed yet — first assignment seeds it
-    await ensureSlotConfig(machineId, slotNumber, {
-      capacity, accepts: currentItemIds,
-    })
+    await pinSlotCapacities([machineId], [slotNumber])
   }
 
   async function add(itemId: Id) {

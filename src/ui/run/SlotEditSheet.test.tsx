@@ -19,7 +19,6 @@ beforeEach(async () => {
  * landed — rather than racing the promise chain. */
 function renderSheet(props: {
   slotNumber: number
-  capacity: number | null
   items: Awaited<ReturnType<typeof listItems>>
   currentItemIds: Id[]
 }) {
@@ -28,7 +27,6 @@ function renderSheet(props: {
     <SlotEditSheet
       machineId="L7"
       slotNumber={props.slotNumber}
-      capacity={props.capacity}
       items={props.items}
       currentItemIds={props.currentItemIds}
       onSaved={onSaved}
@@ -53,7 +51,7 @@ describe('SlotEditSheet', () => {
     await setPlacement(sunkist.id, { kind: 'base' }, [52])
 
     const onSaved = renderSheet({
-      slotNumber: 52, capacity: 5, items: await listItems(), currentItemIds: [sunkist.id],
+      slotNumber: 52, items: await listItems(), currentItemIds: [sunkist.id],
     })
 
     await user.click(screen.getByRole('button', { name: 'Add Fanta' }))
@@ -71,7 +69,7 @@ describe('SlotEditSheet', () => {
     await setPlacement(sunkist.id, { kind: 'base' }, [52])
 
     const onSaved = renderSheet({
-      slotNumber: 52, capacity: 5, items: await listItems(), currentItemIds: [sunkist.id],
+      slotNumber: 52, items: await listItems(), currentItemIds: [sunkist.id],
     })
 
     await user.click(screen.getByRole('button', { name: 'Remove Sunkist' }))
@@ -91,7 +89,7 @@ describe('SlotEditSheet', () => {
     await setPlacement(sunkist.id, { kind: 'base' }, [52])
 
     const onSaved = renderSheet({
-      slotNumber: 52, capacity: 5, items: await listItems(), currentItemIds: [sunkist.id],
+      slotNumber: 52, items: await listItems(), currentItemIds: [sunkist.id],
     })
 
     await user.click(screen.getByRole('button', { name: 'Add Coke' }))
@@ -111,7 +109,6 @@ describe('SlotEditSheet', () => {
 
     const onSaved = renderSheet({
       slotNumber: 52,
-      capacity: 8,
       items: await listItems(),
       currentItemIds: [coke.id, sunkist.id],
     })
@@ -127,7 +124,7 @@ describe('SlotEditSheet', () => {
     const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
 
     const onSaved = renderSheet({
-      slotNumber: 41, capacity: null, items: await listItems(), currentItemIds: [],
+      slotNumber: 41, items: await listItems(), currentItemIds: [],
     })
 
     await user.click(screen.getByRole('button', { name: 'Add Coke' }))
