@@ -110,3 +110,11 @@ export async function historyForMachine(
     visits.map(async (visit) => ({ visit, lines: await getCountLines(visit.id) })),
   )
 }
+
+/** Every visit opened against one run, whatever its status. Used by the
+ * machine list to mark which machines are already finished today — an
+ * indexed lookup on `runId`, at most fifteen rows, so it costs nothing
+ * noticeable next to `listMachines`. */
+export function listVisitsForRun(runId: Id): Promise<Visit[]> {
+  return db.visits.where('runId').equals(runId).toArray()
+}

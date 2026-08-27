@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { listMachines } from '../../data/repositories/machines'
-import { getOrCreateRun } from '../../data/repositories/runs'
+import { getOrCreateRun, getRunForDate } from '../../data/repositories/runs'
+import { listVisitsForRun } from '../../data/repositories/visits'
 import type { Id, Machine } from '../../domain/types'
+
+const today = () => new Date().toISOString().slice(0, 10)
 
 export function MachineListScreen({
   onCount, onViewMap,
@@ -10,9 +13,25 @@ export function MachineListScreen({
   onViewMap: (machine: Machine) => void
 }) {
   const [machines, setMachines] = useState<Machine[]>([])
+  // Status indicator only, never a gate — the amended spec §7 makes a
+  // finished machine editable again, so this set only decides what a row
+  // shows, never whether `startCount` below is allowed to run.
+  const [finishedMachineIds, setFinishedMachineIds] = useState<Set<Id>>(new Set())
 
   async function reload() {
     setMachines(await listMachines())
+
+    // A read-only lookup — never getOrCreateRun — so merely viewing this
+    // screen can't mint an empty run before the operator starts counting.
+    const run = await getRunForDate(today())
+    if (!run) {
+      setFinishedMachineIds(new Set())
+      return
+    }
+    const visits = await listVisitsForRun(run.id)
+    setFinishedMachineIds(
+      new Set(visits.filter((v) => v.status === 'finalized').map((v) => v.machineId)),
+    )
   }
 
   useEffect(() => {
@@ -20,8 +39,7 @@ export function MachineListScreen({
   }, [])
 
   async function startCount(machineId: Id) {
-    const today = new Date().toISOString().slice(0, 10)
-    const run = await getOrCreateRun(today)
+    const run = await getOrCreateRun(today())
     onCount(machineId, run.id)
   }
 
@@ -39,6 +57,11 @@ export function MachineListScreen({
             >
               <span className="font-semibold">L{m.level}</span>
               <span className="ml-2 text-gray-500">{m.label}</span>
+              {finishedMachineIds.has(m.id) && (
+                <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold uppercase text-green-700">
+                  Finished
+                </span>
+              )}
             </button>
             <button
               type="button"

@@ -34,3 +34,13 @@ export async function listRuns(): Promise<Run[]> {
 export function getRun(id: Id): Promise<Run | undefined> {
   return db.runs.get(id)
 }
+
+/** A read-only lookup, deliberately separate from `getOrCreateRun`: the
+ * machine list needs to know whether today's run exists so it can mark
+ * finished machines, but merely viewing the list must never create a run —
+ * that would leave an empty Run record behind every time the app is opened
+ * before the operator starts counting. Indexed on `date`, so this is one
+ * cheap lookup either way. */
+export function getRunForDate(date: string): Promise<Run | undefined> {
+  return db.runs.where('date').equals(date).first()
+}
