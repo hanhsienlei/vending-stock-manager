@@ -98,6 +98,63 @@ export function useCounting(runId: Id, machineId: Id) {
       const historyExcludingSelf = history.filter((h) => h.visit.id !== openedVisit.id)
       setHasHistory(new Set(lastRecordedLevels(historyExcludingSelf).keys()))
 
+      // A capacity edit via SlotEditSheet mid-count calls `reload()`, giving
+      // `map` a new identity and re-firing this effect with `firstEntry`
+      // false. `mergeWith` above only fills gaps — a key already present
+      // (a filled slot's `after`) is left untouched — so it cannot be what
+      // updates an already-filled slot's `after` when capacity moves, e.g.
+      // 5 to 20 (item 5, fix-plan 2026-08-27): `after` would stay pinned at
+      // the old capacity both on screen and in the persisted CountLine,
+      // recording a short fill. Recompute every currently filled slot
+      // against the (possibly new) capacity and re-persist it — a no-op
+      // when capacity did not change, since fillToCapacity is deterministic.
+      // Skipped on first entry: `filled` is still empty then (it is seeded
+      // from the draft just below), so there is nothing to recompute yet.
+      if (!firstEntry && filled.size > 0) {
+        const mergedBefore = mergeWith(draftBefore)(before)
+        const rewrites: { slotNumber: number; itemId: Id; before: number; after: number }[] = []
+
+        for (const slotNumber of filled) {
+          const slot = map.find((s) => s.slotNumber === slotNumber)
+          if (!slot) continue
+          const contents = slot.accepts.map((itemId) => ({
+            itemId, qty: mergedBefore.get(levelKey(slotNumber, itemId)) ?? 0,
+          }))
+          for (const entry of fillToCapacity(slot, contents)) {
+            rewrites.push({
+              slotNumber,
+              itemId: entry.itemId,
+              before: mergedBefore.get(levelKey(slotNumber, entry.itemId)) ?? 0,
+              after: entry.qty,
+            })
+          }
+        }
+
+        if (rewrites.length > 0) {
+          const rewriteKeys = rewrites.map((r) => levelKey(r.slotNumber, r.itemId))
+          setAfterState((prev) => {
+            const next = new Map(prev)
+            for (const r of rewrites) next.set(levelKey(r.slotNumber, r.itemId), r.after)
+            return next
+          })
+          setTouched((prev) => new Set([...prev, ...rewriteKeys]))
+
+          await putCountLines(
+            rewrites.map((r) => ({
+              id: newId(),
+              visitId: openedVisit.id,
+              slotNumber: r.slotNumber,
+              itemId: r.itemId,
+              before: r.before,
+              after: r.after,
+              touched: true,
+              filled: true,
+              updatedAt: now(),
+            })),
+          )
+        }
+      }
+
       if (firstEntry) {
         // Both `touched` and `filled` are recorded on the line itself (spec
         // 1a: a slot filled while already at capacity has after === before,

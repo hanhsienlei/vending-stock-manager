@@ -4,6 +4,7 @@ import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
 import { saveMachine } from '../../data/repositories/machines'
 import { setPlacement } from '../../data/repositories/placements'
+import { setSlotConfig } from '../../data/repositories/slotConfigs'
 import { createRun } from '../../data/repositories/runs'
 import {
   openVisit, putCountLine, finalizeVisit, getCountLines,
@@ -300,6 +301,53 @@ describe('useCounting', () => {
     // (3) must survive, not reset back to the historical level (8).
     await act(async () => { await result.current.reload() })
     await waitFor(() => expect(result.current.before.get(`58:${coke.id}`)).toBe(3))
+    expect(result.current.after.get(`58:${coke.id}`)).toBe(3)
+  })
+
+  // Item 5, fix-plan 2026-08-27: SlotEditSheet's onSaved calls
+  // counting.reload(), but mergeWith only fills gaps — a key already
+  // present (a filled slot's `after`) is left alone. Raising a filled
+  // slot's capacity via the slot editor therefore left `after` stuck at the
+  // old capacity, both on screen and in the persisted CountLine, recording
+  // a short fill.
+  it("recomputes a filled slot's after when its capacity changes mid-count", async () => {
+    const { coke, machine } = await seed() // basePar 8 -> capacity 8, no SlotConfig
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, machine.id)
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.toggleFill(58) })
+    expect(result.current.after.get(`58:${coke.id}`)).toBe(8)
+
+    // Raise the slot's capacity, exactly as SlotEditSheet's "Save capacity"
+    // does, then reload the map the way its onSaved callback does.
+    await setSlotConfig(machine.id, 58, { capacity: 20, accepts: [coke.id] })
+    await act(async () => { await result.current.reload() })
+
+    await waitFor(() => expect(result.current.after.get(`58:${coke.id}`)).toBe(20))
+    // The `before` count (what was actually found) must not move.
+    expect(result.current.before.get(`58:${coke.id}`)).toBe(0)
+
+    const lines = await getCountLines(visit.id)
+    const line = lines.find((l) => l.slotNumber === 58 && l.itemId === coke.id)
+    expect(line?.after).toBe(20)
+    expect(line?.filled).toBe(true)
+  })
+
+  it('leaves an unfilled slot alone when its capacity changes mid-count', async () => {
+    const { coke, machine } = await seed()
+    const run = await createRun('2026-08-26')
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setBefore(58, coke.id, 3) })
+    expect(result.current.after.get(`58:${coke.id}`)).toBe(3)
+
+    await setSlotConfig(machine.id, 58, { capacity: 20, accepts: [coke.id] })
+    await act(async () => { await result.current.reload() })
+
+    // Not filled, so raising capacity must not silently top it up.
     expect(result.current.after.get(`58:${coke.id}`)).toBe(3)
   })
 
