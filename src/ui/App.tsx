@@ -5,13 +5,13 @@ import { MachineListScreen } from './machines/MachineListScreen'
 import { MachineMapScreen } from './machines/MachineMapScreen'
 import { CountScreen } from './run/CountScreen'
 import { StoreroomScreen } from './storeroom/StoreroomScreen'
-import type { Id } from '../domain/types'
+import type { Id, Machine } from '../domain/types'
 
 type Screen =
   | { name: 'items' }
   | { name: 'item-edit'; itemId?: Id }
   | { name: 'machines' }
-  | { name: 'machine-map'; machineId: Id }
+  | { name: 'machine-map'; machine: Machine }
   | { name: 'count'; runId: Id; machineId: Id }
   | { name: 'storeroom' }
 
@@ -37,7 +37,7 @@ export default function App() {
       case 'machine-map':
         return (
           <MachineMapScreen
-            machineId={screen.machineId}
+            machine={screen.machine}
             onBack={() => setScreen({ name: 'machines' })}
           />
         )
@@ -53,7 +53,7 @@ export default function App() {
         return (
           <MachineListScreen
             onCount={(machineId, runId) => setScreen({ name: 'count', runId, machineId })}
-            onViewMap={(machineId) => setScreen({ name: 'machine-map', machineId })}
+            onViewMap={(machine) => setScreen({ name: 'machine-map', machine })}
           />
         )
       case 'storeroom':

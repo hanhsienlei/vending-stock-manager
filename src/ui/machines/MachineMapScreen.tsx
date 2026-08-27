@@ -1,22 +1,28 @@
 import { TRAYS, trayOf } from '../../domain/trays'
 import { useMachineMap } from '../useMachineMap'
-import type { Id } from '../../domain/types'
+import type { Machine } from '../../domain/types'
 
 export function MachineMapScreen({
-  machineId, onBack,
+  machine, onBack,
 }: {
-  machineId: Id
+  machine: Machine
   onBack: () => void
 }) {
-  const { map, items, loading } = useMachineMap(machineId)
+  const { map, items, loading } = useMachineMap(machine.id)
 
   if (loading) return <div className="p-4">Loading…</div>
 
   return (
     <div className="p-4">
-      <button type="button" onClick={onBack} className="mb-3 text-blue-600">
-        ← Back
-      </button>
+      <div className="mb-3 flex items-center justify-between">
+        <button type="button" onClick={onBack} className="text-blue-600">
+          ← Back
+        </button>
+        <span className="text-sm">
+          <span className="font-semibold">L{machine.level}</span>
+          <span className="ml-2 text-gray-500">{machine.label}</span>
+        </span>
+      </div>
 
       {TRAYS.map((tray) => {
         const slots = map.filter((s) => trayOf(s.slotNumber) === tray)

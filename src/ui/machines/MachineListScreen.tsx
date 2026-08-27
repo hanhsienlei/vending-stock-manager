@@ -7,7 +7,7 @@ export function MachineListScreen({
   onCount, onViewMap,
 }: {
   onCount: (machineId: Id, runId: Id) => void
-  onViewMap: (machineId: Id) => void
+  onViewMap: (machine: Machine) => void
 }) {
   const [machines, setMachines] = useState<Machine[]>([])
 
@@ -43,7 +43,7 @@ export function MachineListScreen({
             <button
               type="button"
               aria-label={`View map for L${m.level}`}
-              onClick={() => onViewMap(m.id)}
+              onClick={() => onViewMap(m)}
               className="text-xs font-bold text-blue-600"
             >
               Map
