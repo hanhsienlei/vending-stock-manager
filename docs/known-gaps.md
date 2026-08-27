@@ -64,6 +64,22 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   name or price, with no timestamp and no attachment target of its own.
   Flagging this so a future `Note` implementation doesn't treat `remark` as
   a partial version of it, or vice versa.
+- **`Adjustment` has no edit or delete path.** A mistaken adjustment — wrong
+  quantity, wrong reason, logged against the wrong slot — is corrected by
+  logging its opposite, not by fixing the original row. This keeps the ledger
+  an append-only log rather than something that can be quietly rewritten, but
+  it means a bad entry stays visible in the history alongside its correction
+  rather than disappearing. No decision to build editing has been made either
+  way; this is simply what shipped in Phase 2.
+- **The storeroom ledger carries no trolley movements until Phase 3.** Its
+  balance is `last verified count + adjustments and deliveries since`
+  (design §6), but the trolley — the ledger's largest movement source once
+  built — waits for Phase 3's allocation and pick-list work (spec §6). Until
+  then the ledger under-represents genuine stock movement between the
+  storeroom and the machines whenever it happens via the trolley rather than
+  a logged transfer. Expected, not a gap: recorded in the Phase 2 design
+  (§2) as explicitly out of scope, and repeated here so it reads as a known
+  boundary rather than a rediscovered omission.
 
 ---
 
@@ -91,7 +107,7 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   with exactly two reachable values, before or capacity, so an operator who
   actually loaded 2 Fanta and 3 Sunkist could see what the app assumed but
   could not correct it, and stock redistributed between machines could not be
-  recorded at all. Now fully fixed (task 4b, 2026-08-27): the after-count is an
+  recorded at all. Now fully fixed (`d37c7c7`, task 4b, 2026-08-27): the after-count is an
   editable `Stepper` on every row, wired through `useCounting`'s new
   `setAfter`, floored at zero and free to land above or below the
   before-count. A hand-entered figure turns Fill off and is not re-derived by
@@ -122,6 +138,16 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   `src/data/repositories/machines.ts` recording why.
 - **PWA icons exist** (`7b8783f`) — placeholder set, installable, trivially
   replaceable.
+- **Sales are now derived, and stock is now visible.** Phase 2 added
+  `Adjustment` (schema v3, `492d36a`), the sales residual (`4775e46`), period
+  pairing and a date range (`d7b7b4d`), the adjustment sheet reachable from a
+  slot and from the storeroom (`3c1b897`, `a605685`), a storeroom ledger
+  anchored to the last manual count (`615d69a`), and a report page with a
+  stock matrix inside History (`03a329c`, `108d604`). This was the gap this
+  list was written to hold: "the app records what was in every slot but
+  cannot yet answer what sold or where the stock is." See
+  `docs/phase-2-report.md` for the decisions, their costs, and the bugs caught
+  during implementation.
 
 ---
 
