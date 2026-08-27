@@ -21,14 +21,17 @@ function renderSheet(props: {
   slotNumber: number
   items: Awaited<ReturnType<typeof listItems>>
   currentItemIds: Id[]
+  capacity?: number
+  machineId?: string
 }) {
   const onSaved = vi.fn()
   render(
     <SlotEditSheet
-      machineId="L7"
+      machineId={props.machineId ?? 'L7'}
       slotNumber={props.slotNumber}
       items={props.items}
       currentItemIds={props.currentItemIds}
+      capacity={props.capacity ?? 0}
       onSaved={onSaved}
       onCancel={vi.fn()}
     />,
@@ -133,5 +136,65 @@ describe('SlotEditSheet', () => {
     const slot = await resolvedSlot('L7', 41)
     expect(slot?.capacity).toBe(8)
     expect(slot?.accepts).toEqual([coke.id])
+  })
+
+  it('shows the current effective capacity as the starting value', async () => {
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+
+    renderSheet({
+      slotNumber: 52, items: await listItems(), currentItemIds: [sunkist.id], capacity: 5,
+    })
+
+    expect(screen.getByLabelText('Capacity')).toHaveValue(5)
+  })
+
+  it('overrides a slot capacity for this machine only, without disturbing another', async () => {
+    const user = userEvent.setup()
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+
+    const onSaved = renderSheet({
+      slotNumber: 52,
+      items: await listItems(),
+      currentItemIds: [sunkist.id],
+      capacity: 5,
+      machineId: 'L7',
+    })
+
+    const input = screen.getByLabelText('Capacity')
+    await user.clear(input)
+    await user.type(input, '20')
+    await user.click(screen.getByRole('button', { name: 'Save capacity' }))
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+
+    expect((await resolvedSlot('L7', 52))?.capacity).toBe(20)
+    // A per-machine override must not leak onto a different machine's map.
+    expect((await resolvedSlot('L9', 52))?.capacity).toBe(5)
+  })
+
+  it('keeps the preference order when only capacity is overridden', async () => {
+    const user = userEvent.setup()
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+    await setPlacement(coke.id, { kind: 'base' }, [52])
+
+    const onSaved = renderSheet({
+      slotNumber: 52,
+      items: await listItems(),
+      currentItemIds: [sunkist.id, coke.id],
+      capacity: 5,
+    })
+
+    const input = screen.getByLabelText('Capacity')
+    await user.clear(input)
+    await user.type(input, '9')
+    await user.click(screen.getByRole('button', { name: 'Save capacity' }))
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+
+    const slot = await resolvedSlot('L7', 52)
+    expect(slot?.capacity).toBe(9)
+    expect(slot?.accepts).toEqual([sunkist.id, coke.id])
   })
 })

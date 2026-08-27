@@ -120,6 +120,7 @@ export function CountScreen({
           currentItemIds={
             counting.map.find((s) => s.slotNumber === editingSlot)?.accepts ?? []
           }
+          capacity={counting.map.find((s) => s.slotNumber === editingSlot)?.capacity ?? 0}
           onSaved={() => {
             setEditingSlot(null)
             setNewSlot('')

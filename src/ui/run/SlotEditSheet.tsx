@@ -1,18 +1,24 @@
+import { useState } from 'react'
 import { listPlacements, setPlacement } from '../../data/repositories/placements'
-import { pinSlotCapacities } from '../../data/repositories/slotConfigs'
+import { pinSlotCapacities, setSlotConfig } from '../../data/repositories/slotConfigs'
 import { effectivePlacement } from '../../domain/placement'
 import type { Id, Item } from '../../domain/types'
 
 export function SlotEditSheet({
-  machineId, slotNumber, items, currentItemIds, onSaved, onCancel,
+  machineId, slotNumber, items, currentItemIds, capacity, onSaved, onCancel,
 }: {
   machineId: Id
   slotNumber: number
   items: Item[]
   currentItemIds: Id[]
+  /** The slot's current effective capacity — from SlotConfig if one exists,
+   * else derived from the preferred item's basePar (spec §4.3) — shown as
+   * the field's starting value. */
+  capacity: number
   onSaved: () => void
   onCancel: () => void
 }) {
+  const [capacityInput, setCapacityInput] = useState(String(capacity))
   async function slotsFor(itemId: Id): Promise<number[]> {
     const placements = await listPlacements()
     return effectivePlacement(itemId, machineId, placements)?.slots ?? []
@@ -34,6 +40,23 @@ export function SlotEditSheet({
     onSaved()
   }
 
+  /** An explicit capacity override always wins, replacing (not merging with)
+   * whatever SlotConfig this slot already has, or creating one if it has
+   * none. Passing the current `accepts` through keeps preference order
+   * intact — an override touches capacity only.
+   *
+   * This writes to the same table `pinSlotCapacities` protects: once this
+   * runs, the slot has a SlotConfig, so `pinSlotCapacities`'s create-only
+   * `ensureSlotConfig` will see it on the next add/remove and leave the
+   * override alone rather than re-deriving from basePar. No separate pin
+   * call is needed here. */
+  async function saveCapacity() {
+    const value = Number(capacityInput)
+    if (!Number.isFinite(value) || value < 0) return
+    await setSlotConfig(machineId, slotNumber, { capacity: value, accepts: currentItemIds })
+    onSaved()
+  }
+
   async function remove(itemId: Id) {
     const slots = await slotsFor(itemId)
     await pinSlot()
@@ -51,6 +74,28 @@ export function SlotEditSheet({
   return (
     <div className="rounded-lg border bg-white p-3">
       <h3 className="mb-2 font-semibold">Slot {slotNumber}</h3>
+
+      <label className="mb-3 flex items-end gap-2">
+        <span className="flex flex-1 flex-col gap-1">
+          <span className="text-xs font-bold uppercase text-gray-500">Capacity</span>
+          <input
+            aria-label="Capacity"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            className="rounded-lg border p-2"
+            value={capacityInput}
+            onChange={(e) => setCapacityInput(e.target.value)}
+          />
+        </span>
+        <button
+          type="button"
+          onClick={() => void saveCapacity()}
+          className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white"
+        >
+          Save capacity
+        </button>
+      </label>
 
       <ul className="mb-3 flex flex-col gap-1">
         {present.map((item) => (
