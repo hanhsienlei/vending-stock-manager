@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { listMachines, saveMachine, deleteMachine } from '../../data/repositories/machines'
+import { listMachines, saveMachine } from '../../data/repositories/machines'
 import { getOrCreateRun } from '../../data/repositories/runs'
 import type { Id, Machine } from '../../domain/types'
 
@@ -12,7 +12,6 @@ export function MachineListScreen({
   const [machines, setMachines] = useState<Machine[]>([])
   const [level, setLevel] = useState('')
   const [label, setLabel] = useState('')
-  const [confirmingDeleteId, setConfirmingDeleteId] = useState<Id | null>(null)
 
   async function reload() {
     setMachines(await listMachines())
@@ -34,12 +33,6 @@ export function MachineListScreen({
     const today = new Date().toISOString().slice(0, 10)
     const run = await getOrCreateRun(today)
     onCount(machineId, run.id)
-  }
-
-  async function remove(machineId: Id) {
-    await deleteMachine(machineId)
-    setConfirmingDeleteId(null)
-    await reload()
   }
 
   return (
@@ -86,36 +79,6 @@ export function MachineListScreen({
             >
               Map
             </button>
-            {/* Destructive, so it sits last in the row — furthest from the
-                flex-1 "start count" tap target — and needs a second tap. */}
-            {confirmingDeleteId === m.id ? (
-              <>
-                <button
-                  type="button"
-                  aria-label={`Confirm delete L${m.level}`}
-                  onClick={() => void remove(m.id)}
-                  className="text-xs font-bold text-red-600"
-                >
-                  Confirm
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDeleteId(null)}
-                  className="text-xs text-gray-500"
-                >
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                aria-label={`Delete L${m.level}`}
-                onClick={() => setConfirmingDeleteId(m.id)}
-                className="text-xs font-bold text-red-600"
-              >
-                Delete
-              </button>
-            )}
           </li>
         ))}
       </ul>
