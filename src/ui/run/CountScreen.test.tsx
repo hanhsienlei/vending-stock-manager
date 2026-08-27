@@ -52,6 +52,26 @@ describe('CountScreen', () => {
     expect(await screen.findByText('RAN DRY')).toBeInTheDocument()
   })
 
+  it('renders the after-count next to the before-count on a single-item slot, and updates it on Fill', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [11])
+    const run = await createRun('2026-08-26')
+
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    await screen.findByText('Coke')
+
+    // Before Fill, after mirrors before (both 0) but must still be visible —
+    // this is the exact regression from the operator's screenshot: slot 11,
+    // single item, capacity 5, before=1, Fill tapped, row still read "1".
+    await user.click(screen.getByLabelText('slot 11 increase'))
+    expect(screen.getByLabelText('slot 11 after')).toHaveTextContent('1')
+
+    await user.click(screen.getByLabelText('Fill slot 11'))
+    expect(screen.getByLabelText('slot 11 after')).toHaveTextContent('5')
+  })
+
   it('renders one sub-row per item in a mixed slot and keeps after in sync when filled', async () => {
     const user = userEvent.setup()
     const fanta = await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
@@ -88,6 +108,15 @@ describe('CountScreen', () => {
     expect((fantaLine?.after ?? 0) + (sunkistLine?.after ?? 0)).toBe(5)
     expect(fantaLine?.after).toBeGreaterThanOrEqual(fantaLine?.before ?? 0)
     expect(sunkistLine?.after).toBeGreaterThanOrEqual(sunkistLine?.before ?? 0)
+
+    // Every sub-row renders its own after-count on screen, not just in the
+    // persisted line — this is what the operator can actually see mid-count.
+    expect(screen.getByLabelText('slot 52 Sunkist after')).toHaveTextContent(
+      String(sunkistLine?.after ?? 0),
+    )
+    expect(screen.getByLabelText('slot 52 Fanta after')).toHaveTextContent(
+      String(fantaLine?.after ?? 0),
+    )
   })
 
   it('lets a slot be populated at the machine when nothing is mapped yet', async () => {

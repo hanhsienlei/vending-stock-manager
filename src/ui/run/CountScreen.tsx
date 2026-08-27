@@ -93,6 +93,7 @@ export function CountScreen({
             slot={slot}
             items={counting.items}
             before={counting.before}
+            after={counting.after}
             touched={counting.touched}
             isFilled={counting.filled.has(slot.slotNumber)}
             ranDry={counting.ranDry(slot)}
