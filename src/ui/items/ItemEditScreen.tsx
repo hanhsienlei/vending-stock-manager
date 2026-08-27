@@ -3,7 +3,7 @@ import { getItem, saveItem, deleteItem } from '../../data/repositories/items'
 import { listMachines } from '../../data/repositories/machines'
 import { getBasePlacement, setPlacement } from '../../data/repositories/placements'
 import { pinSlotCapacities } from '../../data/repositories/slotConfigs'
-import { parseSlotNumbers } from '../../domain/trays'
+import { TRAYS, allSlotsInTray, trayLabel } from '../../domain/trays'
 import type { Id } from '../../domain/types'
 
 const numberOrNull = (raw: string) => (raw.trim() === '' ? null : Number(raw))
@@ -15,9 +15,18 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
   const [boxSize, setBoxSize] = useState<number | null>(null)
   const [size, setSize] = useState('')
   const [remark, setRemark] = useState('')
-  const [slots, setSlots] = useState('')
-  const [slotError, setSlotError] = useState<string | null>(null)
+  // A set, not typed text: the picker can only express real slot numbers,
+  // so there is nothing left to parse or to reject (fix-plan item 13).
+  const [slots, setSlots] = useState<Set<number>>(new Set())
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+
+  function toggleSlot(slot: number) {
+    setSlots((current) => {
+      const next = new Set(current)
+      if (!next.delete(slot)) next.add(slot)
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!itemId) return
@@ -34,7 +43,7 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
         setSize(item.size ?? '')
         setRemark(item.remark ?? '')
       }
-      setSlots((placement?.slots ?? []).join(', '))
+      setSlots(new Set(placement?.slots ?? []))
     })()
   }, [itemId])
 
@@ -45,17 +54,10 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
     if (!valid) return
 
     // Spec §4.2: set the slots once from the item — "Coke is at 58, 59" —
-    // and note the exceptions per machine afterwards. A bad slot number is
-    // shown, never dropped silently: a typo that vanishes leaves the operator
-    // standing at a machine with a slot that never appears.
-    const { slots: parsed, invalid } = parseSlotNumbers(slots)
-    if (invalid.length > 0) {
-      setSlotError(
-        `Not slot numbers: ${invalid.join(', ')}. Slots run 10–14, 20–29, 30–39, 40–49, 50–59, 60–69.`,
-      )
-      return
-    }
-    setSlotError(null)
+    // and note the exceptions per machine afterwards. The picker can only
+    // produce physical slot numbers, so there is nothing to validate here;
+    // the stored order stays ascending as every reader expects.
+    const parsed = [...slots].sort((a, b) => a - b)
 
     // A base placement lands on all fifteen machines at once, so every slot
     // this edit newly occupies has to have its physical capacity pinned first
@@ -170,25 +172,43 @@ export function ItemEditScreen({ itemId, onDone }: { itemId?: Id; onDone: () => 
         </span>
       </label>
 
-      <label className="flex flex-col gap-1">
+      {/* Fix-plan item 13. A toggle per physical slot, several selectable:
+          three catalogue items legitimately occupy two slots each — Nu Pure
+          Water 48/49, Coke No Sugar 56/57, Coke 58/59 — so a literal
+          single-choice control would have been a regression. Offering only
+          the 55 real slots also makes an invalid slot number unreachable,
+          which is why there is no error message here any more. */}
+      <div className="flex flex-col gap-1">
         <span className="text-xs font-bold uppercase text-gray-500">Slots</span>
-        <input
-          aria-label="Slots"
-          inputMode="numeric"
-          placeholder="58, 59"
-          className="rounded-lg border p-2"
-          value={slots}
-          onChange={(e) => setSlots(e.target.value)}
-        />
+        {TRAYS.map((tray) => (
+          <div key={tray} className="flex items-center gap-2">
+            <span className="w-14 shrink-0 text-xs font-bold uppercase text-gray-400">
+              {trayLabel(tray)}
+            </span>
+            <div className="flex flex-wrap gap-1">
+              {allSlotsInTray(tray).map((slot) => (
+                <button
+                  key={slot}
+                  type="button"
+                  aria-label={`Slot ${slot}`}
+                  aria-pressed={slots.has(slot)}
+                  onClick={() => toggleSlot(slot)}
+                  className={`w-9 rounded-lg py-1 text-xs font-semibold ${
+                    slots.has(slot)
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-200 text-gray-600'
+                  }`}
+                >
+                  {slot}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
         <span className="text-xs text-gray-400">
           Applies to every machine. Correct the exceptions at the machine.
         </span>
-        {slotError && (
-          <span role="alert" className="text-xs font-semibold text-red-600">
-            {slotError}
-          </span>
-        )}
-      </label>
+      </div>
 
       <button
         type="button"

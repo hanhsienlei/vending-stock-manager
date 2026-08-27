@@ -58,13 +58,24 @@ describe('ItemEditScreen', () => {
     await user.type(screen.getByLabelText('Box size'), '24')
   }
 
+  /** The Slots field is a toggle per physical slot (fix-plan item 13), so
+   * choosing 58 and 59 is two taps rather than typed text. */
+  async function pickSlots(
+    user: ReturnType<typeof userEvent.setup>,
+    ...slots: number[]
+  ) {
+    for (const slot of slots) {
+      await user.click(screen.getByLabelText(`Slot ${slot}`))
+    }
+  }
+
   it('places the item into its base slots on save', async () => {
     const user = userEvent.setup()
     const onDone = vi.fn()
     render(<ItemEditScreen onDone={onDone} />)
 
     await fillRequiredFields(user)
-    await user.type(screen.getByLabelText('Slots'), '58, 59')
+    await pickSlots(user, 58, 59)
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
 
@@ -74,18 +85,43 @@ describe('ItemEditScreen', () => {
     expect(placements[0].scope).toEqual({ kind: 'base' })
   })
 
-  it('refuses a slot number outside the machine trays and says which', async () => {
+  // Replaces `refuses a slot number outside the machine trays and says which`.
+  // A picker that only offers the 55 physical slots makes an invalid slot
+  // unreachable rather than rejected after the fact, so there is no longer an
+  // error message to assert on — the absence of the control is the guarantee.
+  it('offers no control at all for a number outside the machine trays', () => {
+    render(<ItemEditScreen onDone={vi.fn()} />)
+
+    expect(screen.queryByLabelText('Slot 99')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Slot 9')).not.toBeInTheDocument()
+    // The first tray is short: it stops at 14.
+    expect(screen.queryByLabelText('Slot 15')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Slot 14')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(55)
+  })
+
+  // The regression the fix plan warned a literal single-choice control would
+  // cause: three catalogue items legitimately occupy two slots each — Nu Pure
+  // Water 48/49, Coke No Sugar 56/57, Coke 58/59.
+  it('keeps a second slot selected rather than replacing the first', async () => {
     const user = userEvent.setup()
     const onDone = vi.fn()
     render(<ItemEditScreen onDone={onDone} />)
 
     await fillRequiredFields(user)
-    await user.type(screen.getByLabelText('Slots'), '58, 99')
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await pickSlots(user, 48)
+    expect(screen.getByLabelText('Slot 48')).toHaveAttribute('aria-pressed', 'true')
 
-    expect(await screen.findByText(/99/)).toBeInTheDocument()
-    expect(await listItems()).toEqual([])
-    expect(onDone).not.toHaveBeenCalled()
+    await pickSlots(user, 49)
+    expect(screen.getByLabelText('Slot 48')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Slot 49')).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+
+    const [item] = await listItems()
+    const placements = await listPlacements()
+    expect(effectivePlacement(item.id, 'any-machine', placements)?.slots).toEqual([48, 49])
   })
 
   it('loads the existing base slots when editing an item', async () => {
@@ -94,7 +130,11 @@ describe('ItemEditScreen', () => {
 
     render(<ItemEditScreen itemId={coke.id} onDone={vi.fn()} />)
 
-    await waitFor(() => expect(screen.getByLabelText('Slots')).toHaveValue('58, 59'))
+    await waitFor(() => {
+      expect(screen.getByLabelText('Slot 58')).toHaveAttribute('aria-pressed', 'true')
+    })
+    expect(screen.getByLabelText('Slot 59')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Slot 57')).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('un-places an item when its slots are cleared', async () => {
@@ -104,9 +144,12 @@ describe('ItemEditScreen', () => {
     await setPlacement(coke.id, { kind: 'base' }, [58])
 
     render(<ItemEditScreen itemId={coke.id} onDone={onDone} />)
-    await waitFor(() => expect(screen.getByLabelText('Slots')).toHaveValue('58'))
+    await waitFor(() => {
+      expect(screen.getByLabelText('Slot 58')).toHaveAttribute('aria-pressed', 'true')
+    })
 
-    await user.clear(screen.getByLabelText('Slots'))
+    // Tapping a selected slot gives it up.
+    await pickSlots(user, 58)
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
 
@@ -127,9 +170,11 @@ describe('ItemEditScreen', () => {
     const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
 
     render(<ItemEditScreen itemId={coke.id} onDone={onDone} />)
-    await waitFor(() => expect(screen.getByLabelText('Slots')).toHaveValue(''))
+    await waitFor(() => {
+      expect(screen.getByLabelText('Slot 52')).toHaveAttribute('aria-pressed', 'false')
+    })
 
-    await user.type(screen.getByLabelText('Slots'), '52')
+    await pickSlots(user, 52)
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
 
@@ -159,9 +204,11 @@ describe('ItemEditScreen', () => {
     await setPlacement(coke.id, { kind: 'base' }, [52])
 
     render(<ItemEditScreen itemId={coke.id} onDone={onDone} />)
-    await waitFor(() => expect(screen.getByLabelText('Slots')).toHaveValue('52'))
+    await waitFor(() => {
+      expect(screen.getByLabelText('Slot 52')).toHaveAttribute('aria-pressed', 'true')
+    })
 
-    await user.clear(screen.getByLabelText('Slots'))
+    await pickSlots(user, 52)
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
 
@@ -254,9 +301,11 @@ describe('ItemEditScreen', () => {
     const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
 
     render(<ItemEditScreen itemId={coke.id} onDone={onDone} />)
-    await waitFor(() => expect(screen.getByLabelText('Slots')).toHaveValue(''))
+    await waitFor(() => {
+      expect(screen.getByLabelText('Slot 41')).toHaveAttribute('aria-pressed', 'false')
+    })
 
-    await user.type(screen.getByLabelText('Slots'), '41')
+    await pickSlots(user, 41)
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
 

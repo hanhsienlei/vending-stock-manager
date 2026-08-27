@@ -66,7 +66,7 @@ describe('a machine, end to end', () => {
     await user.type(screen.getByLabelText('Price'), '4.50')
     await user.type(screen.getByLabelText('Par level'), '8')
     await user.type(screen.getByLabelText('Box size'), '24')
-    await user.type(screen.getByLabelText('Slots'), '58')
+    await user.click(screen.getByLabelText('Slot 58'))
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await screen.findByRole('button', { name: '+ New' })
 

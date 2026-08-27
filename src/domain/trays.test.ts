@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  trayOf, TRAYS, slotsInTray, isSlotNumber, parseSlotNumbers, trayLabel,
+  trayOf, TRAYS, slotsInTray, allSlotsInTray, isSlotNumber, parseSlotNumbers, trayLabel,
 } from './trays'
 
 describe('trayOf', () => {
@@ -25,6 +25,29 @@ describe('slotsInTray', () => {
 
   it('returns an empty array when the tray has no slots', () => {
     expect(slotsInTray([12, 58], 60)).toEqual([])
+  })
+})
+
+describe('allSlotsInTray', () => {
+  // The slot picker (fix-plan item 13) offers exactly these and nothing else,
+  // which is what makes an invalid slot number unreachable rather than merely
+  // rejected after the fact.
+  it('lists the short first tray as 10 to 14', () => {
+    expect(allSlotsInTray(10)).toEqual([10, 11, 12, 13, 14])
+  })
+
+  it('lists a full tray as its ten slots, ascending', () => {
+    expect(allSlotsInTray(50)).toEqual([50, 51, 52, 53, 54, 55, 56, 57, 58, 59])
+  })
+
+  it('agrees with isSlotNumber across every tray', () => {
+    const offered = TRAYS.flatMap(allSlotsInTray)
+    expect(offered.filter((s) => !isSlotNumber(s))).toEqual([])
+    expect(offered).toHaveLength(55)
+  })
+
+  it('has no slots for a number that is not a tray', () => {
+    expect(allSlotsInTray(70)).toEqual([])
   })
 })
 
