@@ -50,9 +50,13 @@ export function SlotRow({
   const overCapacity = total > slot.capacity
 
   return (
+    // Ran dry outranks mixed deliberately, and exclusively: emitting both
+    // border colours left Tailwind's own utility order to decide which the
+    // operator saw. Ran dry is the signal that flags lost sales (spec §5.2);
+    // a mixed slot still reads as mixed from its "N items" label and sub-rows.
     <li
-      className={`rounded-lg border p-2 ${ranDry ? 'border-red-500' : ''} ${
-        mixed ? 'border-blue-500' : ''
+      className={`rounded-lg border p-2 ${
+        ranDry ? 'border-red-500' : mixed ? 'border-blue-500' : ''
       }`}
     >
       <div className="flex items-center gap-2">
