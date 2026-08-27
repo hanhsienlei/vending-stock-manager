@@ -74,15 +74,40 @@ Defaulting to a *forecast* is rejected for a different reason: it produces plaus
 wrong numbers that are never caught. "Unchanged since last visit" is a fact that can be
 defended; a forecast is a guess wearing the costume of an observation.
 
-### 3.2 The after-count is derived, not counted
+### 3.2 The after-count defaults, and is correctable
 
-There is no second counting pass.
+**Amended 2026-08-27**, after the operator described the actual per-machine
+workflow: *count what is left → refill → record what was left behind*. The original
+text is kept below the amendment, because the defaults it describes still hold.
 
-`Fill` is a per-slot toggle. Tap it and the slot's after-count becomes its capacity, and
-the trolley decrements. Leave it and the after-count equals the before-count.
+There is still no second counting *pass*. `Fill` remains a one-tap shortcut and stays
+the common case. What changes is that its result is a **default, not a verdict**: the
+after-count is editable on every slot row.
 
-A slot left at 1 because the storeroom had none records `after = 1`, correctly, without
-being touched.
+Two things forced it, and neither is exotic:
+
+- **A partial refill could not be expressed.** With capacity 10, finding 4 and adding 4
+  leaves 8. `Fill` records 10 and not tapping it records 4; there was no way to say 8.
+  Because this run's after-count is next run's opening, the error does not stay put —
+  it books 2 phantom sales next period and compounds every period after.
+- **Stock is redistributed between machines** when an item runs low. That moves a slot's
+  level in either direction, so an after-count that can only rise to capacity cannot
+  record it. With the after-count editable, an intra-run redistribution is
+  self-recording: the source machine's lower after and the destination's higher one
+  capture it between them, and no `Adjustment` is needed. Movements *between* visits
+  still are (§5.3).
+
+This also completes §5.1's existing promise that "each sub-row remains editable, so an
+operator loading a different mix can correct it" — previously listed as unbuilt in
+`docs/known-gaps.md`. §5.1 and the old §3.2 disagreed; §5.1 wins.
+
+The after-count may sit below the before-count (stock removed) or above it (stock added),
+and is floored at zero. Nothing infers it.
+
+**The defaults, unchanged:** `Fill` is a per-slot toggle. Tap it and the slot's
+after-count becomes its capacity, and the trolley decrements. Leave it and the
+after-count equals the before-count. A slot left at 1 because the storeroom had none
+records `after = 1`, correctly, without being touched.
 
 ### 3.3 Sales is a residual, not a subtraction
 

@@ -960,6 +960,435 @@ reconciliation against machine takings (design §3.6)."
 
 ---
 
+## Task 4b: Make the after-count editable
+
+**Added 2026-08-27, mid-execution**, after the operator described the actual
+per-machine workflow: *count what is left → refill → record what was left
+behind*. Step three could not be recorded. The after-count was a read-only
+`<span>` with exactly two reachable values — `before` (Fill not tapped) or
+`capacity` (Fill tapped) — so a partial refill was inexpressible, and stock
+redistributed between machines could not be recorded at all.
+
+This is foundational rather than cosmetic: this run's after-count is next run's
+opening, so a wrong one books phantom sales next period and compounds every
+period after. Spec §3.2 is amended for it; spec §5.1 already promised sub-row
+editability, so the amendment resolves a contradiction rather than creating one.
+
+**Files:**
+- Modify: `src/ui/run/SlotRow.tsx` (replace `AfterReadout` with a stepper)
+- Modify: `src/ui/run/useCounting.ts` (add `setAfter`, track `afterTouched`)
+- Modify: `src/ui/run/CountScreen.tsx` (wire `onSetAfter` through)
+- Test: `src/ui/run/useCounting.test.tsx`, `src/ui/run/CountScreen.test.tsx`
+
+**Interfaces:**
+- Consumes: `Stepper` from `src/ui/components/Stepper.tsx` — props
+  `{ value, onChange, min?, max?, label, dimmed? }`, default `min = 0`,
+  `max = 99`.
+- Produces: `useCounting().setAfter(slotNumber: number, itemId: Id, qty: number): Promise<void>`;
+  `SlotRow` prop `onSetAfter: (slotNumber: number, itemId: Id, qty: number) => void`.
+
+**The rules this task implements, stated once:**
+
+1. The after-count is editable on every row, including each sub-row of a mixed
+   slot. Floored at zero. It may be **below** the before-count (stock removed
+   for redistribution) or **above** it (refilled).
+2. Editing the after-count by hand marks that level key `afterTouched` and
+   turns the slot's `Fill` **off** — a hand-entered figure overrides the
+   shortcut, and the green Fill button must not keep claiming the slot was
+   topped to capacity.
+3. Once a key is `afterTouched`, changing its before-count no longer recomputes
+   its after-count. Without this, entering the after-count first and the
+   before-count second silently discards the after-count.
+4. Tapping `Fill` **clears** `afterTouched` for that slot's keys and resumes the
+   derived behaviour — it is the way to undo a hand-entered figure.
+5. On resuming a draft visit, `afterTouched` is seeded from the stored lines:
+   a line with `after !== before` and `filled === false` was hand-entered.
+
+- [ ] **Step 1: Write the failing hook tests**
+
+Append to `src/ui/run/useCounting.test.tsx`, following that file's existing
+fixture style (`renderHook`, `waitFor` on `loading`, `act` around calls):
+
+```ts
+describe('the editable after-count', () => {
+  it('records a partial refill, above the before-count but below capacity', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setBefore(58, coke.id, 4) })
+    await act(async () => { await result.current.setAfter(58, coke.id, 8) })
+
+    const [line] = await getCountLines(visit.id)
+    expect(line.before).toBe(4)
+    expect(line.after).toBe(8)
+  })
+
+  // Redistribution: stock taken out of this machine for another one.
+  it('allows an after-count below the before-count', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setBefore(58, coke.id, 9) })
+    await act(async () => { await result.current.setAfter(58, coke.id, 5) })
+
+    const [line] = await getCountLines(visit.id)
+    expect(line.after).toBe(5)
+  })
+
+  it('never records a negative after-count', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setAfter(58, coke.id, -3) })
+
+    const [line] = await getCountLines(visit.id)
+    expect(line.after).toBe(0)
+  })
+
+  // Rule 3. Without it, entering the after-count before the before-count
+  // silently discards the after-count.
+  it('keeps a hand-entered after-count when the before-count changes afterwards', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setAfter(58, coke.id, 8) })
+    await act(async () => { await result.current.setBefore(58, coke.id, 3) })
+
+    const [line] = await getCountLines(visit.id)
+    expect(line.before).toBe(3)
+    expect(line.after).toBe(8)
+  })
+
+  // Rule 2. The green Fill button must stop claiming a slot was topped to
+  // capacity once the operator has said otherwise.
+  it('turns Fill off when the after-count is entered by hand', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.toggleFill(58) })
+    expect(result.current.filled.has(58)).toBe(true)
+
+    await act(async () => { await result.current.setAfter(58, coke.id, 7) })
+
+    expect(result.current.filled.has(58)).toBe(false)
+    const [line] = await getCountLines(visit.id)
+    expect(line.after).toBe(7)
+    expect(line.filled).toBe(false)
+  })
+
+  // Rule 4. Fill is how a hand-entered figure is undone.
+  it('restores the derived after-count when Fill is tapped again', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setAfter(58, coke.id, 7) })
+    await act(async () => { await result.current.toggleFill(58) })
+
+    const [line] = await getCountLines(visit.id)
+    expect(line.after).toBe(10)
+
+    // And the before-count now drives it again.
+    await act(async () => { await result.current.setBefore(58, coke.id, 2) })
+    const [again] = await getCountLines(visit.id)
+    expect(again.after).toBe(10)
+  })
+
+  // Rule 5.
+  it('treats a resumed draft\'s hand-entered after-count as still hand-entered', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+    await putCountLine({
+      id: newId(), visitId: visit.id, slotNumber: 58, itemId: coke.id,
+      before: 3, after: 8, touched: true, filled: false, price: 4.5, updatedAt: now(),
+    })
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setBefore(58, coke.id, 5) })
+
+    const [line] = await getCountLines(visit.id)
+    expect(line.after).toBe(8)
+  })
+
+  it('gives each item of a mixed slot its own after-count', async () => {
+    const fanta = await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(fanta.id, { kind: 'base' }, [52])
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setAfter(52, fanta.id, 2) })
+    await act(async () => { await result.current.setAfter(52, sunkist.id, 3) })
+
+    const lines = await getCountLines(visit.id)
+    const byItem = new Map(lines.map((l) => [l.itemId, l.after]))
+    expect(byItem.get(fanta.id)).toBe(2)
+    expect(byItem.get(sunkist.id)).toBe(3)
+  })
+})
+```
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `npx vitest run src/ui/run/useCounting.test.tsx -t "editable after-count"`
+Expected: FAIL — `result.current.setAfter is not a function`.
+
+- [ ] **Step 3: Implement `setAfter` and `afterTouched` in `useCounting.ts`**
+
+Add the state beside the existing `touched` state:
+
+```ts
+  // Level keys whose after-count the operator typed themselves. Once a key is
+  // here, nothing derives its after-count any more — not a before-count change
+  // and not the fill recompute — until Fill is tapped, which clears it
+  // (spec §3.2, amended 2026-08-27).
+  const [afterTouched, setAfterTouched] = useState<Set<string>>(new Set())
+```
+
+Seed it where the draft is loaded, alongside the existing `before`/`after`
+seeding — a stored line whose after differs from its before without `filled`
+was typed by hand:
+
+```ts
+      setAfterTouched(new Set(
+        draftLines
+          .filter((l) => l.after !== l.before && !l.filled)
+          .map((l) => levelKey(l.slotNumber, l.itemId)),
+      ))
+```
+
+Add the setter:
+
+```ts
+  const setAfter = useCallback(
+    async (slotNumber: number, itemId: Id, qty: number) => {
+      const key = levelKey(slotNumber, itemId)
+      const clamped = Math.max(0, qty)
+
+      const prevAfter = after
+      const prevAfterTouched = afterTouched
+      const prevFilled = filled
+
+      const nextAfter = new Map(after).set(key, clamped)
+      const nextAfterTouched = new Set(afterTouched).add(key)
+      // A hand-entered figure overrides the Fill shortcut: the green button
+      // must stop claiming this slot was topped to capacity.
+      const nextFilled = new Set(filled)
+      nextFilled.delete(slotNumber)
+
+      setAfterState(nextAfter)
+      setAfterTouched(nextAfterTouched)
+      setFilled(nextFilled)
+
+      try {
+        await persist(
+          slotNumber, itemId, before.get(key) ?? 0, clamped, touched.has(key), false,
+        )
+      } catch (err) {
+        setAfterState(prevAfter)
+        setAfterTouched(prevAfterTouched)
+        setFilled(prevFilled)
+        throw err
+      }
+    },
+    [after, afterTouched, filled, before, touched, persist],
+  )
+```
+
+In `setBefore`, respect rule 3 — leave a hand-entered after-count alone:
+
+```ts
+      const affected = slot && filled.has(slotNumber)
+        ? fillToCapacity(slot, contentsOf(slot, nextBefore))
+        : [{ itemId, qty }]
+
+      const nextAfter = new Map(after)
+      for (const entry of affected) {
+        const entryKey = levelKey(slotNumber, entry.itemId)
+        // Rule 3: a hand-entered after-count is not re-derived.
+        if (afterTouched.has(entryKey)) continue
+        nextAfter.set(entryKey, entry.qty)
+      }
+```
+
+Add `afterTouched` to `setBefore`'s dependency array.
+
+In `toggleFill`, clear the slot's keys when Fill is switched on (rule 4). Find
+where `turningOn` is handled and add, alongside the existing state updates:
+
+```ts
+      const nextAfterTouched = new Set(afterTouched)
+      if (turningOn) {
+        for (const itemId of slot.accepts) {
+          nextAfterTouched.delete(levelKey(slotNumber, itemId))
+        }
+      }
+      setAfterTouched(nextAfterTouched)
+```
+
+Include `nextAfterTouched` in the rollback path the same way `prevFilled` is,
+and add `afterTouched` to `toggleFill`'s dependency array.
+
+Finally, export `setAfter` from the hook's return object, beside `setBefore`.
+
+- [ ] **Step 4: Run the hook tests to verify they pass**
+
+Run: `npx vitest run src/ui/run/useCounting.test.tsx`
+Expected: PASS.
+
+- [ ] **Step 5: Write the failing screen test**
+
+Append to `src/ui/run/CountScreen.test.tsx`:
+
+```ts
+it('lets the after-count be typed on a slot row', async () => {
+  const user = userEvent.setup()
+  const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+  const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+  await setPlacement(coke.id, { kind: 'base' }, [58])
+  const run = await createRun('2026-08-26')
+  const visit = await openVisit(run.id, machine.id)
+
+  render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+  await screen.findByText('Coke')
+
+  await user.click(screen.getByLabelText('slot 58 after increase'))
+  await user.click(screen.getByLabelText('slot 58 after increase'))
+
+  await waitFor(async () => {
+    expect((await getCountLines(visit.id))[0]?.after).toBe(2)
+  })
+})
+```
+
+Run it; expect FAIL — `Unable to find a label with the text of: slot 58 after
+increase`.
+
+- [ ] **Step 6: Replace the read-only readout with a stepper**
+
+In `src/ui/run/SlotRow.tsx`, delete the `AfterReadout` component and add
+`onSetAfter` to the props. Render a `Stepper` in its place on both the
+single-item row and each mixed sub-row, keeping the existing `aria-label`
+convention so `slot 58 after` and `slot 52 Fanta after` still identify the
+value:
+
+```tsx
+            <Stepper
+              label={`slot ${slot.slotNumber} after`}
+              value={after.get(levelKey(slot.slotNumber, slot.accepts[0])) ?? 0}
+              onChange={(qty) => onSetAfter(slot.slotNumber, slot.accepts[0], qty)}
+            />
+```
+
+and for a sub-row:
+
+```tsx
+            <Stepper
+              label={`slot ${slot.slotNumber} ${items.get(itemId)?.name ?? ''} after`}
+              value={after.get(levelKey(slot.slotNumber, itemId)) ?? 0}
+              onChange={(qty) => onSetAfter(slot.slotNumber, itemId, qty)}
+            />
+```
+
+Keep the emerald colouring that distinguished the after-count from the
+before-count — the two steppers sit side by side and must not be confusable.
+Add `max={Math.max(99, slot.capacity)}` so capacity never caps a legitimate
+over-capacity reading (the existing over-capacity comment in this file explains
+why recording the truth matters).
+
+In `src/ui/run/CountScreen.tsx`, pass the handler through, matching the
+existing `onSetBefore` shape including the swallowed rejection:
+
+```tsx
+            onSetAfter={(slotNumber, itemId, qty) => {
+              counting.setAfter(slotNumber, itemId, qty).catch(() => {})
+            }}
+```
+
+- [ ] **Step 7: Run the full suite and build**
+
+Run: `npx vitest run && npm run build`
+Expected: all green. Several existing tests assert on the old read-only
+readout via `getByLabelText('slot NN after')` and `toHaveTextContent` — a
+`Stepper` still exposes that label on its value span, so they should keep
+passing. If any fail, fix the test rather than the component, and say so in
+the report.
+
+- [ ] **Step 8: Update the known gaps**
+
+In `docs/known-gaps.md`, move the "A mixed slot's fill split is shown but not
+editable" entry into "Fixed since this list was written" — this task completes
+spec §5.1's promise that each sub-row remains editable.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/ui/run docs/known-gaps.md docs/superpowers/specs docs/superpowers/plans
+git commit -m "feat(count): make the after-count editable, not derived
+
+The operator's workflow is count what is left, refill, record what was left
+behind. Step three could not be recorded: the after-count was a read-only span
+with two reachable values, before or capacity, so a partial refill was
+inexpressible and redistribution between machines could not be recorded at all.
+
+This run's after-count is next run's opening, so a wrong one books phantom
+sales next period and compounds every period after.
+
+Fill stays the one-tap shortcut and the common case; its result is now a
+default rather than a verdict. A hand-entered figure turns Fill off and is not
+re-derived when the before-count changes; tapping Fill clears it again.
+
+Spec §3.2 amended. It contradicted §5.1, which already promised each sub-row of
+a mixed slot stays editable — §5.1 wins, and that known gap is now closed."
+```
+
+---
+
 ## Task 5: The sales residual
 
 **Files:**
