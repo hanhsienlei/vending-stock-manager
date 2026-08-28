@@ -177,7 +177,6 @@ export function HistoryScreen() {
   return (
     <ScreenLayout header={header}>
       <div className="p-4">
-        <h2 className="mb-3 text-lg font-semibold">History</h2>
         {toggle}
 
         {runs.length === 0 ? (

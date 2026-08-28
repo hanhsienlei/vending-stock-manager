@@ -78,7 +78,6 @@ export function StoreroomScreen() {
     >
       <div className="p-4">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Storeroom</h2>
           <span className="text-sm text-gray-500">
             {countedCount} / {items.length} counted
           </span>
