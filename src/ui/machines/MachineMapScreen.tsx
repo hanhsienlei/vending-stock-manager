@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { TRAYS, trayOf, trayLabel } from '../../domain/trays'
+import { TRAYS, allSlotsInTray, trayLabel } from '../../domain/trays'
 import { SlotEditSheet } from '../run/SlotEditSheet'
 import { useMachineMap } from '../useMachineMap'
 import { distinctLabel } from './machineLabel'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { ScreenLayout } from '../components/ScreenLayout'
-import type { Machine } from '../../domain/types'
+import type { Machine, ResolvedSlot } from '../../domain/types'
 
 export function MachineMapScreen({
   machine, onBack,
@@ -19,10 +19,13 @@ export function MachineMapScreen({
   // correction, never a replacement for it.
   const [editingSlot, setEditingSlot] = useState<number | null>(null)
 
-  // Title-only for now (task 3): this screen's own spec section — back
-  // affordance, subtitle, figure — belongs to a later task. See
-  // task-3-brief.md decision #1.
-  const header = <ScreenHeader title={`L${machine.level}`} />
+  const header = (
+    <ScreenHeader
+      back={{ label: '← MACHINES', onClick: onBack }}
+      title={`L${machine.level}`}
+      subtitle={distinctLabel(machine)}
+    />
+  )
 
   if (loading) {
     return (
@@ -32,56 +35,96 @@ export function MachineMapScreen({
     )
   }
 
+  // Every slot the editor can be opened for, mapped or not: an unmapped slot
+  // (§5) has no `ResolvedSlot` of its own, so one is fabricated with capacity
+  // 0 and nothing accepted — the same starting point `SlotEditSheet` already
+  // treats as "not stocked".
   const editing = editingSlot === null
     ? null
-    : map.find((s) => s.slotNumber === editingSlot)
+    : map.find((s) => s.slotNumber === editingSlot) ??
+      ({ slotNumber: editingSlot, capacity: 0, accepts: [] } satisfies ResolvedSlot)
 
   return (
     <ScreenLayout header={header}>
-      <div className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <button type="button" onClick={onBack} className="text-blue-600">
-            ← Back
-          </button>
-          <span className="text-sm">
-            <span className="font-semibold">L{machine.level}</span>
-            {distinctLabel(machine) && (
-              <span className="ml-2 text-gray-500">{distinctLabel(machine)}</span>
-            )}
-          </span>
+      <div>
+        <div
+          className="grid grid-cols-[30px_1fr_44px_34px] items-center gap-2 bg-ink px-3.5 py-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-ground"
+        >
+          <span>SL</span>
+          <span>Holds</span>
+          <span className="text-right">Cap</span>
+          <span />
         </div>
 
         {TRAYS.map((tray) => {
-          const slots = map.filter((s) => trayOf(s.slotNumber) === tray)
-          if (slots.length === 0) return null
+          // §5: every physical slot the tray has, not just the ones with an
+          // item mapped to them — an empty slot renders as "Not stocked"
+          // rather than being absent, so a hole in the map is visible instead
+          // of invisible.
+          const slotNumbers = allSlotsInTray(tray)
+          const first = slotNumbers[0]
+          const last = slotNumbers[slotNumbers.length - 1]
+
           return (
-            <section key={tray} className="mb-4">
-              <h3 className="mb-2 text-xs font-bold uppercase text-gray-500">
-                {trayLabel(tray)}
-              </h3>
-              <ul className="flex flex-col gap-1">
-                {slots.map((slot) => (
-                  <li
-                    key={slot.slotNumber}
-                    className="flex items-center gap-3 rounded-lg border p-2"
-                  >
-                    <span className="w-8 text-sm font-bold text-gray-500">
-                      {slot.slotNumber}
-                    </span>
-                    <span className="flex-1 text-sm">
-                      {slot.accepts.map((id) => items.get(id)?.name ?? '?').join(' / ')}
-                    </span>
-                    <span className="text-xs text-gray-400">cap {slot.capacity}</span>
-                    <button
-                      type="button"
-                      aria-label={`Edit slot ${slot.slotNumber}`}
-                      onClick={() => setEditingSlot(slot.slotNumber)}
-                      className="px-1 text-lg text-gray-400"
+            <section key={tray}>
+              <div className="bg-surface px-3.5 py-2 text-[11px] font-bold tracking-[0.06em] text-neutral-700">
+                {`${trayLabel(tray).toUpperCase()} · SLOTS ${first}–${last}`}
+              </div>
+              <ul>
+                {slotNumbers.map((slotNumber) => {
+                  const slot = map.find((s) => s.slotNumber === slotNumber)
+                  const mixed = (slot?.accepts.length ?? 0) > 1
+
+                  return (
+                    <li
+                      key={slotNumber}
+                      className={`grid grid-cols-[30px_1fr_44px_34px] items-center gap-2 border-b border-rule-light px-3.5 py-2 ${
+                        slot ? 'bg-paper' : 'bg-neutral-100'
+                      }`}
                     >
-                      ⋯
-                    </button>
-                  </li>
-                ))}
+                      <span className="text-[15px] font-extrabold tabular-nums">
+                        {slotNumber}
+                      </span>
+                      {slot ? (
+                        <div className="flex min-w-0 flex-col justify-center">
+                          {slot.accepts.map((id, i) => (
+                            <span
+                              key={id}
+                              className={
+                                i === 0
+                                  ? 'truncate text-[13px] font-semibold'
+                                  : 'truncate text-[12px] font-medium text-neutral-700'
+                              }
+                            >
+                              {items.get(id)?.name ?? '?'}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[13px] font-medium text-neutral-500">
+                          Not stocked
+                        </span>
+                      )}
+                      <span
+                        className={`text-right text-[13px] font-semibold tabular-nums ${
+                          slot ? '' : 'text-neutral-500'
+                        }`}
+                      >
+                        {slot ? slot.capacity : '—'}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Edit slot ${slotNumber}`}
+                        onClick={() => setEditingSlot(slotNumber)}
+                        className={`justify-self-end text-lg text-neutral-400 ${
+                          mixed ? 'self-start' : ''
+                        }`}
+                      >
+                        ⋯
+                      </button>
+                    </li>
+                  )
+                })}
               </ul>
             </section>
           )
@@ -118,6 +161,11 @@ export function MachineMapScreen({
             </div>
           </div>
         )}
+
+        <div className="bg-surface px-4 py-3 text-[11.5px] leading-snug text-neutral-700">
+          The printed map is about 90% right. Tap ⋯ on any slot to correct what
+          it holds or how deep it is — for this machine only.
+        </div>
       </div>
     </ScreenLayout>
   )
