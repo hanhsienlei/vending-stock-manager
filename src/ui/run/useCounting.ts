@@ -439,6 +439,65 @@ export function useCounting(runId: Id, machineId: Id) {
     [map, filled, after, before, touched, afterTouched, contentsOf, persist],
   )
 
+  /** §3.6: Fill left the row and became a tray-level footer action. This is
+   * `toggleFill`'s turning-on branch applied to many slots in one state
+   * update and one persist pass — never the turning-off branch, so a slot
+   * already filled stays filled rather than flipping back. Looping
+   * `toggleFill` would run every iteration against the same stale closure
+   * over `before`/`after`/`filled`, so only the last slot would survive. */
+  const fillTray = useCallback(
+    async (slotNumbers: number[]) => {
+      const slots = slotNumbers
+        .map((n) => map.find((s) => s.slotNumber === n))
+        .filter((s): s is ResolvedSlot => s !== undefined)
+      if (slots.length === 0) return
+
+      const prevAfter = after
+      const prevFilled = filled
+      const prevTouched = touched
+      const prevAfterTouched = afterTouched
+
+      const nextFilled = new Set(filled)
+      const nextAfter = new Map(after)
+      const nextTouched = new Set(touched)
+      const nextAfterTouched = new Set(afterTouched)
+      const writes: { slotNumber: number; itemId: Id; qty: number }[] = []
+
+      for (const slot of slots) {
+        nextFilled.add(slot.slotNumber)
+        for (const entry of fillToCapacity(slot, contentsOf(slot, before))) {
+          const key = levelKey(slot.slotNumber, entry.itemId)
+          nextAfter.set(key, entry.qty)
+          // Filling is an observation, same as it is in toggleFill: a slot
+          // found empty and refilled is still a slot that was looked at, and
+          // must still flag ran dry.
+          nextTouched.add(key)
+          nextAfterTouched.delete(key)
+          writes.push({ slotNumber: slot.slotNumber, itemId: entry.itemId, qty: entry.qty })
+        }
+      }
+
+      setFilled(nextFilled)
+      setAfterState(nextAfter)
+      setTouched(nextTouched)
+      setAfterTouched(nextAfterTouched)
+
+      try {
+        for (const w of writes) {
+          const key = levelKey(w.slotNumber, w.itemId)
+          await persist(w.slotNumber, w.itemId, before.get(key) ?? 0, w.qty, true, true)
+        }
+      } catch (err) {
+        setAfterState(prevAfter)
+        setFilled(prevFilled)
+        setTouched(prevTouched)
+        setAfterTouched(prevAfterTouched)
+        throw err
+      }
+    },
+    [map, before, after, filled, touched, afterTouched, contentsOf, persist],
+  )
+
   const finalize = useCallback(async () => {
     // Re-entering a finished machine is ordinary — the machine list routes
     // back there after every finish and openVisit hands the finalized visit
@@ -511,6 +570,6 @@ export function useCounting(runId: Id, machineId: Id) {
   return {
     loading: loading || mapLoading,
     map, items, before, after, filled, touched,
-    setBefore, setAfter, toggleFill, finalize, ranDry, reload,
+    setBefore, setAfter, toggleFill, fillTray, finalize, ranDry, reload,
   }
 }

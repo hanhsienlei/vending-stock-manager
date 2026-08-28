@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem, deleteItem } from '../../data/repositories/items'
@@ -28,7 +28,7 @@ describe('CountScreen', () => {
     const run = await createRun('2026-08-26')
     const visit = await openVisit(run.id, machine.id)
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
 
     await screen.findByText('Coke')
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
@@ -53,7 +53,7 @@ describe('CountScreen', () => {
     await setPlacement(coke.id, { kind: 'base' }, [58])
     const run = await createRun('2026-08-26')
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
     await screen.findByText('Coke')
     expect(screen.getByTestId('slot-row-58')).not.toHaveAttribute('data-ran-dry', 'true')
   })
@@ -65,7 +65,7 @@ describe('CountScreen', () => {
     await setPlacement(coke.id, { kind: 'base' }, [58])
     const run = await createRun('2026-08-26')
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
     await screen.findByText('Coke')
     expect(screen.getByTestId('slot-row-58')).not.toHaveAttribute('data-ran-dry', 'true')
 
@@ -94,7 +94,7 @@ describe('CountScreen', () => {
     await finalizeVisit(pastVisit.id)
 
     const run = await createRun('2026-08-26')
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
 
     await waitFor(() => {
       expect(screen.getByTestId('slot-row-58')).toHaveAttribute('data-ran-dry', 'true')
@@ -110,7 +110,7 @@ describe('CountScreen', () => {
     await setPlacement(coke.id, { kind: 'base' }, [11])
     const run = await createRun('2026-08-26')
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
     await screen.findByText('Coke')
 
     // Before-count mirrors into after-count for an unfilled slot — this is the
@@ -144,7 +144,7 @@ describe('CountScreen', () => {
     const run = await createRun('2026-08-26')
     const visit = await openVisit(run.id, machine.id)
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
 
     await screen.findByText('Fanta')
     // One sub-row per accepted item — each has its own uniquely labelled cells.
@@ -202,7 +202,7 @@ describe('CountScreen', () => {
     await finalizeVisit(pastVisit.id)
 
     const run = await createRun('2026-08-26')
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
 
     await screen.findByText('Fanta')
     const row = await waitFor(() => {
@@ -238,7 +238,7 @@ describe('CountScreen', () => {
     const run = await createRun('2026-08-26')
 
     const { unmount } = render(
-      <CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />,
+      <CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />,
     )
 
     expect(await screen.findByText(/no slots/i)).toBeInTheDocument()
@@ -282,7 +282,7 @@ describe('CountScreen', () => {
     const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
     const run = await createRun('2026-08-26')
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
     await screen.findByText(/no slots/i)
 
     await user.type(screen.getByLabelText('Slot number'), '99')
@@ -307,7 +307,7 @@ describe('CountScreen', () => {
     await finalizeVisit(pastVisit.id)
 
     const run = await createRun('2026-08-26')
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
 
     // On a 54-slot machine this is the operator's only signal for which rows
     // have actually been worked (spec §3.1, §5.1).
@@ -330,7 +330,7 @@ describe('CountScreen', () => {
     const run = await createRun('2026-08-26')
     const visit = await openVisit(run.id, machine.id)
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
     await screen.findByText('Water')
 
     const counted = screen.getByLabelText('slot 41 counted')
@@ -353,7 +353,7 @@ describe('CountScreen', () => {
     const run = await createRun('2026-08-26')
     const visit = await openVisit(run.id, machine.id)
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
     await screen.findByText('Coke')
 
     const counted = screen.getByLabelText('slot 58 counted')
@@ -394,7 +394,7 @@ describe('CountScreen', () => {
     await deleteItem(ghost.id)
 
     const run = await createRun('2026-08-26')
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
 
     await screen.findByText('Coke')
     expect(screen.queryByText('Ghost Cola')).not.toBeInTheDocument()
@@ -422,7 +422,7 @@ describe('CountScreen', () => {
     const visit = await openVisit(run.id, machine.id)
 
     const onDone = vi.fn()
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={onDone} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={onDone} />)
     await screen.findByText('Coke')
 
     const counted = screen.getByLabelText('slot 58 counted')
@@ -459,7 +459,7 @@ describe('CountScreen', () => {
     // A fresh mount of the same visit — exactly what re-opening a finished
     // machine from the machine list does.
     const onDone = vi.fn()
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={onDone} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={onDone} />)
     await screen.findByText('Coke')
     expect(screen.getByLabelText('slot 58 counted')).toHaveValue('2')
 
@@ -483,7 +483,7 @@ describe('CountScreen', () => {
     const run = await createRun('2026-08-26')
     const visit = await openVisit(run.id, machine.id)
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
     await screen.findByText('Coke')
 
     const refilled = screen.getByLabelText('slot 58 refilled to')
@@ -502,7 +502,7 @@ describe('CountScreen', () => {
     await setPlacement(coke.id, { kind: 'base' }, [58])
     const run = await createRun('2026-08-26')
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
 
     const counted = await screen.findByLabelText('slot 58 counted')
     await user.clear(counted)
@@ -522,7 +522,7 @@ describe('CountScreen', () => {
     await setPlacement(coke.id, { kind: 'base' }, [58])
     const run = await createRun('2026-08-26')
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
 
     const counted = await screen.findByLabelText('slot 58 counted')
     await user.click(counted)
@@ -539,7 +539,7 @@ describe('CountScreen', () => {
     await setPlacement(coke.id, { kind: 'base' }, [58])
     const run = await createRun('2026-08-26')
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
 
     const counted = await screen.findByLabelText('slot 58 counted')
     expect(counted).not.toHaveAttribute('max')
@@ -554,7 +554,7 @@ describe('CountScreen', () => {
     await setPlacement(coke.id, { kind: 'base' }, [58])
     const run = await createRun('2026-08-26')
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
 
     await screen.findByLabelText('slot 58 counted')
     expect(screen.queryByLabelText('slot 58 increase')).not.toBeInTheDocument()
@@ -576,7 +576,7 @@ describe('CountScreen', () => {
     await finalizeVisit(pastVisit.id)
 
     const run = await createRun('2026-08-26')
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
 
     await screen.findByText('Coke')
     expect(screen.queryByText('RAN DRY')).not.toBeInTheDocument()
@@ -592,7 +592,7 @@ describe('CountScreen', () => {
     await setPlacement(coke.id, { kind: 'base' }, [58])
     const run = await createRun('2026-08-26')
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
     await screen.findByText('Coke')
 
     const counted = screen.getByLabelText('slot 58 counted')
@@ -620,7 +620,7 @@ describe('CountScreen', () => {
     await setSlotConfig(machine.id, 52, { capacity: 5, accepts: [fanta.id, sunkist.id] })
     const run = await createRun('2026-08-26')
 
-    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
     await screen.findByText('Fanta')
 
     const fantaCounted = screen.getByLabelText('slot 52 Fanta counted')
@@ -633,5 +633,104 @@ describe('CountScreen', () => {
     expect(screen.queryByText('OVER CAPACITY')).not.toBeInTheDocument()
     expect(screen.getByLabelText('slot 52 Fanta counted')).toHaveClass('text-accent-700')
     expect(screen.getByLabelText('slot 52 Sunkist counted')).toHaveClass('text-accent-700')
+  })
+
+  it('fills the active tray from the footer', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-26')
+
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
+    await user.click(await screen.findByRole('button', { name: 'Fill tray to par' }))
+    expect(await screen.findByLabelText('slot 58 refilled to')).toHaveValue('5')
+  })
+
+  it('says which machine you are in', async () => {
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const run = await createRun('2026-08-26')
+
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
+    expect(await screen.findByRole('heading', { name: /L7/ })).toBeInTheDocument()
+  })
+
+  it('names the two columns', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-26')
+
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
+    // Scoped to the column header itself: the legend under the list (§3.5)
+    // also names both columns, verbatim, so an unscoped query for either
+    // string is ambiguous between the two.
+    const columnHeader = await screen.findByTestId('column-header')
+    expect(within(columnHeader).getByText('Counted')).toBeInTheDocument()
+    expect(within(columnHeader).getByText(/Refilled/)).toBeInTheDocument()
+  })
+
+  // Restores, at screen level, the mixed-slot Fill coverage Task 4 dropped
+  // when the per-row Fill button lost its UI path (§3.6). Per-slot Fill
+  // moves into the ⋯ sheet in the next task, out of scope here — so this
+  // drives the same fillToCapacity-across-items recompute through the new
+  // tray-level "Fill tray to par" footer action instead. This is the seam
+  // that produced the most expensive bug of the previous phase: a
+  // hand-entered after-count in a mixed slot silently overwritten and saved,
+  // reachable in four ordinary taps (fixed at the hook level in 691b5cc,
+  // covered there by useCounting.test.tsx; this is the screen-level path to
+  // the same recompute, run end-to-end through the UI and persistence).
+  it('fills a mixed slot to capacity from the footer, then keeps the cross-item recompute correct after a sibling edit', async () => {
+    const user = userEvent.setup()
+    const fanta = await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(fanta.id, { kind: 'base' }, [52])
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, machine.id)
+
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
+    await screen.findByText('Fanta')
+
+    await user.click(screen.getByRole('button', { name: 'Fill tray to par' }))
+
+    // Filled to capacity (5): the preferred item (Fanta, first
+    // alphabetically) takes the whole shortfall since both items start at 0.
+    await waitFor(() => {
+      expect(screen.getByLabelText('slot 52 Fanta refilled to')).toHaveValue('5')
+    })
+    expect(screen.getByLabelText('slot 52 Sunkist refilled to')).toHaveValue('0')
+
+    // Editing Sunkist's before-count while the slot is still filled must
+    // recompute the whole slot's after via fillToCapacity, not just mirror
+    // Sunkist's own before into its own after.
+    const sunkistCounted = screen.getByLabelText('slot 52 Sunkist counted')
+    await user.clear(sunkistCounted)
+    await user.type(sunkistCounted, '3')
+
+    await waitFor(async () => {
+      const lines = await getCountLines(visit.id)
+      expect(lines.find((l) => l.itemId === sunkist.id)?.before).toBe(3)
+    })
+
+    const lines = await getCountLines(visit.id)
+    const sunkistLine = lines.find((l) => l.itemId === sunkist.id)
+    const fantaLine = lines.find((l) => l.itemId === fanta.id)
+
+    // The slot total sits at capacity, and no item's after dips below its
+    // before — the same invariant the dropped test checked.
+    expect((fantaLine?.after ?? 0) + (sunkistLine?.after ?? 0)).toBe(5)
+    expect(fantaLine?.after).toBeGreaterThanOrEqual(fantaLine?.before ?? 0)
+    expect(sunkistLine?.after).toBeGreaterThanOrEqual(sunkistLine?.before ?? 0)
+
+    // The screen shows the same figures that were persisted, not just
+    // whatever happens to be in memory.
+    expect(screen.getByLabelText('slot 52 Sunkist refilled to')).toHaveValue(
+      String(sunkistLine?.after ?? 0),
+    )
+    expect(screen.getByLabelText('slot 52 Fanta refilled to')).toHaveValue(
+      String(fantaLine?.after ?? 0),
+    )
   })
 })

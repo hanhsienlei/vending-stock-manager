@@ -1,4 +1,6 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import {
+  createContext, useContext, useEffect, useRef, useState, type ReactNode,
+} from 'react'
 
 export type TabName = 'machines' | 'items' | 'storeroom' | 'history'
 
@@ -19,16 +21,48 @@ const TABS: { name: TabName; label: string }[] = [
  * bar's four centred, equal-width buttons with no active state is defect #3
  * ("the navigation bar is in the button, very weird"). */
 export function ScreenLayout({
-  header, children,
+  header, stickyExtra, children,
 }: {
   header: ReactNode
+  /** Bars a screen wants stuck directly beneath the tab row — the run
+   * screen's tray tabs and column header (§3.7). Positioned below the tab
+   * bar by measuring the tab bar's own rendered height rather than a
+   * hard-coded pixel offset, so it tracks the tab bar's real height instead
+   * of guessing it (and drifting the moment that height changes). Rendered
+   * as `nav`'s own sticky sibling, not a wrapper around it, so `nav` keeps
+   * its existing place directly under the shell's own container — nothing
+   * here changes what `nav`'s parent is. */
+  stickyExtra?: ReactNode
   children: ReactNode
 }) {
   const { active, go } = useContext(NavContext)
+  const navRef = useRef<HTMLElement>(null)
+  const [navHeight, setNavHeight] = useState(0)
+
+  useEffect(() => {
+    const el = navRef.current
+    if (!el) return
+    const measure = () => setNavHeight(el.getBoundingClientRect().height)
+    measure()
+    // ResizeObserver isn't implemented in jsdom; the window-resize fallback
+    // still keeps this correct across a real orientation change or a
+    // dynamic-type font bump, just without the finer-grained callback.
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(measure)
+      ro.observe(el)
+      return () => ro.disconnect()
+    }
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [])
+
   return (
     <>
       {header}
-      <nav className="sticky top-0 z-10 flex gap-5 border-b-2 border-rule-strong bg-ground px-4">
+      <nav
+        ref={navRef}
+        className="sticky top-0 z-10 flex gap-5 border-b-2 border-rule-strong bg-ground px-4"
+      >
         {TABS.map((tab) => (
           <button
             key={tab.name}
@@ -45,6 +79,11 @@ export function ScreenLayout({
           </button>
         ))}
       </nav>
+      {stickyExtra && (
+        <div className="sticky z-[5] bg-ground" style={{ top: navHeight }}>
+          {stickyExtra}
+        </div>
+      )}
       {children}
     </>
   )

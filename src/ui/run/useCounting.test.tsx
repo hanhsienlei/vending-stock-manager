@@ -36,6 +36,19 @@ async function seedMixed() {
   return { fanta, sunkist, machine }
 }
 
+/** Three single-item slots in the first (short) tray, for `fillTray`. Each
+ * item's basePar (5) is what capacity falls back to with no SlotConfig. */
+async function seedTray() {
+  const chips = await saveItem({ name: 'Chips', price: 2, basePar: 5, boxSize: 24 })
+  const gum = await saveItem({ name: 'Gum', price: 1, basePar: 5, boxSize: 24 })
+  const mints = await saveItem({ name: 'Mints', price: 1, basePar: 5, boxSize: 24 })
+  const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+  await setPlacement(chips.id, { kind: 'base' }, [10])
+  await setPlacement(gum.id, { kind: 'base' }, [11])
+  await setPlacement(mints.id, { kind: 'base' }, [12])
+  return { chips, gum, mints, machine }
+}
+
 describe('useCounting', () => {
   it('seeds before-counts from the last finalized visit', async () => {
     const { coke, machine } = await seed()
@@ -1070,5 +1083,45 @@ describe('the editable after-count', () => {
     const byItem = new Map(lines.map((l) => [l.itemId, l.after]))
     expect(byItem.get(sunkist.id)).toBe(2)
     expect(result.current.after.get(`52:${sunkist.id}`)).toBe(2)
+  })
+
+  it('fills every named slot to capacity in one batch, and leaves the rest alone', async () => {
+    const { chips, machine } = await seedTray()
+    const run = await createRun('2026-08-26')
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.fillTray([10, 11]) })
+
+    expect(result.current.filled.has(10)).toBe(true)
+    expect(result.current.filled.has(11)).toBe(true)
+    expect(result.current.filled.has(12)).toBe(false)
+    expect(result.current.after.get(`10:${chips.id}`)).toBe(5)
+  })
+
+  it('leaves an already-filled slot filled rather than toggling it off', async () => {
+    const { machine } = await seedTray()
+    const run = await createRun('2026-08-26')
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.toggleFill(10) })
+    await act(async () => { await result.current.fillTray([10, 11]) })
+    expect(result.current.filled.has(10)).toBe(true)
+  })
+
+  it('does not overwrite a hand-entered after-count that is already filled', async () => {
+    const { chips, machine } = await seedTray()
+    const run = await createRun('2026-08-26')
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.setAfter(10, chips.id, 3) })
+    await act(async () => { await result.current.fillTray([10]) })
+    // Fill is a default, not a verdict — but fillTray is an explicit
+    // request, so it does set the slot. This asserts the documented
+    // direction.
+    expect(result.current.after.get(`10:${chips.id}`)).toBe(5)
+    expect(result.current.filled.has(10)).toBe(true)
   })
 })

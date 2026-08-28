@@ -3,35 +3,58 @@ import { TrayTabs } from '../components/TrayTabs'
 import { SlotRow } from './SlotRow'
 import { SlotEditSheet } from './SlotEditSheet'
 import { parseSlotNumbers, trayOf } from '../../domain/trays'
+import { levelKey } from '../../domain/levels'
 import { useCounting } from './useCounting'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { ScreenLayout } from '../components/ScreenLayout'
+import { distinctLabel } from '../machines/machineLabel'
 import type { Id, Machine } from '../../domain/types'
 
 export function CountScreen({
-  runId, machineId, machine, onDone,
+  runId, machine, onDone,
 }: {
   runId: Id
-  machineId: Id
-  // Optional, and kept separate from `machineId` rather than replacing it:
-  // this screen's own CountScreen.test.tsx suite renders it directly with
-  // only `machineId` many times over, and this task is shell-only — it must
-  // not ripple into that unrelated test setup. Callers that have the
-  // `Machine` object already loaded (App does, from the machine list) pass
-  // it through so the header can say `L{level}`.
-  machine?: Machine
+  // The single source of truth for which machine this screen is counting —
+  // both the id used to load the map and the object the header reads its
+  // level and label from. A separate `machineId` prop alongside this one
+  // let a caller pass a `machine` for one and a different machine's id for
+  // the other; nothing enforced that they agreed, which is a latent version
+  // of defect #5 ("no screen says which machine you are in"). One required
+  // prop makes that mismatch unrepresentable.
+  machine: Machine
   onDone: () => void
 }) {
+  const machineId = machine.id
   const counting = useCounting(runId, machineId)
   const [tray, setTray] = useState<number | null>(null)
   const [editingSlot, setEditingSlot] = useState<number | null>(null)
   const [newSlot, setNewSlot] = useState('')
   const [newSlotError, setNewSlotError] = useState<string | null>(null)
 
-  // Title-only for now (task 3): this screen's own spec section — back
-  // affordance, state word, figure, progress rule — belongs to a later task.
-  // See task-3-brief.md decision #1.
-  const header = <ScreenHeader title={machine ? `L${machine.level}` : 'Count'} />
+  // §3.7: `counted` is every level key the operator has touched this visit;
+  // `total` is every (slot, item) pair the map has. Computed ahead of the
+  // loading branch below so the header always has a figure to show, even
+  // while `counting.map`/`counting.touched` are still their empty defaults.
+  const counted = counting.touched.size
+  const total = counting.map.reduce((sum, s) => sum + s.accepts.length, 0)
+
+  const header = (
+    <>
+      <ScreenHeader
+        back={{ label: '← MACHINES', onClick: onDone }}
+        state="COUNTING"
+        title={`L${machine.level}`}
+        subtitle={distinctLabel(machine)}
+        figure={`${counted} / ${total}`}
+      />
+      <div className="h-[3px] bg-rule-light">
+        <div
+          className="h-full bg-accent"
+          style={{ width: `${total === 0 ? 0 : (counted / total) * 100}%` }}
+        />
+      </div>
+    </>
+  )
 
   if (counting.loading) {
     return (
@@ -51,6 +74,32 @@ export function CountScreen({
       ? []
       : counting.map.filter((s) => trayOf(s.slotNumber) === activeTray)
 
+  // §3.7: a tray gets its tick once every (slot, item) pair it has is a
+  // touched level key — the same signal the header's own figure counts.
+  const complete = new Set(
+    [...present].filter((t) => {
+      const traySlots = counting.map.filter((s) => trayOf(s.slotNumber) === t)
+      return traySlots.every((s) =>
+        s.accepts.every((itemId) => counting.touched.has(levelKey(s.slotNumber, itemId))))
+    }),
+  )
+
+  const stickyExtra = activeTray !== null && (
+    <>
+      <TrayTabs active={activeTray} onSelect={setTray} present={present} complete={complete} />
+      <div
+        data-testid="column-header"
+        className="grid grid-cols-[30px_1fr_60px_60px_34px] items-center gap-2 bg-ink px-3.5 py-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-ground"
+      >
+        <span>SL</span>
+        <span>Item</span>
+        <span className="text-center">Counted</span>
+        <span className="text-center leading-tight">Refilled<br />to</span>
+        <span />
+      </div>
+    </>
+  )
+
   function openSlot() {
     const { slots: parsed, invalid } = parseSlotNumbers(newSlot)
     if (invalid.length > 0 || parsed.length !== 1) {
@@ -64,29 +113,27 @@ export function CountScreen({
   }
 
   return (
-    <ScreenLayout header={header}>
+    <ScreenLayout header={header} stickyExtra={stickyExtra}>
       <div>
-        {activeTray !== null && (
-          <TrayTabs active={activeTray} onSelect={setTray} present={present} />
-        )}
-
         {counting.map.length === 0 && editingSlot === null && (
-          <div className="flex flex-col gap-2 p-4">
-            <p className="font-semibold">No slots are mapped for this machine.</p>
-            <p className="text-sm text-gray-500">
+          <div className="flex flex-col gap-3 p-4">
+            <p className="text-[13px] font-semibold text-ink">
+              No slots are mapped for this machine.
+            </p>
+            <p className="text-[12px] text-neutral-600">
               Set an item&apos;s slots on the Items screen to map every machine at
               once, or open one slot here and fill it in at the machine.
             </p>
             <div className="flex items-end gap-2">
               <label className="flex flex-1 flex-col gap-1">
-                <span className="text-xs font-bold uppercase text-gray-500">
+                <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-neutral-600">
                   Slot number
                 </span>
                 <input
                   aria-label="Slot number"
                   inputMode="numeric"
                   placeholder="58"
-                  className="rounded-lg border p-2"
+                  className="border border-rule-light bg-paper p-2 text-[13px] text-ink outline-none"
                   value={newSlot}
                   onChange={(e) => setNewSlot(e.target.value)}
                 />
@@ -94,13 +141,13 @@ export function CountScreen({
               <button
                 type="button"
                 onClick={openSlot}
-                className="rounded-lg bg-blue-600 px-3 py-2 font-semibold text-white"
+                className="bg-accent px-3 py-2 text-[12px] font-extrabold uppercase tracking-[0.04em] text-ground"
               >
                 Open slot
               </button>
             </div>
             {newSlotError && (
-              <span role="alert" className="text-xs font-semibold text-red-600">
+              <span role="alert" className="text-[11px] font-semibold text-accent-700">
                 {newSlotError}
               </span>
             )}
@@ -136,6 +183,14 @@ export function CountScreen({
           ))}
         </ul>
 
+        {counting.map.length > 0 && (
+          <div className="bg-surface px-4 py-3 text-[11.5px] leading-snug text-neutral-700">
+            <strong className="font-bold text-ink">Counted</strong> is what you found in
+            the slot. <strong className="font-bold text-ink">Refilled to</strong> is what
+            you leave behind — next visit opens from it.
+          </div>
+        )}
+
         {editingSlot !== null && (
           <SlotEditSheet
             machineId={machineId}
@@ -154,7 +209,16 @@ export function CountScreen({
           />
         )}
 
-        <div className="p-3">
+        <div className="flex border-t-2 border-rule-strong">
+          <button
+            type="button"
+            onClick={() => {
+              void counting.fillTray(slots.map((s) => s.slotNumber)).catch(() => {})
+            }}
+            className="flex-1 bg-ground px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] text-ink"
+          >
+            Fill tray to par
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -167,7 +231,7 @@ export function CountScreen({
               // machine either way.
               void counting.finalize().catch(() => {}).then(onDone)
             }}
-            className="w-full rounded-lg bg-blue-600 p-3 font-semibold text-white"
+            className="flex-1 bg-accent px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] text-ground"
           >
             Finish machine
           </button>

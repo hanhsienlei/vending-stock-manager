@@ -166,7 +166,7 @@ describe('a machine, end to end', () => {
     // --- The next run opens on what the machine was left at ----------------
     const nextRun = await getOrCreateRun(tomorrow())
     render(
-      <CountScreen runId={nextRun.id} machineId={machine.id} onDone={vi.fn()} />,
+      <CountScreen runId={nextRun.id} machine={machine} onDone={vi.fn()} />,
     )
 
     const nextVisitCounted = (await screen.findAllByLabelText('slot 58 counted')).at(-1)

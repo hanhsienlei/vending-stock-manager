@@ -48,7 +48,6 @@ export default function App() {
         return (
           <CountScreen
             runId={screen.runId}
-            machineId={screen.machine.id}
             machine={screen.machine}
             onDone={() => setScreen({ name: 'machines' })}
           />
