@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem, deleteItem } from '../../data/repositories/items'
@@ -776,5 +776,129 @@ describe('CountScreen', () => {
     expect(screen.getByLabelText('slot 52 Sunkist refilled to')).toHaveValue('4')
     const lines = await getCountLines((await openVisit(run.id, machine.id)).id)
     expect(lines.find((l) => l.itemId === sunkist.id)?.after).toBe(4)
+  })
+
+  // Fix 3(a), 2026-08-28 whole-branch review: on a machine with nothing
+  // mapped, `slots` is `[]`, `fillTray([])` returns immediately, and the
+  // button was inert — visibly present, silently doing nothing when tapped.
+  it('hides Fill tray to par when the machine has nothing mapped', async () => {
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const run = await createRun('2026-08-26')
+
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
+    await screen.findByText(/no slots/i)
+
+    expect(screen.queryByRole('button', { name: 'Fill tray to par' })).not.toBeInTheDocument()
+  })
+
+  // Fix 3(b), 2026-08-28 whole-branch review: the "Open slot" flow opens the
+  // sheet for a slot number that is not yet in the map — before this fix,
+  // the sheet still rendered "Fill to capacity", and `toggleFill` would
+  // return immediately at its own `map.find` guard. The button could never
+  // do anything.
+  it('does not offer Fill in the sheet for a slot just opened that is not yet in the map', async () => {
+    const user = userEvent.setup()
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const run = await createRun('2026-08-26')
+
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
+    await screen.findByText(/no slots/i)
+
+    await user.type(screen.getByLabelText('Slot number'), '58')
+    await user.click(screen.getByRole('button', { name: 'Open slot' }))
+
+    await screen.findByText('Slot 58')
+    expect(screen.queryByRole('button', { name: 'Fill slot 58' })).not.toBeInTheDocument()
+  })
+
+  // Fix 5, 2026-08-28 whole-branch review: `counted` was `touched.size`,
+  // never pruned. Removing an item from a slot mid-count via `⋯` shrinks the
+  // map on `reload()` while `touched` keeps the stale key, so the header
+  // read `2 / 1` and the bar rendered at 200% of a full-width parent —
+  // reintroducing the container-break defect on the one screen it was fixed
+  // for. Intersecting `touched` with the current map's keys keeps both the
+  // figure and the bar within bounds.
+  it('does not let counted exceed total, or the bar exceed 100%, after a slot shrinks mid-count', async () => {
+    const user = userEvent.setup()
+    const fanta = await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(fanta.id, { kind: 'base' }, [52])
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+    const run = await createRun('2026-08-26')
+
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
+    await screen.findByText('Fanta')
+
+    // Touch both items of the mixed slot: counted 2, total 2.
+    const fantaCounted = screen.getByLabelText('slot 52 Fanta counted')
+    await user.clear(fantaCounted)
+    await user.type(fantaCounted, '1')
+    const sunkistCounted = screen.getByLabelText('slot 52 Sunkist counted')
+    await user.clear(sunkistCounted)
+    await user.type(sunkistCounted, '2')
+    await waitFor(() => expect(screen.getByText('2 / 2')).toBeInTheDocument())
+
+    // Remove Sunkist from the slot via ⋯ — the map shrinks to one item, but
+    // Sunkist's level key stays in `touched`.
+    await user.click(screen.getByRole('button', { name: 'Edit slot 52' }))
+    await user.click(await screen.findByRole('button', { name: 'Remove Sunkist' }))
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText('slot 52 Sunkist counted')).not.toBeInTheDocument()
+    })
+
+    // counted (1) never exceeds total (1) in the header figure …
+    expect(screen.getByText('1 / 1')).toBeInTheDocument()
+    expect(screen.queryByText(/^2 \//)).not.toBeInTheDocument()
+
+    // … and the bar's width never exceeds 100% of its track.
+    const track = document.querySelector('.bg-rule-light.overflow-hidden') as HTMLElement
+    const bar = track.firstElementChild as HTMLElement
+    expect(bar.style.width).toBe('100%')
+  })
+
+  // Fix 6, 2026-08-28 whole-branch review: `onFocus`'s synchronous
+  // `select()` is routinely defeated on iOS Safari, where the caret is
+  // positioned on touch AFTER focus fires. `onClick` fires after the caret
+  // is placed, so it is the insurance that covers the touch ordering —
+  // verified here directly, independent of whatever `onFocus` already did.
+  it('also selects the whole figure on click, as insurance for the iOS focus/caret ordering', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-26')
+
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
+    const counted = await screen.findByLabelText('slot 58 counted')
+    const refilled = screen.getByLabelText('slot 58 refilled to')
+
+    const selectSpy = vi.spyOn(HTMLInputElement.prototype, 'select')
+    fireEvent.click(counted)
+    expect(selectSpy).toHaveBeenCalled()
+
+    selectSpy.mockClear()
+    fireEvent.click(refilled)
+    expect(selectSpy).toHaveBeenCalled()
+
+    selectSpy.mockRestore()
+  })
+
+  // Fix 7, 2026-08-28 whole-branch review: every row already carries its own
+  // `border-b border-rule-light` (§3.2's ruled table); the `gap-2` between
+  // rows cost roughly 80px per screen and made the rows read as floating
+  // cards instead of a ruled table.
+  it('butts slot rows together with no gap between them', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-08-26')
+
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
+    const row = await screen.findByTestId('slot-row-58')
+    const list = row.parentElement as HTMLElement
+
+    expect(list.className).not.toMatch(/\bgap-\d/)
   })
 })

@@ -26,6 +26,7 @@ function renderSheet(props: {
   machineId?: string
   isFilled?: boolean
   onToggleFill?: () => void
+  slotInMap?: boolean
 }) {
   const onSaved = vi.fn()
   render(
@@ -39,6 +40,7 @@ function renderSheet(props: {
       onCancel={vi.fn()}
       isFilled={props.isFilled}
       onToggleFill={props.onToggleFill}
+      slotInMap={props.slotInMap}
     />,
   )
   return onSaved
@@ -269,7 +271,7 @@ describe('SlotEditSheet', () => {
   it('offers Fill for this slot when opened during a count', async () => {
     const user = userEvent.setup()
     const onToggleFill = vi.fn()
-    renderSheet({ isFilled: false, onToggleFill })
+    renderSheet({ isFilled: false, onToggleFill, slotInMap: true })
     await user.click(screen.getByRole('button', { name: 'Fill slot 58' }))
     expect(onToggleFill).toHaveBeenCalled()
   })
@@ -279,21 +281,66 @@ describe('SlotEditSheet', () => {
     expect(screen.queryByRole('button', { name: 'Fill slot 58' })).not.toBeInTheDocument()
   })
 
+  // Fix 3(b), 2026-08-28 whole-branch review: the count screen's "Open slot"
+  // flow opens this sheet for a slot number the operator typed that is not
+  // yet in the machine's map — `toggleFill` returns immediately at its own
+  // `map.find` guard, so a rendered Fill button could never do anything.
+  // The caller passes whether the slot is mapped; the sheet must not offer
+  // Fill just because a handler happens to be present.
+  it('does not offer Fill for a slot that is not yet in the map, even mid-count', () => {
+    renderSheet({ isFilled: false, onToggleFill: vi.fn(), slotInMap: false })
+    expect(screen.queryByRole('button', { name: 'Fill slot 58' })).not.toBeInTheDocument()
+  })
+
   // §3.8: the tray-level "Fill tray to par" footer action is the only
   // accent-coloured action in the run screen body; a filled slot's toggle
   // is a selected state (tokens.md: ink fill for a selected state), not a
   // second primary action, so it must not carry the accent class.
   it('shows the per-slot Fill control in ink fill when this slot is already filled', () => {
-    renderSheet({ isFilled: true, onToggleFill: () => {} })
+    renderSheet({ isFilled: true, onToggleFill: () => {}, slotInMap: true })
     const button = screen.getByRole('button', { name: 'Fill slot 58' })
     expect(button.className).toMatch(/\bbg-ink\b/)
     expect(button.className).not.toMatch(/\bbg-accent\b/)
   })
 
   it('shows the per-slot Fill control in ground fill when this slot is not filled', () => {
-    renderSheet({ isFilled: false, onToggleFill: () => {} })
+    renderSheet({ isFilled: false, onToggleFill: () => {}, slotInMap: true })
     const button = screen.getByRole('button', { name: 'Fill slot 58' })
     expect(button.className).toMatch(/\bbg-ground\b/)
     expect(button.className).not.toMatch(/\bbg-accent\b/)
+  })
+
+  // Fix 4, 2026-08-28 whole-branch review: MachineMapScreen fabricates
+  // `{capacity: 0}` for an unmapped "Not stocked" row, and this sheet used
+  // to pre-fill "0" into the Capacity field — a Save the `< 1` guard would
+  // silently swallow forever, with no message. Starting the field empty
+  // makes it visibly incomplete instead.
+  it('starts the capacity field empty, not pre-filled with 0, for an unmapped slot', () => {
+    renderSheet({ capacity: 0 })
+    expect(screen.getByLabelText('Capacity')).toHaveValue(null)
+  })
+
+  it('disables Save capacity while the field is empty', () => {
+    renderSheet({ capacity: 0 })
+    expect(screen.getByRole('button', { name: 'Save capacity' })).toBeDisabled()
+  })
+
+  it('disables Save capacity while the typed value is below 1, and re-enables once it is not', async () => {
+    const user = userEvent.setup()
+    renderSheet({ capacity: 0 })
+    const input = screen.getByLabelText('Capacity')
+    const save = screen.getByRole('button', { name: 'Save capacity' })
+
+    await user.type(input, '0')
+    expect(save).toBeDisabled()
+
+    await user.clear(input)
+    await user.type(input, '5')
+    expect(save).not.toBeDisabled()
+  })
+
+  it('enables Save capacity immediately for a slot with a real starting capacity', () => {
+    renderSheet({ capacity: 5 })
+    expect(screen.getByRole('button', { name: 'Save capacity' })).not.toBeDisabled()
   })
 })

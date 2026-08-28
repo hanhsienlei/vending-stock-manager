@@ -43,6 +43,15 @@ function CountCell({
       // replaced. Non-negativity is enforced below instead of via `min`.
       value={value}
       onFocus={(e) => e.currentTarget.select()}
+      // Fix 6, 2026-08-28 whole-branch review: on iOS Safari the caret is
+      // positioned on touch AFTER focus fires, which routinely defeats a
+      // synchronous `select()` in `onFocus` — verified only in desktop
+      // Chrome. Without this, typing `3` into a cell showing `12` yields
+      // `312`: a silently wrong stock figure, in the exact interaction this
+      // branch exists to fix. `onClick` fires after the caret is placed, so
+      // it is cheap, harmless insurance on desktop and covers the touch
+      // ordering on iOS.
+      onClick={(e) => e.currentTarget.select()}
       onChange={(e) => {
         const digits = e.target.value.replace(/\D/g, '')
         onChange(digits === '' ? 0 : Math.max(0, Number(digits)))

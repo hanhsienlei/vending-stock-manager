@@ -444,23 +444,43 @@ export function useCounting(runId: Id, machineId: Id) {
    * update and one persist pass — never the turning-off branch, so a slot
    * already filled stays filled rather than flipping back. Looping
    * `toggleFill` would run every iteration against the same stale closure
-   * over `before`/`after`/`filled`, so only the last slot would survive. */
+   * over `before`/`after`/`filled`, so only the last slot would survive.
+   *
+   * Two differences from `toggleFill`, both from the 2026-08-28 whole-branch
+   * review (fixes 1 and 2) — a single footer tap is a bulk convenience on
+   * the Refilled-to column, not a per-slot decision the operator made about
+   * every slot underneath it:
+   *
+   * Fix 1: unlike `toggleFill`, this never adds to `touched`. `touched`
+   * driving `ranDry` means one tap would paint the ran-dry edge on every
+   * slot in the tray with no prior recorded level, and `finalize` would
+   * persist `touched: true` for slots nobody actually looked at — a false
+   * "counted and found empty" feeding a later demand model. `toggleFill`'s
+   * per-slot semantics are unchanged; observation is still recorded there.
+   *
+   * Fix 2: a slot with any hand-entered after-count (Rule 3 — a key present
+   * in `afterTouched`) is skipped entirely, leaving its `after`,
+   * `afterTouched` and `filled` untouched. Per-slot Fill in the `⋯` sheet
+   * remains the explicit way to override a typed figure (§3.6, "tap Fill
+   * again to go back to filling to capacity"). Without this, a part-refill
+   * typed by hand and finished off with the tray footer is silently
+   * rewritten to capacity, persisted, and books phantom sales next period. */
   const fillTray = useCallback(
     async (slotNumbers: number[]) => {
       const slots = slotNumbers
         .map((n) => map.find((s) => s.slotNumber === n))
         .filter((s): s is ResolvedSlot => s !== undefined)
+        // Fix 2: skip any slot with a hand-entered after-count on any of its
+        // items — leave it completely alone.
+        .filter((slot) =>
+          !slot.accepts.some((itemId) => afterTouched.has(levelKey(slot.slotNumber, itemId))))
       if (slots.length === 0) return
 
       const prevAfter = after
       const prevFilled = filled
-      const prevTouched = touched
-      const prevAfterTouched = afterTouched
 
       const nextFilled = new Set(filled)
       const nextAfter = new Map(after)
-      const nextTouched = new Set(touched)
-      const nextAfterTouched = new Set(afterTouched)
       const writes: { slotNumber: number; itemId: Id; qty: number }[] = []
 
       for (const slot of slots) {
@@ -468,30 +488,23 @@ export function useCounting(runId: Id, machineId: Id) {
         for (const entry of fillToCapacity(slot, contentsOf(slot, before))) {
           const key = levelKey(slot.slotNumber, entry.itemId)
           nextAfter.set(key, entry.qty)
-          // Filling is an observation, same as it is in toggleFill: a slot
-          // found empty and refilled is still a slot that was looked at, and
-          // must still flag ran dry.
-          nextTouched.add(key)
-          nextAfterTouched.delete(key)
           writes.push({ slotNumber: slot.slotNumber, itemId: entry.itemId, qty: entry.qty })
         }
       }
 
       setFilled(nextFilled)
       setAfterState(nextAfter)
-      setTouched(nextTouched)
-      setAfterTouched(nextAfterTouched)
 
       try {
         for (const w of writes) {
           const key = levelKey(w.slotNumber, w.itemId)
-          await persist(w.slotNumber, w.itemId, before.get(key) ?? 0, w.qty, true, true)
+          // Fix 1: persist whatever `touched` already holds for this key —
+          // fillTray never adds to it.
+          await persist(w.slotNumber, w.itemId, before.get(key) ?? 0, w.qty, touched.has(key), true)
         }
       } catch (err) {
         setAfterState(prevAfter)
         setFilled(prevFilled)
-        setTouched(prevTouched)
-        setAfterTouched(prevAfterTouched)
         throw err
       }
     },

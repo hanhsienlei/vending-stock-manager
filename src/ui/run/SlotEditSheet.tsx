@@ -7,7 +7,7 @@ import type { Id, Item } from '../../domain/types'
 
 export function SlotEditSheet({
   machineId, slotNumber, items, currentItemIds, capacity, onSaved, onCancel,
-  isFilled, onToggleFill,
+  isFilled, onToggleFill, slotInMap,
 }: {
   machineId: Id
   slotNumber: number
@@ -25,8 +25,28 @@ export function SlotEditSheet({
    * `onToggleFill` and the control does not render (§3.6). */
   isFilled?: boolean
   onToggleFill?: () => void
+  /** Whether `slotNumber` is actually in the machine's map. The count
+   * screen's "Open slot" flow (an unmapped slot the operator typed a number
+   * for) opens this sheet before the slot has any `ResolvedSlot` — `Fill to
+   * capacity` would render but `toggleFill` returns immediately at its own
+   * `map.find` guard, so the button could never do anything. The caller
+   * knows whether the slot is mapped; the sheet must not infer it (fix 3b,
+   * 2026-08-28 whole-branch review). Defaults to false so a caller that
+   * omits it (none currently do) fails closed rather than showing a dead
+   * button. */
+  slotInMap?: boolean
 }) {
-  const [capacityInput, setCapacityInput] = useState(String(capacity))
+  // Fix 4, 2026-08-28 whole-branch review: an unmapped map slot is fabricated
+  // with capacity 0 (MachineMapScreen). Pre-filling "0" here let the
+  // operator tap `⋯` on a "Not stocked" row and tap Save on a field that was
+  // never going to do anything — `saveCapacity`'s `< 1` guard (unchanged,
+  // correct) silently no-ops on it, forever, with no message. Starting the
+  // field empty for that case, plus disabling Save while it reads empty or
+  // below 1, turns the always-inert tap into a control the operator can see
+  // is not ready yet.
+  const [capacityInput, setCapacityInput] = useState(capacity === 0 ? '' : String(capacity))
+  const capacityValue = Number(capacityInput)
+  const canSaveCapacity = capacityInput.trim() !== '' && Number.isFinite(capacityValue) && capacityValue >= 1
   const [adjusting, setAdjusting] = useState<Id | null>(null)
   async function slotsFor(itemId: Id): Promise<number[]> {
     const placements = await listPlacements()
@@ -87,7 +107,7 @@ export function SlotEditSheet({
     <div className="rounded-lg border bg-white p-3">
       <h3 className="mb-2 font-semibold">Slot {slotNumber}</h3>
 
-      {onToggleFill && (
+      {onToggleFill && slotInMap && (
         <button
           type="button"
           aria-label={`Fill slot ${slotNumber}`}
@@ -116,8 +136,9 @@ export function SlotEditSheet({
         </span>
         <button
           type="button"
+          disabled={!canSaveCapacity}
           onClick={() => void saveCapacity()}
-          className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white"
+          className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           Save capacity
         </button>

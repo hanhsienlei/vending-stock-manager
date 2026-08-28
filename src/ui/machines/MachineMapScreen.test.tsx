@@ -133,6 +133,25 @@ describe('MachineMapScreen', () => {
       expect(screen.getByLabelText('Capacity')).toBeInTheDocument()
     })
 
+    // Fix 4, 2026-08-28 whole-branch review: a "Not stocked" slot is
+    // fabricated with capacity 0. The field used to pre-fill "0", and Save
+    // was always enabled, so tapping Save on it silently did nothing
+    // forever (`saveCapacity`'s `< 1` guard is correct and unchanged). The
+    // field must start empty and Save must be disabled until a real value
+    // is typed.
+    it('starts the capacity field empty and Save disabled for a Not stocked slot', async () => {
+      const user = userEvent.setup()
+      const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+
+      render(<MachineMapScreen machine={l7} onBack={vi.fn()} />)
+      await screen.findAllByText('Not stocked')
+
+      await user.click(screen.getByLabelText('Edit slot 10'))
+
+      expect(await screen.findByLabelText('Capacity')).toHaveValue(null)
+      expect(screen.getByRole('button', { name: 'Save capacity' })).toBeDisabled()
+    })
+
     // Caught by running the app, not by the tests above: the sheet is the last
     // thing in the document, so on a fully mapped machine it rendered ~3100px
     // down an 828px viewport. Every assertion still passed — jsdom has no

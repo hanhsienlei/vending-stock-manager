@@ -31,12 +31,24 @@ export function CountScreen({
   const [newSlot, setNewSlot] = useState('')
   const [newSlotError, setNewSlotError] = useState<string | null>(null)
 
-  // §3.7: `counted` is every level key the operator has touched this visit;
-  // `total` is every (slot, item) pair the map has. Computed ahead of the
-  // loading branch below so the header always has a figure to show, even
-  // while `counting.map`/`counting.touched` are still their empty defaults.
-  const counted = counting.touched.size
-  const total = counting.map.reduce((sum, s) => sum + s.accepts.length, 0)
+  // §3.7: `counted` is every level key the operator has touched this visit
+  // that the current map still has; `total` is every (slot, item) pair the
+  // map has. Computed ahead of the loading branch below so the header
+  // always has a figure to show, even while `counting.map`/`counting.touched`
+  // are still their empty defaults.
+  //
+  // Fix 5, 2026-08-28 whole-branch review: `touched` is never pruned when an
+  // item is removed from a slot mid-count via `⋯` — `reload()` shrinks the
+  // map but the stale key stays in `touched`. Intersecting with the current
+  // map's keys, rather than reading `touched.size` directly, keeps `counted`
+  // from exceeding `total` (the `5 / 4` header) and the bar from rendering
+  // past 100% of its parent (the container-break defect this screen already
+  // had fixed once).
+  const mapKeys = new Set(
+    counting.map.flatMap((s) => s.accepts.map((itemId) => levelKey(s.slotNumber, itemId))),
+  )
+  const counted = [...counting.touched].filter((key) => mapKeys.has(key)).length
+  const total = mapKeys.size
 
   const header = (
     <>
@@ -47,10 +59,10 @@ export function CountScreen({
         subtitle={distinctLabel(machine)}
         figure={`${counted} / ${total}`}
       />
-      <div className="h-[3px] bg-rule-light">
+      <div className="h-[3px] overflow-hidden bg-rule-light">
         <div
           className="h-full bg-accent"
-          style={{ width: `${total === 0 ? 0 : (counted / total) * 100}%` }}
+          style={{ width: `${total === 0 ? 0 : Math.min(100, (counted / total) * 100)}%` }}
         />
       </div>
     </>
@@ -154,7 +166,13 @@ export function CountScreen({
           </div>
         )}
 
-        <ul className="flex flex-col gap-2 p-2">
+        {/* Fix 7, 2026-08-28 whole-branch review: every row already carries
+            its own `border-b border-rule-light` (§3.2's ruled table). The
+            `gap-2` between rows cost roughly 80px per screen and made rows
+            read as floating cards rather than a ruled table — undermining
+            §3.2's density argument that a tray fits one screen because rows
+            butt together. */}
+        <ul className="flex flex-col p-2">
           {slots.map((slot) => (
             <SlotRow
               key={slot.slotNumber}
@@ -200,6 +218,7 @@ export function CountScreen({
               counting.map.find((s) => s.slotNumber === editingSlot)?.accepts ?? []
             }
             capacity={counting.map.find((s) => s.slotNumber === editingSlot)?.capacity ?? 0}
+            slotInMap={counting.map.some((s) => s.slotNumber === editingSlot)}
             isFilled={counting.filled.has(editingSlot)}
             onToggleFill={() => {
               void counting.toggleFill(editingSlot).catch(() => {})
@@ -214,15 +233,22 @@ export function CountScreen({
         )}
 
         <div className="flex border-t-2 border-rule-strong">
-          <button
-            type="button"
-            onClick={() => {
-              void counting.fillTray(slots.map((s) => s.slotNumber)).catch(() => {})
-            }}
-            className="flex-1 bg-ground px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] text-ink"
-          >
-            Fill tray to par
-          </button>
+          {/* Fix 3(a), 2026-08-28 whole-branch review: on a machine (or, once
+              trays render, a tray) with nothing mapped, `slots` is `[]`,
+              `fillTray([])` returns immediately, and this button was inert —
+              a control that visibly does nothing when tapped. Hide it rather
+              than let the operator tap a dead button. */}
+          {slots.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                void counting.fillTray(slots.map((s) => s.slotNumber)).catch(() => {})
+              }}
+              className="flex-1 bg-ground px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] text-ink"
+            >
+              Fill tray to par
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {

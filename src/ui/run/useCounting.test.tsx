@@ -1110,18 +1110,63 @@ describe('the editable after-count', () => {
     expect(result.current.filled.has(10)).toBe(true)
   })
 
-  it('does not overwrite a hand-entered after-count that is already filled', async () => {
-    const { chips, machine } = await seedTray()
+  // Fix 2, 2026-08-28 whole-branch review: inverts the assertion above. The
+  // original test asserted that fillTray overwrites a hand-entered
+  // after-count to capacity ("Fill is a default, not a verdict — but
+  // fillTray is an explicit request, so it does set the slot"). That
+  // direction was wrong: a part-refill typed by hand (the operator ran out
+  // on the trolley, typed the true figure, then tapped the tray footer to
+  // finish the rest) was being silently rewritten to capacity, persisted,
+  // and its Rule 3 protection permanently cleared — booking phantom sales
+  // next period. Per-slot Fill in the `⋯` sheet remains the explicit way to
+  // override a typed figure (§3.6).
+  it('leaves a hand-entered after-count alone when tray-filling, and fills its untouched neighbour', async () => {
+    const { chips, gum, machine } = await seedTray()
     const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, machine.id)
     const { result } = renderHook(() => useCounting(run.id, machine.id))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     await act(async () => { await result.current.setAfter(10, chips.id, 3) })
+    await act(async () => { await result.current.fillTray([10, 11]) })
+
+    // The typed figure on slot 10 survives untouched.
+    expect(result.current.after.get(`10:${chips.id}`)).toBe(3)
+    expect(result.current.filled.has(10)).toBe(false)
+
+    // Its untouched neighbour goes to capacity as normal.
+    expect(result.current.after.get(`11:${gum.id}`)).toBe(5)
+    expect(result.current.filled.has(11)).toBe(true)
+
+    const lines = await getCountLines(visit.id)
+    const bySlot = new Map(lines.map((l) => [l.slotNumber, l]))
+    expect(bySlot.get(10)).toMatchObject({ after: 3, filled: false })
+    expect(bySlot.get(11)).toMatchObject({ after: 5, filled: true })
+  })
+
+  // Fix 1, 2026-08-28 whole-branch review: fillTray copied toggleFill's rule
+  // of adding every filled key to `touched`, which is right for a per-slot
+  // tap ("you tapped Fill on THIS slot, so you looked at it") and wrong
+  // generalised to a whole tray — one footer tap would claim the operator
+  // observed every slot in the tray. That both paints the ran-dry edge on
+  // slots with no prior recorded level (the exact suppression that must not
+  // change) and persists a false "counted and found empty" for a slot
+  // nobody looked at.
+  it('does not mark a tray-filled slot touched, and does not flag it ran dry', async () => {
+    const { chips, machine } = await seedTray()
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, machine.id)
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    const slot = result.current.map.find((s) => s.slotNumber === 10)!
     await act(async () => { await result.current.fillTray([10]) })
-    // Fill is a default, not a verdict — but fillTray is an explicit
-    // request, so it does set the slot. This asserts the documented
-    // direction.
-    expect(result.current.after.get(`10:${chips.id}`)).toBe(5)
+
     expect(result.current.filled.has(10)).toBe(true)
+    expect(result.current.touched.has(`10:${chips.id}`)).toBe(false)
+    expect(result.current.ranDry(slot)).toBe(false)
+
+    const lines = await getCountLines(visit.id)
+    expect(lines.find((l) => l.slotNumber === 10)?.touched).toBe(false)
   })
 })
