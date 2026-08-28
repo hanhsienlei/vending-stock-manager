@@ -206,12 +206,20 @@ describe('MachineListScreen', () => {
       render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
       await user.click(await screen.findByRole('button', { name: 'Start run' }))
 
-      await waitFor(async () => {
-        expect((await listRuns()).map((r) => r.date)).toEqual([today()])
-      })
-      // No machine is in progress yet, so the footer has nothing left to
+      // Fix round 2: wait for the screen's OWN re-render, not the DB write
+      // underneath it. `startRun` awaits `getOrCreateRun` (the write commits)
+      // and only then awaits `reload()`, which does its own further reads
+      // before calling setState — so a direct `listRuns()` read can already
+      // see the new run while this screen's footer has not yet re-rendered
+      // without it. Asserting against the DB first and the UI second (via a
+      // bare `expect` right after that `waitFor` resolved) raced those two
+      // and was flaky ~1 run in 5. No machine is in progress yet, so once
+      // the screen's own reload settles the footer has nothing left to
       // offer — it does not linger as a stale "Start run".
-      expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument()
+      await waitFor(() => {
+        expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument()
+      })
+      expect((await listRuns()).map((r) => r.date)).toEqual([today()])
     })
 
     // puts the run date in the eyebrow and the progress in the header
