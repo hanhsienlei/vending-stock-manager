@@ -1,1 +1,49 @@
 @import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap");
+
+@theme {
+  /* Ground and ink */
+  --color-ground: #f3f2f2;   /* page background */
+  --color-surface: #eae9e9;  /* section bars, legends, inset cells */
+  --color-paper: #ffffff;    /* every data row */
+  --color-ink: #201e1d;      /* text, strong rules, filled headers */
+
+  /* The one accent. Used for: the primary action, the active tab underline,
+     the ran-dry edge mark, the report's sold field. Nothing else. */
+  --color-accent: #ec3013;
+  --color-accent-100: #fff2ef;
+  --color-accent-200: #ffe0d9;
+  --color-accent-600: #dd2b0f;  /* hover */
+  --color-accent-700: #ae1800;  /* pressed; accent text at body size */
+  --color-accent-800: #7c1405;  /* text on an accent-200 fill */
+
+  /* Neutral ramp — replaces every ad-hoc gray-* */
+  --color-neutral-100: #f8f4f4;  /* alternating / disabled row */
+  --color-neutral-400: #bab6b6;  /* carried-forward figure, ⋯ glyph */
+  --color-neutral-500: #9b9797;  /* "not counted" */
+  --color-neutral-600: #7d7979;  /* inactive tab, helper text */
+  --color-neutral-700: #605d5d;  /* metadata, column headers on ground */
+
+  /* Rules. Two weights only. */
+  --color-rule-strong: rgb(32 30 29 / 0.4);   /* 2px, between sections */
+  --color-rule-light: rgb(32 30 29 / 0.18);   /* 1px, between rows */
+
+  --font-heading: "Archivo", system-ui, sans-serif;
+  --font-body: "Archivo", system-ui, sans-serif;
+
+  --radius-none: 0px;
+}
+
+/* Archivo everywhere, tabular figures everywhere. Columns of numbers that do
+   not align are the reason a paper sheet beats a screen, and it is one
+   declaration. */
+html {
+  font-family: var(--font-body);
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+::selection { background: rgb(236 48 19 / 0.3); }
