@@ -21,7 +21,7 @@ export function MachineListScreen({
   // tap and nothing ever showed that it had happened.
   const [todaysRun, setTodaysRun] = useState<Run | null>(null)
   // Without this the header paints before the first read finishes, so a run
-  // that already exists shows "Start run" for a frame. Harmless to tap —
+  // that already exists shows "no run started" for a frame. Harmless to tap —
   // `getOrCreateRun` is idempotent — but this screen's job is now to tell the
   // operator what state the run is in, and briefly telling them the wrong
   // thing is the opposite of that.
@@ -30,6 +30,11 @@ export function MachineListScreen({
   // finished machine editable again, so this set only decides what a row
   // shows, never whether `startCount` below is allowed to run.
   const [finishedMachineIds, setFinishedMachineIds] = useState<Set<Id>>(new Set())
+  // A visit exists for today's run but has not been finalized — the machine
+  // has been entered this run but not finished. Derived from the same
+  // `listVisitsForRun` read as `finishedMachineIds`, so this costs no extra
+  // query.
+  const [inProgressMachineIds, setInProgressMachineIds] = useState<Set<Id>>(new Set())
 
   async function reload() {
     setMachines(await listMachines())
@@ -40,12 +45,16 @@ export function MachineListScreen({
     setTodaysRun(run ?? null)
     if (!run) {
       setFinishedMachineIds(new Set())
+      setInProgressMachineIds(new Set())
       setLoading(false)
       return
     }
     const visits = await listVisitsForRun(run.id)
     setFinishedMachineIds(
       new Set(visits.filter((v) => v.status === 'finalized').map((v) => v.machineId)),
+    )
+    setInProgressMachineIds(
+      new Set(visits.filter((v) => v.status === 'draft').map((v) => v.machineId)),
     )
     setLoading(false)
   }
@@ -64,10 +73,21 @@ export function MachineListScreen({
     onCount(machine, run.id)
   }
 
-  // Title-only for now (task 3): this screen's own spec section — eyebrow,
-  // figure, progress rule — belongs to a later task. See task-3-brief.md
-  // decision #1.
-  const header = <ScreenHeader title="Machines" />
+  // The run header block from before this task is gone: the date is now the
+  // eyebrow, the progress figure is the title-row figure (§4, §2). While the
+  // first load is in flight neither is known yet, so both are withheld
+  // rather than guessing "no run started" for a frame.
+  const header = (
+    <ScreenHeader
+      eyebrow={
+        loading ? undefined : todaysRun
+          ? `RUN · ${formatRunDate(today()).toUpperCase()}`
+          : 'NO RUN STARTED'
+      }
+      title="Machines"
+      figure={!loading && todaysRun ? `${finishedMachineIds.size} / ${machines.length}` : undefined}
+    />
+  )
 
   if (loading) {
     return (
@@ -77,64 +97,108 @@ export function MachineListScreen({
     )
   }
 
+  // The single machine the footer offers to jump back into — the first
+  // (lowest-level) machine with an open, unfinished visit this run. When
+  // more than one is open at once (the operator hopped away mid-count) the
+  // footer can only ever point at one, so the walk order breaks the tie.
+  const inProgressMachine = machines.find((m) => inProgressMachineIds.has(m.id))
+
   return (
     <ScreenLayout header={header}>
-      <div className="p-4">
-        <h2 className="mb-3 text-lg font-semibold">Machines</h2>
+      <ul>
+        {machines.map((m) => {
+          const finished = finishedMachineIds.has(m.id)
+          const inProgress = !finished && inProgressMachineIds.has(m.id)
+          const label = distinctLabel(m)
+          // §4's four state strings. Times like `08:14` and slot counts like
+          // `54 slots` need `visit.updatedAt` / a count-line read this screen
+          // does not otherwise do — 2026-08-28 decision: no screen may gain a
+          // repository call for this, so the finished and in-progress states
+          // render bare rather than adding one.
+          const stateText = finished
+            ? 'Counted'
+            : inProgress
+              ? 'In progress'
+              : label
+                ? `${label} · not counted`
+                : 'Not counted'
 
-        <div
-          aria-label="run header"
-          className="mb-3 flex items-center gap-2 rounded-lg border bg-gray-50 p-3"
-        >
-          <span className="flex-1 text-sm font-semibold">{formatRunDate(today())}</span>
-          {todaysRun ? (
-            <span className="text-sm text-gray-500">
-              {finishedMachineIds.size} of {machines.length} counted
-            </span>
-          ) : (
-            // Explicit, but not a gate: tapping a machine still starts the run
-            // on its own. `getOrCreateRun` is idempotent per date, so both
-            // entry points land on the same run.
-            <button
-              type="button"
-              onClick={() => void startRun()}
-              className="rounded-lg bg-blue-600 px-3 py-1 text-sm font-semibold text-white"
+          return (
+            <li
+              key={m.id}
+              data-testid={`machine-row-${m.id}`}
+              data-finished={finished ? 'true' : undefined}
+              className={`grid grid-cols-[46px_1fr_auto] items-center gap-2 border-b border-rule-light bg-paper px-4 py-3.5 ${
+                inProgress ? 'shadow-[inset_4px_0_0_var(--color-accent)]' : ''
+              }`}
             >
-              Start run
-            </button>
-          )}
-        </div>
-
-        <ul className="flex flex-col gap-2">
-          {machines.map((m) => (
-            <li key={m.id} className="flex items-center gap-2 rounded-lg border p-3">
               <button
                 type="button"
                 onClick={() => void startCount(m)}
-                className="flex-1 text-left"
+                className="contents text-left"
               >
-                <span className="font-semibold">L{m.level}</span>
-                {distinctLabel(m) && (
-                  <span className="ml-2 text-gray-500">{distinctLabel(m)}</span>
-                )}
-                {finishedMachineIds.has(m.id) && (
-                  <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold uppercase text-green-700">
-                    Finished
-                  </span>
-                )}
+                <span className="text-[22px] font-extrabold tabular-nums">{`L${m.level}`}</span>
+                <span
+                  className={`text-[14px] font-semibold ${
+                    finished || inProgress ? '' : 'text-neutral-500'
+                  }`}
+                >
+                  {stateText}
+                </span>
               </button>
-              <button
-                type="button"
-                aria-label={`View map for L${m.level}`}
-                onClick={() => onViewMap(m)}
-                className="text-xs font-bold text-blue-600"
-              >
-                Map
-              </button>
+              {finished ? (
+                <span
+                  aria-label="Finished"
+                  className="flex h-5 w-5 items-center justify-center bg-ink text-[12px] font-bold text-ground"
+                >
+                  ✓
+                </span>
+              ) : inProgress ? (
+                <button
+                  type="button"
+                  onClick={() => void startCount(m)}
+                  className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-accent"
+                >
+                  Resume
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  aria-label={`View map for L${m.level}`}
+                  onClick={() => onViewMap(m)}
+                  className="text-[11px] font-bold uppercase tracking-[0.04em] text-neutral-600"
+                >
+                  Map
+                </button>
+              )}
             </li>
-          ))}
-        </ul>
-      </div>
+          )
+        })}
+      </ul>
+
+      {!todaysRun ? (
+        <div className="border-t-2 border-rule-strong">
+          <button
+            type="button"
+            onClick={() => void startRun()}
+            className="w-full bg-accent px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] text-ground"
+          >
+            Start run
+          </button>
+        </div>
+      ) : (
+        inProgressMachine && (
+          <div className="border-t-2 border-rule-strong">
+            <button
+              type="button"
+              onClick={() => void startCount(inProgressMachine)}
+              className="w-full bg-accent px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] text-ground"
+            >
+              {`Continue L${inProgressMachine.level} →`}
+            </button>
+          </div>
+        )
+      )}
     </ScreenLayout>
   )
 }

@@ -32,7 +32,9 @@ describe('the global nav', () => {
     await finalizeVisit(visit.id)
 
     render(<App />)
-    await screen.findByText('Finished')
+    // §4 drops the "Finished" pill text in favour of a filled tick with an
+    // aria-label of the same word — findByText no longer matches it.
+    await screen.findByLabelText('Finished')
 
     await user.click(screen.getByRole('button', { name: 'History' }))
 
@@ -47,10 +49,10 @@ describe('the global nav', () => {
 
     render(<App />)
 
-    // The "Finished" badge is the last thing the machine list's load sets, so
+    // The "Finished" tick is the last thing the machine list's load sets, so
     // waiting for it means no query is still in flight when the next test's
     // beforeEach closes the database out from under one.
-    await screen.findByText('Finished')
+    await screen.findByLabelText('Finished')
 
     const nav = screen.getByRole('navigation')
     expect(nav).toHaveClass('top-0')
@@ -95,7 +97,9 @@ describe('a machine, end to end', () => {
     // machine.png), so the fixture machine is created directly here.
     await saveMachine({ level: 7, label: 'Lift lobby' })
     render(<App />)
-    await screen.findByRole('button', { name: 'L7 Lift lobby' })
+    // §4: a distinct label is folded into the row's "not counted" state
+    // text rather than shown as its own chip.
+    await screen.findByRole('button', { name: 'L7 Lift lobby · not counted' })
 
     await user.click(screen.getByRole('button', { name: 'Items' }))
     await user.click(await screen.findByRole('button', { name: '+ New' }))
@@ -110,7 +114,7 @@ describe('a machine, end to end', () => {
 
     // --- Walk to the machine and count -------------------------------------
     await user.click(screen.getByRole('button', { name: 'Machines' }))
-    await user.click(await screen.findByRole('button', { name: 'L7 Lift lobby' }))
+    await user.click(await screen.findByRole('button', { name: 'L7 Lift lobby · not counted' }))
 
     await screen.findByText('Coke')
     const counted = screen.getByLabelText('slot 58 counted')
@@ -122,7 +126,11 @@ describe('a machine, end to end', () => {
     await user.click(screen.getByRole('button', { name: 'Items' }))
     await screen.findByRole('button', { name: '+ New' })
     await user.click(screen.getByRole('button', { name: 'Machines' }))
-    await user.click(await screen.findByRole('button', { name: 'L7 Lift lobby' }))
+    // The row's state text has moved on from "not counted": entering the
+    // machine a moment ago opened a draft visit (useCounting's mount
+    // effect), which §4's state text renders as "In progress" — the label
+    // that only shows in the not-counted state is gone from here on.
+    await user.click(await screen.findByRole('button', { name: 'L7 In progress' }))
 
     await screen.findByText('Coke')
     // Not 0, and not last visit's level: the count entered before the screen
@@ -144,13 +152,10 @@ describe('a machine, end to end', () => {
     // machine list's own load produces, so waiting on it keeps that update
     // inside the test rather than landing after it.
     //
-    // Matched by prefix, because by this point the row also carries its
-    // "Finished" badge and that is part of the button's accessible name. The
-    // exact-name form used to pass only because the list painted its rows
-    // before the finished-visit lookup resolved — this assertion was landing
-    // in that gap. The list now waits for its whole load, so the settled row
-    // is the only one there is.
-    await screen.findByRole('button', { name: /^L7 Lift lobby/ })
+    // §4's finished state text is "Counted" on its own — the distinct label
+    // only ever shows in the not-counted state, so it is gone from the row's
+    // accessible name by this point too.
+    await screen.findByRole('button', { name: 'L7 Counted' })
 
     // One run for the day, one finalized visit, counted 3 and left at 8.
     expect(await listRuns()).toHaveLength(1)
