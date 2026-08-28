@@ -39,13 +39,26 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    // Worktrees live at `.claude/worktrees/<name>/`, inside the repository.
-    // Without this, `npm test` in the main checkout also collects every test
-    // file in every worktree — and since each worktree has its own
-    // `node_modules`, the run ends up with two copies of React, so every
-    // hook throws and the suite reports hundreds of phantom failures.
+    // Worktrees live inside the repository — at `.claude/worktrees/<name>/`
+    // when the harness creates them, or `.worktrees/<name>/` when they are
+    // made with plain `git worktree add`. Both are excluded, because either
+    // one breaks the run the same way: `npm test` in the main checkout also
+    // collects every test file in the worktree, and since each worktree has
+    // its own `node_modules`, the run ends up with two copies of React, so
+    // every hook throws and the suite reports hundreds of phantom failures.
+    //
+    // Only `.claude/**` was listed until 2026-08-29, when a worktree created
+    // at `.worktrees/interface-refinement` turned a green 482-test suite into
+    // "240 failed, 724 passed" the moment its branch was merged — 964 being
+    // exactly twice 482. The merge was fine; the glob was not.
+    //
     // Vitest's defaults are replaced wholesale, not merged, so
     // `**/node_modules/**` and `**/dist/**` are repeated here.
-    exclude: ['**/node_modules/**', '**/dist/**', '**/.claude/**'],
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/.claude/**',
+      '**/.worktrees/**',
+    ],
   },
 })
