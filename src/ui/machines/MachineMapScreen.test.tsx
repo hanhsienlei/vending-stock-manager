@@ -151,6 +151,26 @@ describe('MachineMapScreen', () => {
       expect(heading.closest('.fixed')).not.toBeNull()
     })
 
+    // Fix round 1: the wrapper carried `rounded-lg`, the last `rounded-*` left
+    // in either file this plan touches. The floating BEHAVIOUR and its
+    // rationale comment above stay byte-for-byte — this is only the corner
+    // radius, which Radius 0 (a global constraint) still applies to.
+    it('keeps the floating sheet square, not rounded', async () => {
+      const user = userEvent.setup()
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+      const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+      await setPlacement(coke.id, { kind: 'base' }, [58])
+
+      render(<MachineMapScreen machine={l7} onBack={vi.fn()} />)
+      await screen.findByText(/TRAY 5/)
+      await user.click(screen.getByLabelText('Edit slot 58'))
+
+      const heading = await screen.findByText('Slot 58')
+      const backdrop = heading.closest('.fixed') as HTMLElement
+      const wrapper = backdrop.firstElementChild as HTMLElement
+      expect(wrapper.className).not.toMatch(/rounded/)
+    })
+
     it('closes the sheet when the backdrop is tapped', async () => {
       const user = userEvent.setup()
       const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })

@@ -143,7 +143,7 @@ export function MachineMapScreen({
             role="presentation"
           >
             <div
-              className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-lg"
+              className="max-h-[80vh] w-full max-w-lg overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               <SlotEditSheet
