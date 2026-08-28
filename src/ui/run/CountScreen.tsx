@@ -116,7 +116,6 @@ export function CountScreen({
               before={counting.before}
               after={counting.after}
               touched={counting.touched}
-              isFilled={counting.filled.has(slot.slotNumber)}
               ranDry={counting.ranDry(slot)}
               onSetBefore={(slotNumber, itemId, qty) => {
                 // useCounting has already rolled local state back to the
@@ -131,9 +130,6 @@ export function CountScreen({
               }}
               onSetAfter={(slotNumber, itemId, qty) => {
                 counting.setAfter(slotNumber, itemId, qty).catch(() => {})
-              }}
-              onToggleFill={(slotNumber) => {
-                counting.toggleFill(slotNumber).catch(() => {})
               }}
               onEdit={setEditingSlot}
             />

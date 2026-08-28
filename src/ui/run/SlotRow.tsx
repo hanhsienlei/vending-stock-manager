@@ -1,28 +1,70 @@
-import { Stepper } from '../components/Stepper'
 import { levelKey } from '../../domain/levels'
 import type { Id, Item, ResolvedSlot } from '../../domain/types'
 
+/** The five-column grid from §3.2. Two steppers plus a name do not fit 393pt —
+ * the arithmetic is in §3.1 and it is why the row overflowed its container.
+ * Eleven slots now fit one screen instead of five, so a tray is one screen and
+ * the operator stops scrolling mid-tray. The cost is that item names truncate;
+ * accepted because the slot number is the identifier at the machine. */
+const GRID = 'grid grid-cols-[30px_1fr_60px_60px_34px] items-stretch gap-2 px-3.5'
+
+/** A count cell: an input styled as a cell, not as a field. The grid's rules
+ * are its border. */
+function CountCell({
+  label, value, onChange, dimmed = false, accent = false, surface = false, className = '',
+}: {
+  label: string
+  value: number
+  onChange: (qty: number) => void
+  dimmed?: boolean
+  accent?: boolean
+  surface?: boolean
+  className?: string
+}) {
+  return (
+    <input
+      // `type="text"`, not `type="number"`: the WHATWG spec exempts number
+      // inputs from text selection entirely (`select()` no-ops on them,
+      // `selectionStart`/`selectionEnd` read null in every browser, not just
+      // jsdom), so a number input cannot satisfy the "select on focus so the
+      // first keystroke replaces rather than appends" requirement (§3.3) —
+      // the exact regression this cell exists to fix. `inputMode="numeric"`
+      // still gets the numeric keypad on mobile; the digit filter below
+      // replaces the browser's own number-input constraint.
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      aria-label={label}
+      // No `max`, and no `min` attribute either — `type="text"` doesn't apply
+      // one. The printed map is ~90% accurate and a channel can hold more
+      // than its recorded capacity, so clamping would force an under-record
+      // and book phantom sales through the residual. Over-capacity is
+      // flagged, never prevented (§3.3) — unchanged from the stepper this
+      // replaced. Non-negativity is enforced below instead of via `min`.
+      value={value}
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => {
+        const digits = e.target.value.replace(/\D/g, '')
+        onChange(digits === '' ? 0 : Math.max(0, Number(digits)))
+      }}
+      className={`w-full border-x border-rule-light bg-transparent text-center text-[19px] font-extrabold tabular-nums outline-none ${
+        surface ? 'bg-surface ' : ''
+      }${accent ? 'text-accent-700' : dimmed ? 'text-neutral-400' : 'text-ink'} ${className}`}
+    />
+  )
+}
+
 export function SlotRow({
-  slot, items, before, after, touched, isFilled, ranDry,
-  onSetBefore, onSetAfter, onToggleFill, onEdit,
+  slot, items, before, after, touched, ranDry, onSetBefore, onSetAfter, onEdit,
 }: {
   slot: ResolvedSlot
   items: Map<Id, Item>
   before: Map<string, number>
-  /** What the operator will leave behind (spec §3.2, amended 2026-08-27) —
-   * editable on every row, not just derived from Fill. This run's after-count
-   * is next run's opening, so it must be able to record a partial refill or a
-   * redistribution, not just "capacity" or "unchanged". */
   after: Map<string, number>
-  /** Level keys the operator has actually worked this visit. Everything else
-   * is last visit's level carried forward, and is greyed to say so
-   * (spec §3.1, §5.1). */
   touched: Set<string>
-  isFilled: boolean
   ranDry: boolean
   onSetBefore: (slotNumber: number, itemId: Id, qty: number) => void
   onSetAfter: (slotNumber: number, itemId: Id, qty: number) => void
-  onToggleFill: (slotNumber: number) => void
   onEdit: (slotNumber: number) => void
 }) {
   const mixed = slot.accepts.length > 1
@@ -30,97 +72,84 @@ export function SlotRow({
     (sum, itemId) => sum + (before.get(levelKey(slot.slotNumber, itemId)) ?? 0),
     0,
   )
-  // The printed map is ~90% accurate and Phase 1 capacity is derived from
-  // basePar, so a slot can genuinely hold more than its recorded capacity —
-  // and an item with basePar 0 derives a capacity of 0. Capping the stepper
-  // at capacity would force the operator to under-record, which books phantom
-  // sales through the sales residual (spec §3.3). Record the truth; flag it.
   const overCapacity = total > slot.capacity
+  const name = mixed ? `${slot.accepts.length} items` : items.get(slot.accepts[0])?.name
 
   return (
-    // Ran dry outranks mixed deliberately, and exclusively: emitting both
-    // border colours left Tailwind's own utility order to decide which the
-    // operator saw. Ran dry is the signal that flags lost sales (spec §5.2);
-    // a mixed slot still reads as mixed from its "N items" label and sub-rows.
     <li
-      className={`rounded-lg border p-2 ${
-        ranDry ? 'border-red-500' : mixed ? 'border-blue-500' : ''
+      data-testid={`slot-row-${slot.slotNumber}`}
+      data-ran-dry={ranDry ? 'true' : undefined}
+      // §3.5: the 4px inset is a box-shadow, not a border, so it does not shift
+      // the row's contents by 4px. `RAN DRY` on every zero row was the noise.
+      className={`border-b border-rule-light bg-paper ${
+        ranDry ? 'shadow-[inset_4px_0_0_var(--color-accent)]' : ''
       }`}
     >
-      <div className="flex items-center gap-2">
-        <span className="w-8 text-sm font-bold text-gray-500">{slot.slotNumber}</span>
-        <div className="flex-1">
-          <div className="text-sm font-semibold">
-            {mixed ? `${slot.accepts.length} items` : items.get(slot.accepts[0])?.name}
-          </div>
-          <div className="text-xs text-gray-400">
-            capacity {slot.capacity}
-            {ranDry && <span className="ml-2 font-bold text-red-600">RAN DRY</span>}
-            {overCapacity && (
-              <span className="ml-2 font-bold text-amber-600">OVER CAPACITY</span>
-            )}
-          </div>
-        </div>
-
-        {!mixed && (
+      <div className={`${GRID} ${mixed ? 'h-[34px]' : 'h-[46px]'}`}>
+        <span className="self-center text-[15px] font-extrabold tabular-nums">
+          {slot.slotNumber}
+        </span>
+        <span className="self-center truncate text-[13px] font-semibold">{name}</span>
+        {mixed ? (
           <>
-            <Stepper
-              label={`slot ${slot.slotNumber}`}
+            <span className="border-x border-rule-light" />
+            <span className="border-x border-rule-light bg-surface" />
+          </>
+        ) : (
+          <>
+            <CountCell
+              label={`slot ${slot.slotNumber} counted`}
               value={before.get(levelKey(slot.slotNumber, slot.accepts[0])) ?? 0}
               dimmed={!touched.has(levelKey(slot.slotNumber, slot.accepts[0]))}
+              accent={overCapacity}
               onChange={(qty) => onSetBefore(slot.slotNumber, slot.accepts[0], qty)}
             />
-            <Stepper
-              label={`slot ${slot.slotNumber} after`}
+            <CountCell
+              label={`slot ${slot.slotNumber} refilled to`}
               value={after.get(levelKey(slot.slotNumber, slot.accepts[0])) ?? 0}
-              max={Math.max(99, slot.capacity)}
-              emerald
+              surface
               onChange={(qty) => onSetAfter(slot.slotNumber, slot.accepts[0], qty)}
             />
           </>
         )}
-
-        <button
-          type="button"
-          aria-label={`Fill slot ${slot.slotNumber}`}
-          aria-pressed={isFilled}
-          onClick={() => onToggleFill(slot.slotNumber)}
-          className={`rounded-lg px-2 py-1 text-xs font-bold ${
-            isFilled ? 'bg-green-600 text-white' : 'border text-gray-600'
-          }`}
-        >
-          Fill
-        </button>
-
         <button
           type="button"
           aria-label={`Edit slot ${slot.slotNumber}`}
           onClick={() => onEdit(slot.slotNumber)}
-          className="px-1 text-lg text-gray-400"
+          className="self-center text-lg text-neutral-400"
         >
           ⋯
         </button>
       </div>
 
+      {/* §3.4: the grouping is the indent and the parent's empty cells, not a
+          coloured border. `border-blue-500` on a mixed slot comes out. */}
       {mixed &&
-        slot.accepts.map((itemId) => (
-          <div key={itemId} className="mt-1 flex items-center gap-2 pl-8">
-            <span className="flex-1 text-sm">{items.get(itemId)?.name}</span>
-            <Stepper
-              label={`slot ${slot.slotNumber} ${items.get(itemId)?.name ?? ''}`}
-              value={before.get(levelKey(slot.slotNumber, itemId)) ?? 0}
-              dimmed={!touched.has(levelKey(slot.slotNumber, itemId))}
-              onChange={(qty) => onSetBefore(slot.slotNumber, itemId, qty)}
-            />
-            <Stepper
-              label={`slot ${slot.slotNumber} ${items.get(itemId)?.name ?? ''} after`}
-              value={after.get(levelKey(slot.slotNumber, itemId)) ?? 0}
-              max={Math.max(99, slot.capacity)}
-              emerald
-              onChange={(qty) => onSetAfter(slot.slotNumber, itemId, qty)}
-            />
-          </div>
-        ))}
+        slot.accepts.map((itemId) => {
+          const key = levelKey(slot.slotNumber, itemId)
+          const itemName = items.get(itemId)?.name ?? ''
+          return (
+            <div key={itemId} className={`${GRID} h-[42px]`}>
+              <span />
+              <span className="self-center truncate pl-2.5 text-[12.5px] font-medium text-neutral-700">
+                {itemName}
+              </span>
+              <CountCell
+                label={`slot ${slot.slotNumber} ${itemName} counted`}
+                value={before.get(key) ?? 0}
+                dimmed={!touched.has(key)}
+                onChange={(qty) => onSetBefore(slot.slotNumber, itemId, qty)}
+              />
+              <CountCell
+                label={`slot ${slot.slotNumber} ${itemName} refilled to`}
+                value={after.get(key) ?? 0}
+                surface
+                onChange={(qty) => onSetAfter(slot.slotNumber, itemId, qty)}
+              />
+              <span />
+            </div>
+          )
+        })}
     </li>
   )
 }

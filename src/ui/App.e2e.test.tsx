@@ -113,10 +113,10 @@ describe('a machine, end to end', () => {
     await user.click(await screen.findByRole('button', { name: 'L7 Lift lobby' }))
 
     await screen.findByText('Coke')
-    for (let i = 0; i < 3; i += 1) {
-      await user.click(screen.getByLabelText('slot 58 increase'))
-    }
-    expect(screen.getByLabelText('slot 58')).toHaveTextContent('3')
+    const counted = screen.getByLabelText('slot 58 counted')
+    await user.clear(counted)
+    await user.type(counted, '3')
+    expect(screen.getByLabelText('slot 58 counted')).toHaveValue('3')
 
     // --- Interrupted: the bottom nav sits under the working thumb ----------
     await user.click(screen.getByRole('button', { name: 'Items' }))
@@ -128,13 +128,17 @@ describe('a machine, end to end', () => {
     // Not 0, and not last visit's level: the count entered before the screen
     // was unmounted comes back.
     await waitFor(() => {
-      expect(screen.getByLabelText('slot 58')).toHaveTextContent('3')
+      expect(screen.getByLabelText('slot 58 counted')).toHaveValue('3')
     })
     // And it is marked as already worked, not carried forward.
-    expect(screen.getByLabelText('slot 58')).not.toHaveClass('text-gray-400')
+    expect(screen.getByLabelText('slot 58 counted')).not.toHaveClass('text-neutral-400')
 
-    // --- Fill and finalize --------------------------------------------------
-    await user.click(screen.getByLabelText('Fill slot 58'))
+    // --- Refill and finalize -------------------------------------------------
+    // Fill is no longer a per-row button (§3.6) — the operator types the
+    // capacity figure straight into Refilled to.
+    const refilled = screen.getByLabelText('slot 58 refilled to')
+    await user.clear(refilled)
+    await user.type(refilled, '8')
     await user.click(screen.getByRole('button', { name: 'Finish machine' }))
     // Wait for the machine row, not just the screen: the row is what the
     // machine list's own load produces, so waiting on it keeps that update
@@ -165,8 +169,8 @@ describe('a machine, end to end', () => {
       <CountScreen runId={nextRun.id} machineId={machine.id} onDone={vi.fn()} />,
     )
 
-    const nextVisitStepper = (await screen.findAllByLabelText('slot 58')).at(-1)
-    expect(nextVisitStepper).toHaveTextContent('8')
-    expect(nextVisitStepper).toHaveClass('text-gray-400')
+    const nextVisitCounted = (await screen.findAllByLabelText('slot 58 counted')).at(-1)
+    expect(nextVisitCounted).toHaveValue('8')
+    expect(nextVisitCounted).toHaveClass('text-neutral-400')
   })
 })
