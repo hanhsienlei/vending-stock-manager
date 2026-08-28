@@ -94,7 +94,7 @@ export function SlotEditSheet({
           aria-pressed={isFilled}
           onClick={onToggleFill}
           className={`w-full border-b border-rule-light px-4 py-3 text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] ${
-            isFilled ? 'bg-accent text-ground' : 'bg-ground text-ink'
+            isFilled ? 'bg-ink text-ground' : 'bg-ground text-ink'
           }`}
         >
           Fill to capacity

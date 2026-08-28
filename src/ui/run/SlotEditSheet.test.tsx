@@ -278,4 +278,22 @@ describe('SlotEditSheet', () => {
     renderSheet({})
     expect(screen.queryByRole('button', { name: 'Fill slot 58' })).not.toBeInTheDocument()
   })
+
+  // §3.8: the tray-level "Fill tray to par" footer action is the only
+  // accent-coloured action in the run screen body; a filled slot's toggle
+  // is a selected state (tokens.md: ink fill for a selected state), not a
+  // second primary action, so it must not carry the accent class.
+  it('shows the per-slot Fill control in ink fill when this slot is already filled', () => {
+    renderSheet({ isFilled: true, onToggleFill: () => {} })
+    const button = screen.getByRole('button', { name: 'Fill slot 58' })
+    expect(button.className).toMatch(/\bbg-ink\b/)
+    expect(button.className).not.toMatch(/\bbg-accent\b/)
+  })
+
+  it('shows the per-slot Fill control in ground fill when this slot is not filled', () => {
+    renderSheet({ isFilled: false, onToggleFill: () => {} })
+    const button = screen.getByRole('button', { name: 'Fill slot 58' })
+    expect(button.className).toMatch(/\bbg-ground\b/)
+    expect(button.className).not.toMatch(/\bbg-accent\b/)
+  })
 })
