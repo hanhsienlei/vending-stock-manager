@@ -4,7 +4,7 @@ Supersedes the handover from the evening of 2026-08-27. Tonight's work is the
 interface refinement plan — the run screen, the machines list, the machine map
 and the shell were redone. Nothing else was touched.
 
-**Branch:** `interface-refinement`, clean. 470 tests passing, `tsc --noEmit`
+**Branch:** `interface-refinement`, clean. 482 tests passing, `tsc --noEmit`
 clean, `vite build` clean, schema unchanged at version 3.
 
 ---
@@ -51,7 +51,10 @@ In your terms, not the code's:
 
 - **Both count columns are typable now.** Tap a figure and it selects — typing
   replaces the number rather than appending to it. This is the one you asked
-  for.
+  for. Selecting now happens reliably on the phone itself, not just on a
+  keyboard: a tap selects the figure directly, so typing "3" into a cell
+  showing "12" can't turn into "312" because the cursor landed after the old
+  number instead of over it.
 - **The row no longer overflows.** Long item names truncate instead of pushing
   the row wider than the screen.
 - **RAN DRY and OVER CAPACITY are quieter.** They used to be red boxes of text.
@@ -59,7 +62,8 @@ In your terms, not the code's:
   it's over capacity — same information, less shouting.
 - **The header says where you are.** Which machine, and how far through it you
   are. Every level looked the same before; this was the thing that most needed
-  fixing.
+  fixing. The progress bar under it also can't run past its own edge any more
+  if you remove an item from a slot partway through a count.
 
 ---
 
@@ -70,6 +74,29 @@ Fill used to be a button on every row. It is not, any more.
 There is now a **`Fill tray to par`** button in the footer, which fills the
 whole visible tray in one tap. Per-slot Fill still exists, but it moved into
 the `⋯` sheet on each slot — one more tap than before.
+
+**`Fill tray to par` now leaves a hand-typed figure alone.** If you've entered
+a "Refilled to" number on a slot — a part-refill because the trolley ran out,
+say — tapping the tray fill skips that slot and your number stands; the rest
+of the tray still fills to capacity. To deliberately override your own typed
+figure, use Fill inside that slot's `⋯` sheet instead. Before tonight's fix,
+the tray action silently rewrote your figure to capacity and saved it — and
+that figure is what next period opens at. If a slot you part-filled still
+shows your number after `Fill tray to par`, that is this working correctly,
+not a bug.
+
+**`Fill tray to par` also no longer claims you looked at every slot.** It used
+to mark every slot in the tray as observed, which put the red ran-dry edge on
+slots with no previous figure at all, and recorded "counted, found empty" for
+slots you never actually looked at. Filling a tray now only sets what you
+leave behind — it says nothing about what you found. Tapping Fill on a single
+slot in its `⋯` sheet still counts as looking at that slot, same as before.
+
+**Fill buttons that could never do anything are hidden now, not just inert.**
+The footer's `Fill tray to par` is hidden on a machine with nothing mapped,
+and a slot's per-slot Fill in the `⋯` sheet is hidden when that slot isn't on
+the machine's map. If you don't see a Fill button somewhere you expected one,
+that's why — it would have done nothing anyway.
 
 Say plainly: **this is the change most likely to feel worse in the field, and
 nothing in a test suite can catch that.** It reads fine on a screen; whether it
@@ -82,7 +109,19 @@ tomorrow, that's where the fix would start.
 
 ---
 
-## 5. Miscount is gone from the `⋯` sheet at a machine slot
+## 5. Machine map: editing an unstocked slot's capacity is safer now
+
+Tapping `⋯` on a "Not stocked" row on the machine map used to open the sheet
+with the capacity field pre-filled `0`, and Save looked ready to tap — but
+tapping it did nothing, silently, forever, because a capacity below 1 is
+rejected. That sheet now opens with the field **empty** and Save **disabled**
+until you type a real number. If you're mapping a machine tomorrow and Save
+won't light up, that's the sheet correctly waiting for a capacity, not
+broken.
+
+---
+
+## 6. Miscount is gone from the `⋯` sheet at a machine slot
 
 It used to be there and did nothing — it was stored and read by nothing,
 never entered any calculation, never showed back anywhere. It has been
@@ -92,7 +131,7 @@ way; the slot sheet now matches it.
 
 ---
 
-## 6. What still looks old — on purpose
+## 7. What still looks old — on purpose
 
 The **storeroom, history, report and items screens**, and the **interior of
 the slot editor sheet** (the one that opens when you edit what's in a slot,
@@ -102,9 +141,18 @@ redone tonight. If one of those screens looks out of step with the rest, that
 is not a bug — it is scoped for later, recorded in the design spec as steps 4
 through 12 not yet done.
 
+**One more thing that will look odd: the red ran-dry edge can be over-eager
+after a tray fill.** If you tap `Fill tray to par` and then save anything from
+a slot's `⋯` sheet, the app re-marks those tray-filled slots as observed, so
+the red left edge can show up on slots that are simply empty and were never
+actually counted. **No count is wrong** — every "Counted" and "Refilled to"
+figure stays exactly as recorded, and nothing you typed is touched by this. It
+is a display flag being too eager, nothing more, and it is the first thing
+being fixed after this run.
+
 ---
 
-## 7. Rollback is safe
+## 8. Rollback is safe
 
 Because nothing in the schema changed, tonight's bundle and tomorrow's data
 are interchangeable either direction — today's app can read tomorrow's data,
@@ -114,7 +162,7 @@ the deploy costs nothing and loses nothing.
 
 ---
 
-## 8. What to do tomorrow
+## 9. What to do tomorrow
 
 **Write design problems down as they hit you, ideally with a screenshot.**
 That is how the last round worked: thirteen annotated screenshots became a fix
