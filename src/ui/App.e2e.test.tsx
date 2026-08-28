@@ -15,7 +15,25 @@ beforeEach(async () => {
   await db.open()
 })
 
-const tomorrow = () => new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
+// Not `new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)` — that
+// is exactly the bug `domain/date.ts`'s `today()` doc-comment warns about,
+// reintroduced here. `toISOString` reports the UTC calendar day; in a zone
+// ahead of UTC (this app's, Australia/Adelaide, UTC+9:30) the UTC day is
+// still "today" until well into the local morning, so adding 24h in UTC and
+// slicing lands back on today's *local* date rather than tomorrow's — the
+// same date `today()` (below) returns. `getOrCreateRun`/`openVisit` then
+// resolve to the SAME run and visit already finalized earlier in this test,
+// not a fresh one, so the "next visit" this test renders is the prior
+// visit's own record (its own `before`, not last visit's carried `after`).
+// Not order-sensitive — it reproduces on every run, deterministically,
+// whenever the machine's local clock is between local midnight and the
+// UTC+9:30 rollover (09:30 local) — which is exactly when a real restock run
+// starts. Computed from `today()` plus one calendar day in local time
+// instead, so it always names the day after whatever `today()` names.
+const tomorrow = () => {
+  const [year, month, day] = today().split('-').map(Number)
+  return new Date(year, month - 1, day + 1).toLocaleDateString('en-CA')
+}
 
 // Fix-plan item 11. The nav used to be pinned to the bottom of the viewport,
 // which on a phone is exactly where the thumb rests while scrolling a
@@ -96,7 +114,7 @@ describe('a machine, end to end', () => {
     // a UI form (that form was removed — devs/debug/no-need-to-add-
     // machine.png), so the fixture machine is created directly here.
     await saveMachine({ level: 7, label: 'Lift lobby' })
-    render(<App />)
+    const app = render(<App />)
     // §4: a distinct label is folded into the row's "not counted" state
     // text rather than shown as its own chip.
     await screen.findByRole('button', { name: 'L7 Lift lobby · not counted' })
@@ -169,12 +187,19 @@ describe('a machine, end to end', () => {
     expect(lastRecordedLevels(history).get(levelKey(58, itemId))).toBe(8)
 
     // --- The next run opens on what the machine was left at ----------------
+    // Unmount the first screen before rendering the second: otherwise both
+    // are on screen at once and `findAllByLabelText('slot 58 counted')`
+    // resolves as soon as the FIRST screen's still-mounted input satisfies
+    // it, before the second screen (this test's actual subject) has
+    // rendered its own. That raced the assertion below against React's
+    // render of the fresh screen and made it order-sensitive.
+    app.unmount()
     const nextRun = await getOrCreateRun(tomorrow())
     render(
       <CountScreen runId={nextRun.id} machine={machine} onDone={vi.fn()} />,
     )
 
-    const nextVisitCounted = (await screen.findAllByLabelText('slot 58 counted')).at(-1)
+    const nextVisitCounted = await screen.findByLabelText('slot 58 counted')
     expect(nextVisitCounted).toHaveValue('8')
     expect(nextVisitCounted).toHaveClass('text-neutral-400')
   })
