@@ -71,19 +71,6 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   it means a bad entry stays visible in the history alongside its correction
   rather than disappearing. No decision to build editing has been made either
   way; this is simply what shipped in Phase 2.
-- **A `miscount` recorded at a machine slot is written and read by nothing.**
-  The slot row's `⋯` sheet offers it, and `recordAdjustment` stores it — and
-  then nothing consumes it. `entersResidual` excludes it by reason (correctly:
-  a miscount is a data fix, not a stock movement), it touches no `CountLine`,
-  so the level it was meant to correct is unchanged, and there is no
-  adjustment-history screen for it to be read back from. The storeroom sheet
-  already withholds `miscount` for exactly this reason; the slot sheet still
-  offers it. Not fixed here because the choice is a design one and either
-  answer is defensible: withhold it at the slot too, matching the storeroom
-  and the fact that the slot's own correction mechanism is editing the count
-  in place (spec §5.1); or keep it and give it a consumer, which means
-  deciding what a miscount at a slot *means* — a note against the period, or
-  an actual correction to the recorded level. Recorded rather than guessed at.
 - **A redistribution can be double-counted.** Spec §3.2 says moving stock
   between machines during a run is self-recording: the source machine's
   after-count drops, the destination's rises, and the two counts carry the
@@ -206,6 +193,19 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   cannot yet answer what sold or where the stock is." See
   `docs/phase-2-report.md` for the decisions, their costs, and the bugs caught
   during implementation.
+- **`miscount` is withheld at a machine slot** (2026-08-28, design §7,
+  operator decision). The slot row's `⋯` sheet offered a correction that
+  entered no residual, touched no `CountLine`, and had no screen to read it
+  back from — offering it did nothing, which is worse than not offering it.
+  Withheld there now, using the same `entersResidual` filter the storeroom
+  already applied (`AdjustmentSheet.tsx`'s `SLOT_ADJUSTMENT_REASONS`), not a
+  second hard-coded list. The underlying question this bullet was recorded
+  against — what a slot miscount should *mean* — is not answered by this fix
+  and is still open for Phase 3. If that question resolves the other way and
+  the tile returns, the `needsDirection` correction-direction control returns
+  with it: `miscount` is the only reason it applies to today, so withholding
+  the reason is what made the control unreachable at a slot, not a separate
+  change.
 
 ---
 

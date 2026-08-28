@@ -17,6 +17,16 @@ function messageFor(err: unknown): string {
     : 'Could not record that. Nothing was saved.'
 }
 
+/** A slot correction is written and read by nothing: `entersResidual` already
+ * excludes it from the sales residual (correctly — it is a data fix, not a
+ * stock movement), it touches no `CountLine`, and no screen reads it back
+ * (docs/known-gaps.md). Withheld at a machine slot by operator decision,
+ * 2026-08-28 (design §7) — matching the storeroom, which withheld it first.
+ * Derived with the same predicate the storeroom uses, so this is not a
+ * second hard-coded list: a future row in `ADJUSTMENT_REASONS` reaches both
+ * call sites without an edit here. */
+const SLOT_ADJUSTMENT_REASONS = ADJUSTMENT_REASONS.filter((r) => r.entersResidual)
+
 /** One sheet, both locations (design §7.1). Reached from `⋯` on a slot row and
  * from the storeroom screen, with the location already known from where it was
  * opened — nothing is added to the counting flow itself, which stays the
@@ -25,16 +35,20 @@ function messageFor(err: unknown): string {
  * Quantity is entered as a positive magnitude; the sign is decided by the
  * reason, so the operator never types a minus. */
 export function AdjustmentSheet({
-  location, itemId, reasons = ADJUSTMENT_REASONS, onSaved, onCancel,
+  location, itemId,
+  reasons = location.kind === 'machine' ? SLOT_ADJUSTMENT_REASONS : ADJUSTMENT_REASONS,
+  onSaved, onCancel,
 }: {
   location: AdjustmentLocation
   itemId: Id
-  /** Which reasons to offer. Defaults to the full table (spec §5.3). The
-   * storeroom screen passes a narrower list — a `miscount` recorded there
-   * would be excluded from `ledgerBalance` (domain/storeroom.ts, fix round
-   * 1, finding 1) and so would silently do nothing; the storeroom's own
-   * correction mechanism is the manual count, which resets the ledger
-   * anchor directly. */
+  /** Which reasons to offer. Defaults to the full table at the storeroom, and
+   * to `SLOT_ADJUSTMENT_REASONS` (above) at a machine slot, where `miscount`
+   * is withheld. The storeroom screen additionally passes its own narrower
+   * list explicitly, for the same underlying reason — a `miscount` recorded
+   * there would be excluded from `ledgerBalance` (domain/storeroom.ts, fix
+   * round 1, finding 1) and so would silently do nothing; the storeroom's own
+   * correction mechanism is the manual count, which resets the ledger anchor
+   * directly. */
   reasons?: ReasonSpec[]
   onSaved: () => void
   onCancel: () => void
@@ -83,6 +97,12 @@ export function AdjustmentSheet({
   // negative, which is wrong for a miscount that corrects the figure
   // upward. `transfer` is also 'unchanged' but is excluded here: its sign
   // comes from source/destination, not from an operator-chosen direction.
+  // `miscount` is the only reason this is true for today, and it is also the
+  // only reason `SLOT_ADJUSTMENT_REASONS` withholds — so with the default
+  // `reasons` list at a machine slot, `reason` can never settle on it and
+  // this stays false there. Left as a general predicate rather than special-
+  // cased on the reason list actually in effect, so it keeps working if a
+  // caller passes a wider list, or a future reason is added upstream.
   const needsDirection = reasonSpec(reason).totalStock === 'unchanged' && reason !== 'transfer'
 
   async function record() {

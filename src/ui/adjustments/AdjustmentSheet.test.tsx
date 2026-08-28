@@ -211,14 +211,22 @@ describe('AdjustmentSheet', () => {
   // 'unchanged', not 'decrease', so `totalStock === 'increase' ? + : -`
   // always signed a miscount negative — an operator who counted MORE than
   // was recorded could never say so. A miscount now asks for a direction.
+  //
+  // Exercised at the storeroom location rather than a machine slot: since
+  // 2026-08-28 (§7) a machine slot's default reason list withholds
+  // `miscount` (see "does not offer a miscount correction at a machine
+  // slot", below), so the option is unreachable there. The storeroom's
+  // default list is still the full table — the storeroom screen narrows it
+  // itself, at the call site (StoreroomScreen.test.tsx covers that) — so it
+  // remains the place to exercise the sheet's own direction-handling logic
+  // for a reason a caller does choose to offer.
   it('records a miscount in the "more than recorded" direction as a positive movement', async () => {
     const user = userEvent.setup()
     const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
-    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
 
     render(
       <AdjustmentSheet
-        location={{ kind: 'machine', machineId: l7.id, slotNumber: 58 }}
+        location={{ kind: 'storeroom' }}
         itemId={coke.id}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -242,11 +250,10 @@ describe('AdjustmentSheet', () => {
   it('records a miscount in the "fewer than recorded" direction as a negative movement', async () => {
     const user = userEvent.setup()
     const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
-    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
 
     render(
       <AdjustmentSheet
-        location={{ kind: 'machine', machineId: l7.id, slotNumber: 58 }}
+        location={{ kind: 'storeroom' }}
         itemId={coke.id}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -265,6 +272,28 @@ describe('AdjustmentSheet', () => {
     await waitFor(async () => {
       expect((await listAdjustments())[0]?.units).toBe(-2)
     })
+  })
+
+  // §7, 2026-08-28: a slot miscount is stored and read by nothing (see
+  // docs/known-gaps.md) — `entersResidual` already excludes it from the
+  // sales residual, it touches no `CountLine`, and no screen reads it back.
+  // Withheld at a machine slot to match the storeroom, via the same
+  // `entersResidual` filter rather than a special case naming `miscount`
+  // (see `SLOT_ADJUSTMENT_REASONS` in AdjustmentSheet.tsx).
+  it('does not offer a miscount correction at a machine slot', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'machine', machineId: l7.id, slotNumber: 31 }}
+        itemId={coke.id}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('Miscount correction')).not.toBeInTheDocument()
   })
 
   it('does not show a correction direction for reasons other than miscount', async () => {
@@ -308,18 +337,47 @@ describe('AdjustmentSheet', () => {
     expect(await listAdjustments()).toEqual([])
   })
 
-  // Fix round 1, finding 2: the storeroom screen needs a narrower reason
-  // list (no miscount — see StoreroomScreen.test.tsx), reached via a new
-  // `reasons` prop rather than a hard-coded list duplicated at the call
-  // site. The slot-row path (SlotEditSheet) passes nothing, so it must keep
-  // getting the full list — guarded here.
-  it('offers the full reason list by default, unaffected by the new prop', async () => {
+  // Fix round 1, finding 2 gave the storeroom screen a narrower reason list
+  // (no miscount — see StoreroomScreen.test.tsx) via a `reasons` prop rather
+  // than a hard-coded list duplicated at the call site. The slot-row path
+  // (SlotEditSheet) still passes nothing, but since §7 (2026-08-28) its
+  // default is no longer the full table either: withholding `miscount` at a
+  // slot could not be done at the SlotEditSheet call site (out of scope for
+  // that change), so the sheet's own default now derives a narrower list for
+  // a machine location — the same `entersResidual` filter the storeroom
+  // already used, not a second hard-coded list.
+  it('narrows the default reason list at a machine slot, deriving it rather than hard-coding it', async () => {
     const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
     const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
 
     render(
       <AdjustmentSheet
         location={{ kind: 'machine', machineId: l7.id, slotNumber: 58 }}
+        itemId={coke.id}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    const options = within(screen.getByLabelText('Reason')).getAllByRole('option')
+    expect(options.map((o) => o.textContent)).toEqual([
+      'Move to another machine or the storeroom',
+      'Expired',
+      'Damaged or broken',
+      'Missing or taken',
+      'Delivery arrived',
+    ])
+  })
+
+  // The storeroom screen passes its own narrower `reasons` explicitly, so
+  // this default only ever matters for a caller that does not — but it
+  // should still be the full table there, not the slot's narrower one.
+  it('still offers the full reason list by default at the storeroom', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'storeroom' }}
         itemId={coke.id}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
