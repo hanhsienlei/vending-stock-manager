@@ -141,7 +141,7 @@ export function CountScreen({
               <button
                 type="button"
                 onClick={openSlot}
-                className="bg-accent px-3 py-2 text-[12px] font-extrabold uppercase tracking-[0.04em] text-ground"
+                className="bg-ink px-3 py-2 text-[12px] font-extrabold uppercase tracking-[0.04em] text-ground"
               >
                 Open slot
               </button>

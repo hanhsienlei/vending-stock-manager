@@ -733,4 +733,48 @@ describe('CountScreen', () => {
       String(fantaLine?.after ?? 0),
     )
   })
+
+  // Fix round 1, item 2: the actual bug this seam produced was not about
+  // `filled` (setAfter already clears it for the whole slot the moment any
+  // item's after is hand-typed, which makes the `filled` + `afterTouched`
+  // combination unreachable through ordinary taps). It was this, reachable
+  // in four ordinary taps: type a mixed slot's after-count by hand, then
+  // edit that SAME item's before-count, and the hand-typed after-count gets
+  // silently clobbered. Rule 3 in useCounting.setBefore guards this
+  // (afterTouched keys are never re-derived), but it had no screen-level
+  // test driving it through the real UI.
+  it('keeps a hand-entered after-count in a mixed slot when that item\'s before-count is edited afterwards', async () => {
+    const user = userEvent.setup()
+    const fanta = await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(fanta.id, { kind: 'base' }, [52])
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+    const run = await createRun('2026-08-26')
+
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
+    await screen.findByText('Fanta')
+
+    // 1–2. Type a figure into Sunkist's refilled-to cell by hand.
+    const sunkistRefilled = screen.getByLabelText('slot 52 Sunkist refilled to')
+    await user.clear(sunkistRefilled)
+    await user.type(sunkistRefilled, '4')
+    expect(screen.getByLabelText('slot 52 Sunkist refilled to')).toHaveValue('4')
+
+    // 3. Change that same item's counted cell.
+    const sunkistCounted = screen.getByLabelText('slot 52 Sunkist counted')
+    await user.clear(sunkistCounted)
+    await user.type(sunkistCounted, '2')
+
+    await waitFor(async () => {
+      const lines = await getCountLines((await openVisit(run.id, machine.id)).id)
+      expect(lines.find((l) => l.itemId === sunkist.id)?.before).toBe(2)
+    })
+
+    // 4. The hand-entered refilled-to figure is unchanged, on screen and on
+    // disk — not silently re-derived back to the before-count.
+    expect(screen.getByLabelText('slot 52 Sunkist refilled to')).toHaveValue('4')
+    const lines = await getCountLines((await openVisit(run.id, machine.id)).id)
+    expect(lines.find((l) => l.itemId === sunkist.id)?.after).toBe(4)
+  })
 })

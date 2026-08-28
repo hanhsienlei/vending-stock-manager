@@ -1,5 +1,5 @@
 import {
-  createContext, useContext, useEffect, useRef, useState, type ReactNode,
+  createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode,
 } from 'react'
 
 export type TabName = 'machines' | 'items' | 'storeroom' | 'history'
@@ -39,7 +39,12 @@ export function ScreenLayout({
   const navRef = useRef<HTMLElement>(null)
   const [navHeight, setNavHeight] = useState(0)
 
-  useEffect(() => {
+  // Layout effect, not a plain effect: a plain effect runs after paint, so
+  // there would be one visible frame on every screen entry where
+  // `stickyExtra` renders at `top: 0` and overlaps `nav` before the height
+  // lands. This screen is entered many times a run — that flash would read
+  // as breakage, not as a one-off.
+  useLayoutEffect(() => {
     const el = navRef.current
     if (!el) return
     const measure = () => setNavHeight(el.getBoundingClientRect().height)

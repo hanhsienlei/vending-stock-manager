@@ -20,7 +20,7 @@ export function TrayTabs({
           type="button"
           aria-current={tray === active ? 'true' : undefined}
           onClick={() => onSelect(tray)}
-          className={`shrink-0 py-2 text-[13px] ${
+          className={`shrink-0 py-2 text-[13px] tabular-nums ${
             tray === active
               ? 'font-extrabold text-ink shadow-[inset_0_-3px_0_var(--color-accent)]'
               : 'font-medium text-neutral-600'
