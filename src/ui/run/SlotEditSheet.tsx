@@ -7,6 +7,7 @@ import type { Id, Item } from '../../domain/types'
 
 export function SlotEditSheet({
   machineId, slotNumber, items, currentItemIds, capacity, onSaved, onCancel,
+  isFilled, onToggleFill,
 }: {
   machineId: Id
   slotNumber: number
@@ -18,6 +19,12 @@ export function SlotEditSheet({
   capacity: number
   onSaved: () => void
   onCancel: () => void
+  /** Whether this slot is currently set to fill to capacity this visit.
+   * Optional: `MachineMapScreen` opens this same sheet outside any count,
+   * where there is no visit to fill into, so it passes neither this nor
+   * `onToggleFill` and the control does not render (§3.6). */
+  isFilled?: boolean
+  onToggleFill?: () => void
 }) {
   const [capacityInput, setCapacityInput] = useState(String(capacity))
   const [adjusting, setAdjusting] = useState<Id | null>(null)
@@ -79,6 +86,20 @@ export function SlotEditSheet({
   return (
     <div className="rounded-lg border bg-white p-3">
       <h3 className="mb-2 font-semibold">Slot {slotNumber}</h3>
+
+      {onToggleFill && (
+        <button
+          type="button"
+          aria-label={`Fill slot ${slotNumber}`}
+          aria-pressed={isFilled}
+          onClick={onToggleFill}
+          className={`w-full border-b border-rule-light px-4 py-3 text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] ${
+            isFilled ? 'bg-accent text-ground' : 'bg-ground text-ink'
+          }`}
+        >
+          Fill to capacity
+        </button>
+      )}
 
       <label className="mb-3 flex items-end gap-2">
         <span className="flex flex-1 flex-col gap-1">

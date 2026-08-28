@@ -19,22 +19,26 @@ beforeEach(async () => {
  * the tap, so tests wait for `onSaved` — which fires only once the writes have
  * landed — rather than racing the promise chain. */
 function renderSheet(props: {
-  slotNumber: number
-  items: Awaited<ReturnType<typeof listItems>>
-  currentItemIds: Id[]
+  slotNumber?: number
+  items?: Awaited<ReturnType<typeof listItems>>
+  currentItemIds?: Id[]
   capacity?: number
   machineId?: string
+  isFilled?: boolean
+  onToggleFill?: () => void
 }) {
   const onSaved = vi.fn()
   render(
     <SlotEditSheet
       machineId={props.machineId ?? 'L7'}
-      slotNumber={props.slotNumber}
-      items={props.items}
-      currentItemIds={props.currentItemIds}
+      slotNumber={props.slotNumber ?? 58}
+      items={props.items ?? []}
+      currentItemIds={props.currentItemIds ?? []}
       capacity={props.capacity ?? 0}
       onSaved={onSaved}
       onCancel={vi.fn()}
+      isFilled={props.isFilled}
+      onToggleFill={props.onToggleFill}
     />,
   )
   return onSaved
@@ -260,5 +264,18 @@ describe('SlotEditSheet', () => {
     await user.click(screen.getByRole('button', { name: 'Adjust Coke' }))
 
     expect(await screen.findByLabelText('Reason')).toBeInTheDocument()
+  })
+
+  it('offers Fill for this slot when opened during a count', async () => {
+    const user = userEvent.setup()
+    const onToggleFill = vi.fn()
+    renderSheet({ isFilled: false, onToggleFill })
+    await user.click(screen.getByRole('button', { name: 'Fill slot 58' }))
+    expect(onToggleFill).toHaveBeenCalled()
+  })
+
+  it('does not offer Fill when opened from the machine map', () => {
+    renderSheet({})
+    expect(screen.queryByRole('button', { name: 'Fill slot 58' })).not.toBeInTheDocument()
   })
 })
