@@ -3,6 +3,8 @@ import { TRAYS, trayOf, trayLabel } from '../../domain/trays'
 import { SlotEditSheet } from '../run/SlotEditSheet'
 import { useMachineMap } from '../useMachineMap'
 import { distinctLabel } from './machineLabel'
+import { ScreenHeader } from '../components/ScreenHeader'
+import { ScreenLayout } from '../components/ScreenLayout'
 import type { Machine } from '../../domain/types'
 
 export function MachineMapScreen({
@@ -17,93 +19,106 @@ export function MachineMapScreen({
   // correction, never a replacement for it.
   const [editingSlot, setEditingSlot] = useState<number | null>(null)
 
-  if (loading) return <div className="p-4">Loading…</div>
+  // Title-only for now (task 3): this screen's own spec section — back
+  // affordance, subtitle, figure — belongs to a later task. See
+  // task-3-brief.md decision #1.
+  const header = <ScreenHeader title={`L${machine.level}`} />
+
+  if (loading) {
+    return (
+      <ScreenLayout header={header}>
+        <div className="p-4">Loading…</div>
+      </ScreenLayout>
+    )
+  }
 
   const editing = editingSlot === null
     ? null
     : map.find((s) => s.slotNumber === editingSlot)
 
   return (
-    <div className="p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <button type="button" onClick={onBack} className="text-blue-600">
-          ← Back
-        </button>
-        <span className="text-sm">
-          <span className="font-semibold">L{machine.level}</span>
-          {distinctLabel(machine) && (
-            <span className="ml-2 text-gray-500">{distinctLabel(machine)}</span>
-          )}
-        </span>
-      </div>
-
-      {TRAYS.map((tray) => {
-        const slots = map.filter((s) => trayOf(s.slotNumber) === tray)
-        if (slots.length === 0) return null
-        return (
-          <section key={tray} className="mb-4">
-            <h3 className="mb-2 text-xs font-bold uppercase text-gray-500">
-              {trayLabel(tray)}
-            </h3>
-            <ul className="flex flex-col gap-1">
-              {slots.map((slot) => (
-                <li
-                  key={slot.slotNumber}
-                  className="flex items-center gap-3 rounded-lg border p-2"
-                >
-                  <span className="w-8 text-sm font-bold text-gray-500">
-                    {slot.slotNumber}
-                  </span>
-                  <span className="flex-1 text-sm">
-                    {slot.accepts.map((id) => items.get(id)?.name ?? '?').join(' / ')}
-                  </span>
-                  <span className="text-xs text-gray-400">cap {slot.capacity}</span>
-                  <button
-                    type="button"
-                    aria-label={`Edit slot ${slot.slotNumber}`}
-                    onClick={() => setEditingSlot(slot.slotNumber)}
-                    className="px-1 text-lg text-gray-400"
-                  >
-                    ⋯
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )
-      })}
-
-      {/* A floating sheet, not an inline one. The map lists every mapped slot
-          at once, so rendering the sheet in document order put it below all
-          six trays — about 3100px down an 828px viewport on a full machine,
-          which reads as `⋯` doing nothing at all. The counting screen shows
-          one tray at a time and keeps its inline sheet. */}
-      {editing && (
-        <div
-          className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 p-2"
-          onClick={() => setEditingSlot(null)}
-          aria-label="Close slot editor"
-          role="presentation"
-        >
-          <div
-            className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <SlotEditSheet
-              machineId={machine.id}
-              slotNumber={editing.slotNumber}
-              items={[...items.values()]}
-              currentItemIds={editing.accepts}
-              capacity={editing.capacity}
-              onSaved={() => {
-                setEditingSlot(null)
-                void reload()
-              }}
-              onCancel={() => setEditingSlot(null)}
-            />
-          </div>
+    <ScreenLayout header={header}>
+      <div className="p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <button type="button" onClick={onBack} className="text-blue-600">
+            ← Back
+          </button>
+          <span className="text-sm">
+            <span className="font-semibold">L{machine.level}</span>
+            {distinctLabel(machine) && (
+              <span className="ml-2 text-gray-500">{distinctLabel(machine)}</span>
+            )}
+          </span>
         </div>
-      )}
-    </div>
+
+        {TRAYS.map((tray) => {
+          const slots = map.filter((s) => trayOf(s.slotNumber) === tray)
+          if (slots.length === 0) return null
+          return (
+            <section key={tray} className="mb-4">
+              <h3 className="mb-2 text-xs font-bold uppercase text-gray-500">
+                {trayLabel(tray)}
+              </h3>
+              <ul className="flex flex-col gap-1">
+                {slots.map((slot) => (
+                  <li
+                    key={slot.slotNumber}
+                    className="flex items-center gap-3 rounded-lg border p-2"
+                  >
+                    <span className="w-8 text-sm font-bold text-gray-500">
+                      {slot.slotNumber}
+                    </span>
+                    <span className="flex-1 text-sm">
+                      {slot.accepts.map((id) => items.get(id)?.name ?? '?').join(' / ')}
+                    </span>
+                    <span className="text-xs text-gray-400">cap {slot.capacity}</span>
+                    <button
+                      type="button"
+                      aria-label={`Edit slot ${slot.slotNumber}`}
+                      onClick={() => setEditingSlot(slot.slotNumber)}
+                      className="px-1 text-lg text-gray-400"
+                    >
+                      ⋯
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+        })}
+
+        {/* A floating sheet, not an inline one. The map lists every mapped slot
+            at once, so rendering the sheet in document order put it below all
+            six trays — about 3100px down an 828px viewport on a full machine,
+            which reads as `⋯` doing nothing at all. The counting screen shows
+            one tray at a time and keeps its inline sheet. */}
+        {editing && (
+          <div
+            className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 p-2"
+            onClick={() => setEditingSlot(null)}
+            aria-label="Close slot editor"
+            role="presentation"
+          >
+            <div
+              className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <SlotEditSheet
+                machineId={machine.id}
+                slotNumber={editing.slotNumber}
+                items={[...items.values()]}
+                currentItemIds={editing.accepts}
+                capacity={editing.capacity}
+                onSaved={() => {
+                  setEditingSlot(null)
+                  void reload()
+                }}
+                onCancel={() => setEditingSlot(null)}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </ScreenLayout>
   )
 }

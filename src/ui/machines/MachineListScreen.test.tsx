@@ -84,7 +84,7 @@ describe('MachineListScreen', () => {
     await screen.findByText('L7')
 
     await user.click(screen.getByRole('button', { name: /^L7/ }))
-    await vi.waitFor(() => expect(onCount).toHaveBeenCalledWith(l7.id, run.id))
+    await vi.waitFor(() => expect(onCount).toHaveBeenCalledWith(l7, run.id))
   })
 
   it('does not mark a machine with no visit in today\'s run', async () => {
@@ -238,7 +238,7 @@ describe('MachineListScreen', () => {
       await waitFor(() => expect(onCount).toHaveBeenCalled())
       const runs = await listRuns()
       expect(runs).toHaveLength(1)
-      expect(onCount).toHaveBeenCalledWith(l7.id, runs[0].id)
+      expect(onCount).toHaveBeenCalledWith(l7, runs[0].id)
     })
   })
 })

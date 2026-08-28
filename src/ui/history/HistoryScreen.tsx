@@ -6,6 +6,8 @@ import { formatRunDate } from '../../domain/date'
 import { distinctLabel } from '../machines/machineLabel'
 import { ReportScreen } from '../report/ReportScreen'
 import { VisitReceipt } from './VisitReceipt'
+import { ScreenHeader } from '../components/ScreenHeader'
+import { ScreenLayout } from '../components/ScreenLayout'
 import type { Id, Machine, Run, Visit } from '../../domain/types'
 
 /** Read-only history, three levels deep: runs → the machines in a run → the
@@ -44,7 +46,20 @@ export function HistoryScreen() {
     })()
   }, [])
 
-  if (loading) return <div className="p-4">Loading…</div>
+  if (loading) {
+    return (
+      <ScreenLayout header={<ScreenHeader title="History" />}>
+        <div className="p-4">Loading…</div>
+      </ScreenLayout>
+    )
+  }
+
+  // Same header on every one of this screen's states, including the two
+  // levels of drill-down below: the nested back affordance those states
+  // deserve (§2) is a later task's work (task-3-brief.md decision #1), so
+  // for now they keep the top-level `History` chrome and their own existing
+  // inline "← Back" control rather than losing the tab bar altogether.
+  const header = <ScreenHeader eyebrow={`${runs.length} RUNS RECORDED`} title="History" />
 
   const machineById = new Map(machines.map((m) => [m.id, m]))
 
@@ -73,10 +88,12 @@ export function HistoryScreen() {
 
   if (view === 'report') {
     return (
-      <div className="p-4">
-        {toggle}
-        <ReportScreen />
-      </div>
+      <ScreenLayout header={header}>
+        <div className="p-4">
+          {toggle}
+          <ReportScreen />
+        </div>
+      </ScreenLayout>
     )
   }
 
@@ -84,11 +101,13 @@ export function HistoryScreen() {
     const machine = machineById.get(openVisit.machineId)
     if (machine) {
       return (
-        <VisitReceipt
-          visitId={openVisit.id}
-          machine={machine}
-          onBack={() => setOpenVisit(null)}
-        />
+        <ScreenLayout header={header}>
+          <VisitReceipt
+            visitId={openVisit.id}
+            machine={machine}
+            onBack={() => setOpenVisit(null)}
+          />
+        </ScreenLayout>
       )
     }
   }
@@ -103,46 +122,83 @@ export function HistoryScreen() {
     )
 
     return (
-      <div className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => setOpenRun(null)}
-            className="text-blue-600"
-          >
-            ← Back
-          </button>
-          <span className="text-sm font-semibold">{formatRunDate(openRun.date)}</span>
-        </div>
+      <ScreenLayout header={header}>
+        <div className="p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setOpenRun(null)}
+              className="text-blue-600"
+            >
+              ← Back
+            </button>
+            <span className="text-sm font-semibold">{formatRunDate(openRun.date)}</span>
+          </div>
 
-        {visits.length === 0 ? (
-          <p className="text-sm text-gray-500">No machines were counted in this run.</p>
+          {visits.length === 0 ? (
+            <p className="text-sm text-gray-500">No machines were counted in this run.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {visits.map((visit) => {
+                const machine = machineById.get(visit.machineId)
+                return (
+                  <li key={visit.id}>
+                    <button
+                      type="button"
+                      aria-label={`visit to L${machine?.level ?? '?'}`}
+                      onClick={() => setOpenVisit(visit)}
+                      className="flex w-full items-center gap-2 rounded-lg border p-3 text-left"
+                    >
+                      <span className="font-semibold">L{machine?.level ?? '?'}</span>
+                      {machine && distinctLabel(machine) && (
+                        <span className="text-gray-500">{distinctLabel(machine)}</span>
+                      )}
+                      <span className="flex-1" />
+                      {visit.status === 'finalized' ? (
+                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold uppercase text-green-700">
+                          Finished
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold uppercase text-amber-700">
+                          In progress
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      </ScreenLayout>
+    )
+  }
+
+  return (
+    <ScreenLayout header={header}>
+      <div className="p-4">
+        <h2 className="mb-3 text-lg font-semibold">History</h2>
+        {toggle}
+
+        {runs.length === 0 ? (
+          <p className="text-sm text-gray-500">No runs recorded yet.</p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {visits.map((visit) => {
-              const machine = machineById.get(visit.machineId)
+            {runs.map((run) => {
+              const finished = (visitsByRun.get(run.id) ?? [])
+                .filter((v) => v.status === 'finalized').length
               return (
-                <li key={visit.id}>
+                <li key={run.id}>
                   <button
                     type="button"
-                    aria-label={`visit to L${machine?.level ?? '?'}`}
-                    onClick={() => setOpenVisit(visit)}
+                    aria-label={`run ${run.date}`}
+                    onClick={() => setOpenRun(run)}
                     className="flex w-full items-center gap-2 rounded-lg border p-3 text-left"
                   >
-                    <span className="font-semibold">L{machine?.level ?? '?'}</span>
-                    {machine && distinctLabel(machine) && (
-                      <span className="text-gray-500">{distinctLabel(machine)}</span>
-                    )}
-                    <span className="flex-1" />
-                    {visit.status === 'finalized' ? (
-                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold uppercase text-green-700">
-                        Finished
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold uppercase text-amber-700">
-                        In progress
-                      </span>
-                    )}
+                    <span className="flex-1 font-semibold">{formatRunDate(run.date)}</span>
+                    <span className="text-sm text-gray-500">
+                      {finished} of {machines.length} counted
+                    </span>
                   </button>
                 </li>
               )
@@ -150,39 +206,6 @@ export function HistoryScreen() {
           </ul>
         )}
       </div>
-    )
-  }
-
-  return (
-    <div className="p-4">
-      <h2 className="mb-3 text-lg font-semibold">History</h2>
-      {toggle}
-
-      {runs.length === 0 ? (
-        <p className="text-sm text-gray-500">No runs recorded yet.</p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {runs.map((run) => {
-            const finished = (visitsByRun.get(run.id) ?? [])
-              .filter((v) => v.status === 'finalized').length
-            return (
-              <li key={run.id}>
-                <button
-                  type="button"
-                  aria-label={`run ${run.date}`}
-                  onClick={() => setOpenRun(run)}
-                  className="flex w-full items-center gap-2 rounded-lg border p-3 text-left"
-                >
-                  <span className="flex-1 font-semibold">{formatRunDate(run.date)}</span>
-                  <span className="text-sm text-gray-500">
-                    {finished} of {machines.length} counted
-                  </span>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-    </div>
+    </ScreenLayout>
   )
 }

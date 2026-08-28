@@ -3,6 +3,8 @@ import { listItems } from '../../data/repositories/items'
 import { listPlacements } from '../../data/repositories/placements'
 import { seedStarterCatalogue } from '../../data/repositories/seed'
 import { TRAYS, trayOf, trayLabel } from '../../domain/trays'
+import { ScreenHeader } from '../components/ScreenHeader'
+import { ScreenLayout } from '../components/ScreenLayout'
 import type { Id, Item, ItemPlacement } from '../../domain/types'
 
 function ItemRow({ item, onSelect }: { item: Item; onSelect: (id: Id) => void }) {
@@ -106,65 +108,69 @@ export function ItemListScreen({
   }, [filtered, traysByItemId])
 
   return (
-    <div className="p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Items</h2>
-        <button type="button" onClick={onNew} className="font-semibold text-blue-600">
-          + New
-        </button>
-      </div>
+    <ScreenLayout
+      header={<ScreenHeader eyebrow={`CATALOGUE · ${items.length} ITEMS`} title="Items" />}
+    >
+      <div className="p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Items</h2>
+          <button type="button" onClick={onNew} className="font-semibold text-blue-600">
+            + New
+          </button>
+        </div>
 
-      {/* One-handed on a phone: a single full-width field, no extra taps to
-          reach it. */}
-      <input
-        type="search"
-        aria-label="Search items"
-        placeholder="Search items"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="mb-3 w-full rounded-lg border p-3"
-      />
+        {/* One-handed on a phone: a single full-width field, no extra taps to
+            reach it. */}
+        <input
+          type="search"
+          aria-label="Search items"
+          placeholder="Search items"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="mb-3 w-full rounded-lg border p-3"
+        />
 
-      {/* The empty catalogue is the safety mechanism: this button cannot
-          fire over real data because it does not exist once any item does. */}
-      {items.length === 0 && (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void loadStarterCatalogue()}
-          className="mb-3 w-full rounded-lg border border-blue-600 p-3 font-semibold text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? 'Loading…' : 'Load starter catalogue'}
-        </button>
-      )}
+        {/* The empty catalogue is the safety mechanism: this button cannot
+            fire over real data because it does not exist once any item does. */}
+        {items.length === 0 && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void loadStarterCatalogue()}
+            className="mb-3 w-full rounded-lg border border-blue-600 p-3 font-semibold text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? 'Loading…' : 'Load starter catalogue'}
+          </button>
+        )}
 
-      {TRAYS.map((tray) => {
-        const trayItems = groups.byTray.get(tray) ?? []
-        if (trayItems.length === 0) return null
-        return (
-          <section key={tray} className="mb-4">
-            <h3 className="mb-2 text-xs font-bold uppercase text-gray-500">
-              {trayLabel(tray)}
-            </h3>
+        {TRAYS.map((tray) => {
+          const trayItems = groups.byTray.get(tray) ?? []
+          if (trayItems.length === 0) return null
+          return (
+            <section key={tray} className="mb-4">
+              <h3 className="mb-2 text-xs font-bold uppercase text-gray-500">
+                {trayLabel(tray)}
+              </h3>
+              <ul className="flex flex-col gap-2">
+                {trayItems.map((item) => (
+                  <ItemRow key={item.id} item={item} onSelect={onSelect} />
+                ))}
+              </ul>
+            </section>
+          )
+        })}
+
+        {groups.unplaced.length > 0 && (
+          <section className="mb-4">
+            <h3 className="mb-2 text-xs font-bold uppercase text-gray-500">Unplaced</h3>
             <ul className="flex flex-col gap-2">
-              {trayItems.map((item) => (
+              {groups.unplaced.map((item) => (
                 <ItemRow key={item.id} item={item} onSelect={onSelect} />
               ))}
             </ul>
           </section>
-        )
-      })}
-
-      {groups.unplaced.length > 0 && (
-        <section className="mb-4">
-          <h3 className="mb-2 text-xs font-bold uppercase text-gray-500">Unplaced</h3>
-          <ul className="flex flex-col gap-2">
-            {groups.unplaced.map((item) => (
-              <ItemRow key={item.id} item={item} onSelect={onSelect} />
-            ))}
-          </ul>
-        </section>
-      )}
-    </div>
+        )}
+      </div>
+    </ScreenLayout>
   )
 }

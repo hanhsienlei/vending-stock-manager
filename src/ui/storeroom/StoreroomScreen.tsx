@@ -3,6 +3,8 @@ import { useStoreroom } from './useStoreroom'
 import { AdjustmentSheet } from '../adjustments/AdjustmentSheet'
 import { ADJUSTMENT_REASONS } from '../../domain/adjustments'
 import { fromBoxesAndLoose, toBoxesAndLoose } from '../../domain/packs'
+import { ScreenHeader } from '../components/ScreenHeader'
+import { ScreenLayout } from '../components/ScreenLayout'
 import type { Id, Item } from '../../domain/types'
 
 /** A typed number field, floored at zero. An empty field reads as 0 rather
@@ -45,7 +47,13 @@ export function StoreroomScreen() {
   const [search, setSearch] = useState('')
   const [adjusting, setAdjusting] = useState<Id | null>(null)
 
-  if (loading) return <div className="p-4">Loading…</div>
+  if (loading) {
+    return (
+      <ScreenLayout header={<ScreenHeader title="Storeroom" />}>
+        <div className="p-4">Loading…</div>
+      </ScreenLayout>
+    )
+  }
 
   // Counted against every item, never the filtered subset (item 10,
   // fix-plan 2026-08-27) — otherwise typing a search would make the header
@@ -60,97 +68,106 @@ export function StoreroomScreen() {
   )
 
   return (
-    <div className="p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Storeroom</h2>
-        <span className="text-sm text-gray-500">
-          {countedCount} / {items.length} counted
-        </span>
-      </div>
-
-      {/* One-handed on a phone: a single full-width field, no extra taps to
-          reach it — same as the item list's search box. */}
-      <input
-        type="search"
-        aria-label="Search storeroom"
-        placeholder="Search storeroom"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="mb-3 w-full rounded-lg border p-3"
-      />
-
-      <ul className="flex flex-col gap-2">
-        {filtered.map((item) => (
-          <li key={item.id} className="rounded-lg border p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold">{item.name}</div>
-                <div className="text-xs text-gray-500">
-                  {item.size && <>{item.size} · </>}
-                  {formatVerifiedAt(verifiedAt.get(item.id))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAdjusting(item.id)}
-                  className="text-xs font-bold text-blue-600"
-                >
-                  {`Adjust ${item.name}`}
-                </button>
-              </div>
-              <div className="text-right">
-                <div
-                  aria-label={`${item.name} on hand`}
-                  className="text-sm font-semibold"
-                >
-                  {onHand.get(item.id) ?? 0}
-                </div>
-                <QuantityField
-                  item={item}
-                  units={units.get(item.id) ?? 0}
-                  // Same shape as useCounting's steppers: commit
-                  // optimistically, persist behind it, swallow a rejected
-                  // write here rather than let it surface as an unhandled
-                  // rejection (no error surface is in scope for this screen
-                  // either — see known-gaps.md).
-                  onChange={(qty) => { void setUnits(item.id, qty).catch(() => {}) }}
-                />
-              </div>
-            </div>
-          </li>
-        ))}
-      </ul>
-
-      {/* A floating sheet, not an inline one — the same fix the machine map
-          needed (94cf425). This list is the whole sixty-item catalogue, so a
-          sheet rendered in document order after it opens thousands of pixels
-          below the "Adjust" button that was tapped: from where the operator
-          is standing, a button that does nothing. Anchored to the bottom,
-          capped at 80vh, scrollable, and dismissed by tapping the backdrop. */}
-      {adjusting !== null && (
-        <div
-          className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 p-2"
-          onClick={() => setAdjusting(null)}
-          aria-label="Close adjustment sheet"
-          role="presentation"
-        >
-          <div
-            className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <AdjustmentSheet
-              location={{ kind: 'storeroom' }}
-              itemId={adjusting}
-              reasons={STOREROOM_ADJUSTMENT_REASONS}
-              onSaved={() => {
-                setAdjusting(null)
-                void refresh()
-              }}
-              onCancel={() => setAdjusting(null)}
-            />
-          </div>
+    <ScreenLayout
+      header={
+        <ScreenHeader
+          eyebrow={`LEDGER · ${countedCount} OF ${items.length} VERIFIED`}
+          title="Storeroom"
+        />
+      }
+    >
+      <div className="p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Storeroom</h2>
+          <span className="text-sm text-gray-500">
+            {countedCount} / {items.length} counted
+          </span>
         </div>
-      )}
-    </div>
+
+        {/* One-handed on a phone: a single full-width field, no extra taps to
+            reach it — same as the item list's search box. */}
+        <input
+          type="search"
+          aria-label="Search storeroom"
+          placeholder="Search storeroom"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="mb-3 w-full rounded-lg border p-3"
+        />
+
+        <ul className="flex flex-col gap-2">
+          {filtered.map((item) => (
+            <li key={item.id} className="rounded-lg border p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold">{item.name}</div>
+                  <div className="text-xs text-gray-500">
+                    {item.size && <>{item.size} · </>}
+                    {formatVerifiedAt(verifiedAt.get(item.id))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAdjusting(item.id)}
+                    className="text-xs font-bold text-blue-600"
+                  >
+                    {`Adjust ${item.name}`}
+                  </button>
+                </div>
+                <div className="text-right">
+                  <div
+                    aria-label={`${item.name} on hand`}
+                    className="text-sm font-semibold"
+                  >
+                    {onHand.get(item.id) ?? 0}
+                  </div>
+                  <QuantityField
+                    item={item}
+                    units={units.get(item.id) ?? 0}
+                    // Same shape as useCounting's steppers: commit
+                    // optimistically, persist behind it, swallow a rejected
+                    // write here rather than let it surface as an unhandled
+                    // rejection (no error surface is in scope for this screen
+                    // either — see known-gaps.md).
+                    onChange={(qty) => { void setUnits(item.id, qty).catch(() => {}) }}
+                  />
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        {/* A floating sheet, not an inline one — the same fix the machine map
+            needed (94cf425). This list is the whole sixty-item catalogue, so a
+            sheet rendered in document order after it opens thousands of pixels
+            below the "Adjust" button that was tapped: from where the operator
+            is standing, a button that does nothing. Anchored to the bottom,
+            capped at 80vh, scrollable, and dismissed by tapping the backdrop. */}
+        {adjusting !== null && (
+          <div
+            className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 p-2"
+            onClick={() => setAdjusting(null)}
+            aria-label="Close adjustment sheet"
+            role="presentation"
+          >
+            <div
+              className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <AdjustmentSheet
+                location={{ kind: 'storeroom' }}
+                itemId={adjusting}
+                reasons={STOREROOM_ADJUSTMENT_REASONS}
+                onSaved={() => {
+                  setAdjusting(null)
+                  void refresh()
+                }}
+                onCancel={() => setAdjusting(null)}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </ScreenLayout>
   )
 }
 

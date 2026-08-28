@@ -6,6 +6,7 @@ import { MachineMapScreen } from './machines/MachineMapScreen'
 import { CountScreen } from './run/CountScreen'
 import { StoreroomScreen } from './storeroom/StoreroomScreen'
 import { HistoryScreen } from './history/HistoryScreen'
+import { NavContext, type TabName } from './components/ScreenLayout'
 import type { Id, Machine } from '../domain/types'
 
 type Screen =
@@ -13,7 +14,7 @@ type Screen =
   | { name: 'item-edit'; itemId?: Id }
   | { name: 'machines' }
   | { name: 'machine-map'; machine: Machine }
-  | { name: 'count'; runId: Id; machineId: Id }
+  | { name: 'count'; runId: Id; machine: Machine }
   | { name: 'storeroom' }
   | { name: 'history' }
 
@@ -47,14 +48,15 @@ export default function App() {
         return (
           <CountScreen
             runId={screen.runId}
-            machineId={screen.machineId}
+            machineId={screen.machine.id}
+            machine={screen.machine}
             onDone={() => setScreen({ name: 'machines' })}
           />
         )
       case 'machines':
         return (
           <MachineListScreen
-            onCount={(machineId, runId) => setScreen({ name: 'count', runId, machineId })}
+            onCount={(machine, runId) => setScreen({ name: 'count', runId, machine })}
             onViewMap={(machine) => setScreen({ name: 'machine-map', machine })}
           />
         )
@@ -65,52 +67,31 @@ export default function App() {
     }
   })()
 
+  // The nav sits at the top, clear of where a thumb rests while scrolling a
+  // fifty-slot machine (fix-plan item 11). Each screen renders its own
+  // `ScreenLayout`, whose `<nav>` is `sticky top-0` rather than `fixed`, so
+  // there is nothing to push the body out from under any more.
+  //
+  // `lg:max-w-none` only applies on History: that is where the stock
+  // matrix lives, and it is the one screen that needs the wide viewport.
+  // Every other screen stays a phone-width column (StockMatrix.tsx's
+  // comment says the same from the other side).
+  const wide = screen.name === 'history'
+  const active: TabName =
+    screen.name === 'item-edit' ? 'items'
+    : screen.name === 'machine-map' || screen.name === 'count' ? 'machines'
+    : screen.name
+
   return (
-    // The nav sits at the top, clear of where a thumb rests while scrolling a
-    // fifty-slot machine (fix-plan item 11). `pt-14` keeps the body out from
-    // under it; the nav itself is `z-10` so the counting screen's tray tabs
-    // scroll beneath rather than over it.
-    //
-    // `lg:max-w-none` only applies on History: that is where the stock
-    // matrix lives, and it is the one screen that needs the wide viewport.
-    // Every other screen stays a phone-width column (StockMatrix.tsx's
-    // comment says the same from the other side).
-    <div
-      className={`mx-auto max-w-lg pt-14 ${screen.name === 'history' ? 'lg:max-w-none' : ''}`}
+    <NavContext.Provider
+      value={{
+        active,
+        go: (tab) => setScreen({ name: tab } as Screen),
+      }}
     >
-      <nav
-        className={`fixed inset-x-0 top-0 z-10 mx-auto flex max-w-lg border-b bg-white ${screen.name === 'history' ? 'lg:max-w-none' : ''}`}
-      >
-        <button
-          type="button"
-          className="flex-1 p-3 font-semibold"
-          onClick={() => setScreen({ name: 'machines' })}
-        >
-          Machines
-        </button>
-        <button
-          type="button"
-          className="flex-1 p-3 font-semibold"
-          onClick={() => setScreen({ name: 'items' })}
-        >
-          Items
-        </button>
-        <button
-          type="button"
-          className="flex-1 p-3 font-semibold"
-          onClick={() => setScreen({ name: 'storeroom' })}
-        >
-          Storeroom
-        </button>
-        <button
-          type="button"
-          className="flex-1 p-3 font-semibold"
-          onClick={() => setScreen({ name: 'history' })}
-        >
-          History
-        </button>
-      </nav>
-      {body}
-    </div>
+      <div className={`mx-auto max-w-lg bg-ground ${wide ? 'lg:max-w-none' : ''}`}>
+        {body}
+      </div>
+    </NavContext.Provider>
   )
 }
