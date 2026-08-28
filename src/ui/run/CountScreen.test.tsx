@@ -602,4 +602,36 @@ describe('CountScreen', () => {
     expect(screen.queryByText('OVER CAPACITY')).not.toBeInTheDocument()
     expect(screen.getByLabelText('slot 58 counted')).toHaveClass('text-accent-700')
   })
+
+  // Review fix round 1: before this fix, `overCapacity` was only ever passed
+  // to the single-item CountCell — a mixed slot over capacity rendered
+  // nothing at all, a regression of the "over capacity is flagged, never
+  // prevented" behaviour this task must not touch. The parent row's cells
+  // are empty by §3.4 (no figure to colour there); the signal belongs on
+  // each item's Counted cell, per §3.5, together, since the slot as a whole
+  // is what tipped over.
+  it('renders every item counted cell in accent when a mixed slot goes over capacity', async () => {
+    const user = userEvent.setup()
+    const fanta = await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+    const sunkist = await saveItem({ name: 'Sunkist', price: 3.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(fanta.id, { kind: 'base' }, [52])
+    await setPlacement(sunkist.id, { kind: 'base' }, [52])
+    await setSlotConfig(machine.id, 52, { capacity: 5, accepts: [fanta.id, sunkist.id] })
+    const run = await createRun('2026-08-26')
+
+    render(<CountScreen runId={run.id} machineId={machine.id} onDone={vi.fn()} />)
+    await screen.findByText('Fanta')
+
+    const fantaCounted = screen.getByLabelText('slot 52 Fanta counted')
+    await user.clear(fantaCounted)
+    await user.type(fantaCounted, '3')
+    const sunkistCounted = screen.getByLabelText('slot 52 Sunkist counted')
+    await user.clear(sunkistCounted)
+    await user.type(sunkistCounted, '3')
+
+    expect(screen.queryByText('OVER CAPACITY')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('slot 52 Fanta counted')).toHaveClass('text-accent-700')
+    expect(screen.getByLabelText('slot 52 Sunkist counted')).toHaveClass('text-accent-700')
+  })
 })

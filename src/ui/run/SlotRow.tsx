@@ -138,6 +138,10 @@ export function SlotRow({
                 label={`slot ${slot.slotNumber} ${itemName} counted`}
                 value={before.get(key) ?? 0}
                 dimmed={!touched.has(key)}
+                // The slot as a whole is over capacity, not just whichever
+                // item tipped it — every sub-row's Counted figure goes
+                // accent together (§3.5; review fix round 1).
+                accent={overCapacity}
                 onChange={(qty) => onSetBefore(slot.slotNumber, itemId, qty)}
               />
               <CountCell
