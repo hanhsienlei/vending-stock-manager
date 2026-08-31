@@ -16,12 +16,12 @@ const ROWS: MatrixRow[] = [{
 }]
 
 describe('StockMatrix', () => {
-  it('renders a column per machine, plus LG and Total', () => {
+  it('renders a column per machine, plus GF and Total', () => {
     render(<StockMatrix rows={ROWS} machines={MACHINES} />)
 
     expect(screen.getByRole('columnheader', { name: '2' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: '7' })).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'LG' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'GF' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Total' })).toBeInTheDocument()
   })
 
@@ -34,8 +34,8 @@ describe('StockMatrix', () => {
 
     expect(screen.getByRole('columnheader', { name: 'Size' })).toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: 'Qty' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('columnheader', { name: 'GF' })).not.toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: 'Storeroom' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'LG' })).not.toBeInTheDocument()
   })
 
   it('shows the slot as the locator and the size beside it', () => {
@@ -89,13 +89,13 @@ describe('StockMatrix — fitting the columns on a phone in landscape', () => {
   // A full product name pushes the item column so wide that the figures are
   // driven off the right of the screen — the whole point of the table is
   // reading a row across, so the name yields, not the numbers.
-  it('truncates an item name longer than 18 characters, keeping the full name reachable', () => {
+  it('truncates an item name longer than 26 characters, keeping the full name reachable', () => {
     const longName = 'Jim Beam White Label Bourbon Whiskey & Cola 4.8% (Cube)'
     const rows: MatrixRow[] = [{ ...ROWS[0], itemName: longName }]
     render(<StockMatrix rows={rows} machines={MACHINES} />)
 
     const cell = screen.getByLabelText('item for 58')
-    expect(cell.textContent).toMatch(/^.{1,19}$/)
+    expect(cell.textContent).toMatch(/^.{1,27}$/)
     expect(cell.textContent).not.toBe(longName)
     expect(cell).toHaveAttribute('title', longName)
   })
@@ -104,6 +104,17 @@ describe('StockMatrix — fitting the columns on a phone in landscape', () => {
     render(<StockMatrix rows={ROWS} machines={MACHINES} />)
 
     expect(screen.getByLabelText('item for 58')).toHaveTextContent('Coke')
+  })
+
+  // Regular weight is what buys the extra characters: lighter glyphs are
+  // narrower, so the same column holds 26 of a real product name instead of
+  // 18. A bold name would undo the width this change exists to win back.
+  it('sets item names in regular weight, not bold', () => {
+    render(<StockMatrix rows={ROWS} machines={MACHINES} />)
+
+    const cell = screen.getByLabelText('item for 58')
+    expect(cell.className).toContain('font-normal')
+    expect(cell.className).not.toMatch(/font-(semibold|bold|extrabold)/)
   })
 
   // 60 rows do not fit a 393px-tall landscape screen, so the body scrolls —
@@ -143,7 +154,7 @@ describe('StockMatrix — §11 restyle', () => {
 
   it('separates the summary columns from the machine block', () => {
     render(<StockMatrix rows={ROWS} machines={MACHINES} />)
-    expect(screen.getByRole('columnheader', { name: 'LG' }).className)
+    expect(screen.getByRole('columnheader', { name: 'GF' }).className)
       .toContain('border-l-2')
   })
 

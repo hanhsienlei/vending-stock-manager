@@ -1,19 +1,27 @@
 import type { MatrixRow } from '../../domain/stockMatrix'
 import type { Machine } from '../../domain/types'
 
-/** The longest name that still leaves the figures room. Every column is now
- * a fixed width so the whole sheet fits a phone in landscape without
- * scrolling sideways, and the item column's share of 852px is about 130px —
- * roughly eighteen characters at 13px. The full string stays on the cell's
- * `title`. */
-const NAME_LIMIT = 18
+/** The longest name the item column holds at its rendered width. Measured
+ * rather than guessed: at 852px the column renders ~218px, and the longest
+ * real product name in the catalogue — `Jim Beam White Label Bourbon Whiskey
+ * & Cola 4.8% (Cube)` — fits 26 characters of it at regular weight.
+ *
+ * Regular weight is what bought those characters. The names were semibold
+ * and the figures extrabold; lightening both narrowed every glyph, which let
+ * the machine columns give 60px back to the name. Eighteen characters became
+ * twenty-six.
+ *
+ * The cell also carries CSS `truncate`, which measures real glyph widths and
+ * catches anything this character count lets through. The full string stays
+ * on the cell's `title`. */
+const NAME_LIMIT = 26
 
 function truncateName(name: string): string {
   return name.length <= NAME_LIMIT ? name : `${name.slice(0, NAME_LIMIT).trimEnd()}…`
 }
 
 const HEAD = 'sticky top-0 z-10 bg-ink px-1 py-1.5 text-[9.5px] font-bold uppercase tracking-[0.06em] text-ground'
-const CELL = 'px-1 py-1.5 text-[13px] font-extrabold tabular-nums'
+const CELL = 'px-1 py-1.5 text-[13px] font-medium tabular-nums'
 
 /** The paper stock sheet, on screen — and in landscape, the whole screen.
  *
@@ -48,7 +56,19 @@ export function StockMatrix({
       <div
         data-testid="matrix-scroller"
         // In landscape this div is the scroll container, not the page: it
-        // takes the full viewport height and scrolls vertically itself.
+        // takes the full viewport height, scrolls vertically, and cannot
+        // scroll horizontally at all.
+        //
+        // `landscape:overflow-x-hidden` is what finally killed the sideways
+        // nudge. `table-fixed` + `w-full` makes the table exactly the
+        // container's width, so nothing meaningful can overflow — but
+        // sub-pixel rounding across twenty-two columns still left 7px of
+        // scrollable width, and the container would still drag. Measured: the
+        // table box was 852px, its columns summed to 851.97px, no child
+        // extended past its right edge, and `scrollLeft` could still reach
+        // 6.5px. Forbidding the axis is the only fix that holds regardless of
+        // how a device rounds. Portrait keeps `overflow-x-auto`, because there
+        // the sheet genuinely is wider than the screen.
         //
         // That is what makes the frozen header work. `position: sticky` sticks
         // within the nearest scrolling ancestor, and this element's
@@ -58,7 +78,7 @@ export function StockMatrix({
         // it. Measured, not assumed: the header sat at -900px after a 900px
         // scroll. Giving this element the vertical scroll too puts the sticky
         // header and the scrolling in the same container, where sticky works.
-        className="overflow-x-auto overscroll-x-none landscape:h-[100dvh] landscape:overflow-y-auto"
+        className="overflow-x-auto overscroll-x-none landscape:h-[100dvh] landscape:overflow-x-hidden landscape:overflow-y-auto"
         style={{
           paddingLeft: 'env(safe-area-inset-left)',
           paddingRight: 'env(safe-area-inset-right)',
@@ -77,13 +97,22 @@ export function StockMatrix({
                 the catalogue do that, and a second line on three rows is
                 cheaper than 10px off every other column. */}
             <col style={{ width: '40px' }} />
-            <col style={{ width: '122px' }} />
-            <col style={{ width: '34px' }} />
-            <col style={{ width: '30px' }} />
-            {machines.map((m) => <col key={m.id} style={{ width: '26px' }} />)}
+            <col style={{ width: '178px' }} />
             <col style={{ width: '32px' }} />
-            <col style={{ width: '36px' }} />
-            <col style={{ width: '40px' }} />
+            <col style={{ width: '30px' }} />
+            {machines.map((m) => <col key={m.id} style={{ width: '22px' }} />)}
+            {/* GF and Total carry the widest figures on the sheet — a
+                storeroom holding ten cartons of 100 is a four-digit number,
+                and a clipped `4375` reading as `437` is a wrong figure, not a
+                cosmetic problem. Both are sized against four digits, measured.
+                The width comes from Order, which is blank by design and only
+                needs room for a pen stroke. */}
+            <col style={{ width: '38px' }} />
+            <col style={{ width: '42px' }} />
+            {/* Wide enough for the word ORDER in the header. Trimmed to 30px
+                it rendered as `ORDE`, and a clipped column heading reads as a
+                broken table rather than a narrow one. */}
+            <col style={{ width: '38px' }} />
           </colgroup>
           <thead>
             <tr className="text-left">
@@ -102,15 +131,15 @@ export function StockMatrix({
                   {m.level}
                 </th>
               ))}
-              {/* `LG` is the operator's own name for the storeroom floor. It
-                  has been `GF` and `Str room` on earlier sheets; this is the
-                  one they use out loud, and it is also the shortest, which is
-                  what buys the machine columns their width. */}
+              {/* `GF` — the ground floor, where the storeroom is. This column
+                  has now been `GF`, `Storeroom` and `LG` in turn; `GF` is what
+                  the operator settled on, and it is also two characters, which
+                  is what keeps the machine columns their width. */}
               <th
                 scope="col"
                 className={`${HEAD} border-l-2 border-rule-strong text-right`}
               >
-                LG
+                GF
               </th>
               <th scope="col" className={`${HEAD} text-right`}>Total</th>
               <th scope="col" className={`${HEAD} text-right text-accent`}>Order</th>
@@ -125,11 +154,11 @@ export function StockMatrix({
                 // screenshot readable (§11).
                 className={`border-b border-rule-light ${i % 2 === 0 ? 'bg-paper' : 'bg-neutral-100'}`}
               >
-                <td className={`${CELL} text-[13px] leading-tight`}>{row.key}</td>
+                <td className={`${CELL} text-[13px] font-semibold leading-tight`}>{row.key}</td>
                 <td
                   aria-label={`item for ${row.key}`}
                   title={row.itemName}
-                  className="truncate px-1 py-1.5 text-[13px] font-semibold"
+                  className="truncate px-1 py-1.5 text-[13px] font-normal"
                 >
                   {truncateName(row.itemName)}
                 </td>
