@@ -64,3 +64,45 @@ describe('ScreenLayout', () => {
     expect(onClick).toHaveBeenCalled()
   })
 })
+
+/** In landscape the stock sheet is the whole screen. The chrome — context
+ * header, tab bar, and whatever the screen has stuck beneath it — costs
+ * ~203px of a 393px-tall landscape viewport, over half of it, which is why
+ * the operator asked for it gone.
+ *
+ * Rotating back to portrait is the way out: there is no control to hide, so
+ * there is no control to find, and the screen cannot be entered in a state
+ * that has no exit. */
+describe('ScreenLayout — the landscape full-screen sheet', () => {
+  it('leaves the chrome alone by default', () => {
+    renderWith('machines')
+
+    expect(screen.getByRole('navigation').className).not.toContain('landscape:hidden')
+  })
+
+  it('hides the header and the tab bar in landscape when the screen asks for it', () => {
+    render(
+      <NavContext.Provider value={{ active: 'history', go: vi.fn() }}>
+        <ScreenLayout
+          header={<ScreenHeader eyebrow="14 RUNS RECORDED" title="History" />}
+          stickyExtra={<div data-testid="toggle">toggle</div>}
+          fullScreenInLandscape
+        >
+          <p>body</p>
+        </ScreenLayout>
+      </NavContext.Provider>,
+    )
+
+    expect(screen.getByRole('navigation').className).toContain('landscape:hidden')
+    // The header and the sticky extra ride with it — hiding the tab bar
+    // alone would leave the sheet starting halfway down the screen. The
+    // class sits on the wrapper ScreenLayout owns, not on ScreenHeader's own
+    // `<header>`: hiding is the layout's decision, and reaching into the
+    // header's own classes would make ScreenHeader's styling ScreenLayout's
+    // business.
+    expect(screen.getByRole('banner').parentElement?.className)
+      .toContain('landscape:hidden')
+    expect(screen.getByTestId('toggle').parentElement?.className)
+      .toContain('landscape:hidden')
+  })
+})

@@ -79,8 +79,10 @@ export function HistoryScreen() {
   )
 
   if (view === 'report') {
+    // Landscape hands the whole screen to the stock sheet. Rotating back to
+    // portrait is the way out — see ScreenLayout's `fullScreenInLandscape`.
     return (
-      <ScreenLayout header={listHeader} stickyExtra={toggle}>
+      <ScreenLayout header={listHeader} stickyExtra={toggle} fullScreenInLandscape>
         <ReportScreen />
       </ScreenLayout>
     )

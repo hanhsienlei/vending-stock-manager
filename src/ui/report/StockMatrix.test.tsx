@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { StockMatrix } from './StockMatrix'
 import type { MatrixRow } from '../../domain/stockMatrix'
 import type { Machine } from '../../domain/types'
@@ -17,12 +16,12 @@ const ROWS: MatrixRow[] = [{
 }]
 
 describe('StockMatrix', () => {
-  it('renders a column per machine, plus Storeroom and Total', () => {
+  it('renders a column per machine, plus LG and Total', () => {
     render(<StockMatrix rows={ROWS} machines={MACHINES} />)
 
-    expect(screen.getByRole('columnheader', { name: 'L2' })).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'L7' })).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'Storeroom' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: '2' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: '7' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'LG' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Total' })).toBeInTheDocument()
   })
 
@@ -36,6 +35,7 @@ describe('StockMatrix', () => {
     expect(screen.getByRole('columnheader', { name: 'Size' })).toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: 'Qty' })).not.toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: 'GF' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Storeroom' })).not.toBeInTheDocument()
   })
 
   it('shows the slot as the locator and the size beside it', () => {
@@ -47,26 +47,15 @@ describe('StockMatrix', () => {
     expect(row).toHaveTextContent('375ml')
   })
 
-  // The toggles are what make a screenshot usable — 60 items by 17 columns is
-  // not legible on a phone (design §7.3). They are not optional polish.
-  it('hides a machine column when its toggle is turned off', async () => {
-    const user = userEvent.setup()
+  // The toggles existed to narrow a table too wide to read. The columns now
+  // fit a phone in landscape outright, so the control has nothing left to do
+  // and the operator always wants every machine anyway.
+  it('offers no machine selector — every machine is always shown', () => {
     render(<StockMatrix rows={ROWS} machines={MACHINES} />)
 
-    await user.click(screen.getByRole('button', { name: 'Hide L2' }))
-
-    expect(screen.queryByRole('columnheader', { name: 'L2' })).not.toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'L7' })).toBeInTheDocument()
-  })
-
-  // Hiding a column changes what is shown, never what is counted.
-  it('leaves the total unchanged when a column is hidden', async () => {
-    const user = userEvent.setup()
-    render(<StockMatrix rows={ROWS} machines={MACHINES} />)
-
-    await user.click(screen.getByRole('button', { name: 'Hide L2' }))
-
-    expect(screen.getByLabelText('stock row 58')).toHaveTextContent('107')
+    expect(screen.queryByRole('button', { name: /Hide|Show/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: '2' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: '7' })).toBeInTheDocument()
   })
 
   it('leaves an Order column blank for hand-writing', () => {
@@ -100,13 +89,13 @@ describe('StockMatrix — fitting the columns on a phone in landscape', () => {
   // A full product name pushes the item column so wide that the figures are
   // driven off the right of the screen — the whole point of the table is
   // reading a row across, so the name yields, not the numbers.
-  it('truncates an item name longer than 25 characters, keeping the full name reachable', () => {
+  it('truncates an item name longer than 18 characters, keeping the full name reachable', () => {
     const longName = 'Jim Beam White Label Bourbon Whiskey & Cola 4.8% (Cube)'
     const rows: MatrixRow[] = [{ ...ROWS[0], itemName: longName }]
     render(<StockMatrix rows={rows} machines={MACHINES} />)
 
     const cell = screen.getByLabelText('item for 58')
-    expect(cell.textContent).toMatch(/^.{1,26}$/)
+    expect(cell.textContent).toMatch(/^.{1,19}$/)
     expect(cell.textContent).not.toBe(longName)
     expect(cell).toHaveAttribute('title', longName)
   })
@@ -115,6 +104,29 @@ describe('StockMatrix — fitting the columns on a phone in landscape', () => {
     render(<StockMatrix rows={ROWS} machines={MACHINES} />)
 
     expect(screen.getByLabelText('item for 58')).toHaveTextContent('Coke')
+  })
+
+  // 60 rows do not fit a 393px-tall landscape screen, so the body scrolls —
+  // and a scrolled table whose header has left the screen is unreadable,
+  // because every column but the first two is a bare number.
+  it('freezes the header row so a scrolled column is still identifiable', () => {
+    render(<StockMatrix rows={ROWS} machines={MACHINES} />)
+
+    const head = screen.getByRole('columnheader', { name: 'Slot' })
+    expect(head.className).toContain('sticky')
+    expect(head.className).toContain('top-0')
+  })
+
+  // The whole point of fixing the widths is that nothing scrolls sideways:
+  // a table wider than the screen is what produced the horizontal
+  // rubber-band on the phone.
+  it('lays the columns out at fixed widths rather than sizing to content', () => {
+    const { container } = render(<StockMatrix rows={ROWS} machines={MACHINES} />)
+
+    const table = container.querySelector('table')
+    expect(table?.className).toContain('table-fixed')
+    expect(table?.className).not.toContain('w-max')
+    expect(table?.className).not.toContain('min-w-full')
   })
 })
 
@@ -129,22 +141,9 @@ describe('StockMatrix — §11 restyle', () => {
     expect(cell).toBeEmptyDOMElement()
   })
 
-  it('strikes a hidden machine through rather than colouring fifteen chips', async () => {
-    const user = userEvent.setup()
-    render(<StockMatrix rows={ROWS} machines={MACHINES} />)
-
-    const toggle = screen.getByRole('button', { name: `Hide L${MACHINES[0].level}` })
-    expect(toggle.className).toContain('bg-ink')
-    await user.click(toggle)
-
-    const hidden = screen.getByRole('button', { name: `Show L${MACHINES[0].level}` })
-    expect(hidden.className).toContain('line-through')
-    expect(hidden.className).not.toContain('bg-accent')
-  })
-
   it('separates the summary columns from the machine block', () => {
     render(<StockMatrix rows={ROWS} machines={MACHINES} />)
-    expect(screen.getByRole('columnheader', { name: 'Storeroom' }).className)
+    expect(screen.getByRole('columnheader', { name: 'LG' }).className)
       .toContain('border-l-2')
   })
 

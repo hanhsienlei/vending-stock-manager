@@ -233,8 +233,9 @@ describe('ReportScreen — the stock table does not wait for a sales period', ()
     expect(await screen.findByText(/nothing to report yet/i)).toBeInTheDocument()
     // The table does not depend on that, and must be here anyway.
     expect(await screen.findByLabelText('stock row 58')).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'L7' })).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'Storeroom' })).toBeInTheDocument()
+    // Bare floor number and `LG`, as the operator's paper sheet writes them.
+    expect(screen.getByRole('columnheader', { name: '7' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'LG' })).toBeInTheDocument()
   })
 
   it('shows stock on hand before any run has closed a period', async () => {

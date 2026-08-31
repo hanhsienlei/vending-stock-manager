@@ -21,7 +21,7 @@ const TABS: { name: TabName; label: string }[] = [
  * bar's four centred, equal-width buttons with no active state is defect #3
  * ("the navigation bar is in the button, very weird"). */
 export function ScreenLayout({
-  header, stickyExtra, children,
+  header, stickyExtra, fullScreenInLandscape = false, children,
 }: {
   header: ReactNode
   /** Bars a screen wants stuck directly beneath the tab row — the run
@@ -33,6 +33,16 @@ export function ScreenLayout({
    * its existing place directly under the shell's own container — nothing
    * here changes what `nav`'s parent is. */
   stickyExtra?: ReactNode
+  /** Hands the whole landscape viewport to the screen's body, by hiding the
+   * context header, the tab bar and `stickyExtra` when the phone is turned.
+   *
+   * The stock sheet is the only thing that needs this: its chrome costs
+   * ~203px of a 393px-tall landscape screen, over half, leaving room for six
+   * rows of a sixty-row table. Rotating back to portrait restores everything
+   * — which is deliberately the ONLY way out, because a control that hides
+   * the chrome would have to sit somewhere on top of the sheet, and a screen
+   * whose exit can be hidden is a screen the operator can get stuck on. */
+  fullScreenInLandscape?: boolean
   children: ReactNode
 }) {
   const { active, go } = useContext(NavContext)
@@ -61,12 +71,14 @@ export function ScreenLayout({
     return () => window.removeEventListener('resize', measure)
   }, [])
 
+  const hideInLandscape = fullScreenInLandscape ? 'landscape:hidden' : ''
+
   return (
     <>
-      {header}
+      <div className={hideInLandscape}>{header}</div>
       <nav
         ref={navRef}
-        className="sticky top-0 z-10 flex gap-5 border-b-2 border-rule-strong bg-ground px-4"
+        className={`sticky top-0 z-10 flex gap-5 border-b-2 border-rule-strong bg-ground px-4 ${hideInLandscape}`}
       >
         {TABS.map((tab) => (
           <button
@@ -85,7 +97,10 @@ export function ScreenLayout({
         ))}
       </nav>
       {stickyExtra && (
-        <div className="sticky z-[5] bg-ground" style={{ top: navHeight }}>
+        <div
+          className={`sticky z-[5] bg-ground ${hideInLandscape}`}
+          style={{ top: navHeight }}
+        >
           {stickyExtra}
         </div>
       )}

@@ -79,7 +79,10 @@ export function ReportScreen() {
           below, so the whole screen collapsed to "Nothing to report yet"
           until a machine had been finished for a second time, and the table
           could not be reached at all until after two runs. */}
-      <div className="flex items-baseline justify-between border-b-2 border-rule-strong bg-surface px-4 py-2.5">
+      {/* Portrait only, and the copy says why: once the phone IS turned, a
+          strip telling the operator to turn it is spending two rows of stock
+          on advice they have already taken. */}
+      <div className="flex items-baseline justify-between border-b-2 border-rule-strong bg-surface px-4 py-2.5 landscape:hidden">
         <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-neutral-700">
           Stock on hand — {matrixRows.length} items × {machines.length} machines
         </span>
@@ -89,6 +92,12 @@ export function ReportScreen() {
       </div>
       <StockMatrix rows={matrixRows} machines={machines} />
 
+      {/* Everything below the sheet is portrait-only. In landscape the
+          operator is holding a stock sheet, not reading a report: the table
+          gets the whole screen and the totals and sales are a rotation away.
+          They stay in the DOM rather than being unmounted, so rotating back
+          costs no re-query. */}
+      <div className="landscape:hidden">
       {/* The three totals belong with the table they total, and above the
           date pickers — they are a "now" figure that those dates have never
           governed (design §7.2). Sitting under the pickers implied they did. */}
@@ -237,6 +246,7 @@ export function ReportScreen() {
 
         </>
       )}
+      </div>
     </div>
   )
 }
