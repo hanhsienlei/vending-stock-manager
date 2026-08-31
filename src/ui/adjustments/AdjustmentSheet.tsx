@@ -239,7 +239,7 @@ export function AdjustmentSheet({
               aria-pressed={reason === r.reason}
               onClick={() => setReason(r.reason)}
               className={`px-3 py-2.5 text-left text-[12.5px] font-bold ${
-                reason === r.reason ? 'bg-accent text-ground' : 'bg-paper text-ink'
+                reason === r.reason ? 'bg-ink text-ground' : 'bg-paper text-ink'
               }`}
             >
               {r.label}
@@ -252,7 +252,7 @@ export function AdjustmentSheet({
               aria-pressed={reason === r.reason}
               onClick={() => setReason(r.reason)}
               className={`col-span-2 px-3 py-2.5 text-left text-[12.5px] font-bold ${
-                reason === r.reason ? 'bg-accent text-ground' : 'bg-paper text-ink'
+                reason === r.reason ? 'bg-ink text-ground' : 'bg-paper text-ink'
               }`}
             >
               {r.label}

@@ -511,6 +511,30 @@ describe('AdjustmentSheet — §7 layout', () => {
       .toHaveAttribute('aria-pressed', 'false')
   })
 
+  // Ruling 6 (fix round 1): tokens.md's mapping table resolves a legacy
+  // primary-action fill to "accent fill, OR ink fill for a selected state" —
+  // a chosen reason tile is a selected state, not the sheet's action, so it
+  // takes the ink fill (matching SlotEditSheet's Fill toggle) rather than
+  // competing with the commit button for the sheet's one accent element
+  // (tokens.md:126, "per screen: ink on ground, plus one accent element").
+  it('gives the selected tile an ink fill, not accent — the commit button is the one accent element', async () => {
+    const user = userEvent.setup()
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'storeroom' }} itemId="i1"
+        onSaved={vi.fn()} onCancel={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Delivery arrived' }))
+
+    const selectedTile = screen.getByRole('button', { name: 'Delivery arrived' })
+    expect(selectedTile.className).toContain('bg-ink')
+    expect(selectedTile.className).not.toMatch(/\bbg-accent\b/)
+
+    const commitButton = screen.getByRole('button', { name: 'Record delivery' })
+    expect(commitButton.className).toMatch(/\bbg-accent\b/)
+  })
+
   it('names the reason on the commit button', async () => {
     const user = userEvent.setup()
     render(
