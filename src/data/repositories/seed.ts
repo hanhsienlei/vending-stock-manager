@@ -3,6 +3,7 @@ import { listItems, saveItem } from './items'
 import { listMachines, saveMachine } from './machines'
 import { setPlacement } from './placements'
 import { STARTER_ITEMS, STARTER_MACHINE_LEVELS } from '../starterCatalogue'
+import { PACKAGE_SIZES, UNSET_BOX_SIZE } from '../packageSizes'
 
 /** One-tap seed for a brand-new install: the 60-item catalogue, fifteen
  * machines (L2 through L16), and each item's base slot placement — all from
@@ -54,7 +55,10 @@ export async function seedStarterCatalogue(): Promise<boolean> {
           name: entry.name,
           price: entry.price,
           basePar: 5,
-          boxSize: 1,
+          // The supplier carton, off the operator's paper stocktake sheets.
+          // Falls back to the placeholder for the fourteen items those sheets
+          // do not cover — see `packageSizes.ts` for which and why.
+          boxSize: PACKAGE_SIZES[entry.name] ?? UNSET_BOX_SIZE,
           ...(entry.size ? { size: entry.size } : {}),
           ...(entry.remark ? { remark: entry.remark } : {}),
         }),

@@ -11,7 +11,7 @@ const MACHINES: Machine[] = [
 ]
 
 const ROWS: MatrixRow[] = [{
-  key: '58', itemId: 'coke', itemName: 'Coke', size: '375ml',
+  key: '58', itemId: 'coke', itemName: 'Coke', size: '375ml', boxSize: 24,
   perMachine: new Map([['m2', 3], ['m7', 4]]),
   storeroom: 100, total: 107,
 }]
@@ -74,6 +74,47 @@ describe('StockMatrix', () => {
 
     expect(screen.getByRole('columnheader', { name: 'Order' })).toBeInTheDocument()
     expect(screen.getByLabelText('order for 58')).toBeEmptyDOMElement()
+  })
+})
+
+describe('StockMatrix — the paper sheet\'s Package column', () => {
+  it('shows the supplier package size', () => {
+    render(<StockMatrix rows={ROWS} machines={MACHINES} />)
+
+    expect(screen.getByRole('columnheader', { name: 'Box' })).toBeInTheDocument()
+    expect(screen.getByLabelText('box size for 58')).toHaveTextContent('24')
+  })
+
+  // `boxSize: 1` is the placeholder every item was seeded with, not a real
+  // carton of one. Printing `1` would claim a size the catalogue does not
+  // know — blank is the honest reading.
+  it('leaves the cell blank for an item whose carton size is still unknown', () => {
+    const unknown: MatrixRow[] = [{ ...ROWS[0], boxSize: 1 }]
+    render(<StockMatrix rows={unknown} machines={MACHINES} />)
+
+    expect(screen.getByLabelText('box size for 58')).toBeEmptyDOMElement()
+  })
+})
+
+describe('StockMatrix — fitting the columns on a phone in landscape', () => {
+  // A full product name pushes the item column so wide that the figures are
+  // driven off the right of the screen — the whole point of the table is
+  // reading a row across, so the name yields, not the numbers.
+  it('truncates an item name longer than 25 characters, keeping the full name reachable', () => {
+    const longName = 'Jim Beam White Label Bourbon Whiskey & Cola 4.8% (Cube)'
+    const rows: MatrixRow[] = [{ ...ROWS[0], itemName: longName }]
+    render(<StockMatrix rows={rows} machines={MACHINES} />)
+
+    const cell = screen.getByLabelText('item for 58')
+    expect(cell.textContent).toMatch(/^.{1,26}$/)
+    expect(cell.textContent).not.toBe(longName)
+    expect(cell).toHaveAttribute('title', longName)
+  })
+
+  it('leaves a short name exactly as it is', () => {
+    render(<StockMatrix rows={ROWS} machines={MACHINES} />)
+
+    expect(screen.getByLabelText('item for 58')).toHaveTextContent('Coke')
   })
 })
 

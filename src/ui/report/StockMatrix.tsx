@@ -2,6 +2,18 @@ import { useState } from 'react'
 import type { MatrixRow } from '../../domain/stockMatrix'
 import type { Id, Machine } from '../../domain/types'
 
+/** The longest name that still leaves room for the figures on a phone in
+ * landscape. A full product name — `Jim Beam White Label Bourbon Whiskey &
+ * Cola 4.8% (Cube)` — pushed the item column wide enough to drive the
+ * machine columns off the right-hand edge, and reading a row across is the
+ * entire point of the table. The name yields; the numbers do not. The full
+ * string stays on the cell's `title`. */
+const NAME_LIMIT = 25
+
+function truncateName(name: string): string {
+  return name.length <= NAME_LIMIT ? name : `${name.slice(0, NAME_LIMIT).trimEnd()}…`
+}
+
 /** The paper stock sheet, on screen. The PDF export is held (design §2), so a
  * screenshot has to do its job — which makes legibility a requirement rather
  * than polish, because 60 items by 17 columns is not readable on a phone.
@@ -56,14 +68,17 @@ export function StockMatrix({
       {/* The only horizontally scrolling surface in the app. Every other
           screen is a phone-width column and should stay one. */}
       <div className="overflow-x-auto">
-        <table className="min-w-full">
+        <table className="w-max">
           <thead>
             <tr className="bg-ink text-left text-ground">
-              <th scope="col" className="px-2 py-1.5 text-[9.5px] font-bold uppercase tracking-[0.10em]">Slot</th>
-              <th scope="col" className="px-2 py-1.5 text-[9.5px] font-bold uppercase tracking-[0.10em]">Item</th>
-              <th scope="col" className="px-2 py-1.5 text-[9.5px] font-bold uppercase tracking-[0.10em]">Size</th>
+              <th scope="col" className="px-1.5 py-1.5 text-[9.5px] font-bold uppercase tracking-[0.10em]">Slot</th>
+              <th scope="col" className="px-1.5 py-1.5 text-[9.5px] font-bold uppercase tracking-[0.10em]">Item</th>
+              <th scope="col" className="px-1.5 py-1.5 text-[9.5px] font-bold uppercase tracking-[0.10em]">Size</th>
+              {/* The paper sheet's `Package` column, in the position it
+                  occupies there — beside the name, left of the counts. */}
+              <th scope="col" className="px-1.5 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em]">Box</th>
               {shown.map((m) => (
-                <th key={m.id} scope="col" className="px-2 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em]">
+                <th key={m.id} scope="col" className="px-1.5 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em]">
                   L{m.level}
                 </th>
               ))}
@@ -71,9 +86,9 @@ export function StockMatrix({
                   explained anywhere on the sheet, and this column is the one
                   the operator reconciles against the storeroom screen, which
                   calls it the storeroom. */}
-              <th scope="col" className="whitespace-nowrap border-l-2 border-rule-strong px-2 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em]">Storeroom</th>
-              <th scope="col" className="px-2 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em]">Total</th>
-              <th scope="col" className="px-2 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em] text-accent">Order</th>
+              <th scope="col" className="whitespace-nowrap border-l-2 border-rule-strong px-1.5 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em]">Storeroom</th>
+              <th scope="col" className="px-1.5 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em]">Total</th>
+              <th scope="col" className="px-1.5 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em] text-accent">Order</th>
             </tr>
           </thead>
           <tbody>
@@ -85,21 +100,34 @@ export function StockMatrix({
                 // screenshot readable (§11).
                 className={`border-b border-rule-light ${i % 2 === 0 ? 'bg-paper' : 'bg-neutral-100'}`}
               >
-                <td className="whitespace-nowrap px-2 py-1.5 text-[15px] font-extrabold tabular-nums">
+                <td className="whitespace-nowrap px-1.5 py-1.5 text-[15px] font-extrabold tabular-nums">
                   {row.key}
                 </td>
-                <td className="whitespace-nowrap px-2 py-1.5 text-[13px] font-semibold">
-                  {row.itemName}
+                <td
+                  aria-label={`item for ${row.key}`}
+                  title={row.itemName}
+                  className="whitespace-nowrap px-1.5 py-1.5 text-[13px] font-semibold"
+                >
+                  {truncateName(row.itemName)}
                 </td>
-                <td className="px-2 py-1.5 text-[11px] font-medium text-neutral-700">
+                <td className="px-1.5 py-1.5 text-[11px] font-medium text-neutral-700">
                   {row.size ?? ''}
+                </td>
+                {/* Blank, never `1`: the placeholder means the carton size is
+                    unknown, and printing 1 would claim a size the catalogue
+                    does not have. */}
+                <td
+                  aria-label={`box size for ${row.key}`}
+                  className="px-1.5 py-1.5 text-right text-[13px] font-semibold tabular-nums text-neutral-700"
+                >
+                  {row.boxSize > 1 ? row.boxSize : ''}
                 </td>
                 {shown.map((m) => {
                   const value = row.perMachine.get(m.id) ?? 0
                   return (
                     <td
                       key={m.id}
-                      className={`px-2 py-1.5 text-right text-[15px] font-extrabold tabular-nums ${
+                      className={`px-1.5 py-1.5 text-right text-[15px] font-extrabold tabular-nums ${
                         value === 0 ? 'text-accent-700' : 'text-ink'
                       }`}
                     >
@@ -107,10 +135,10 @@ export function StockMatrix({
                     </td>
                   )
                 })}
-                <td className="border-l-2 border-rule-strong px-2 py-1.5 text-right text-[15px] font-extrabold tabular-nums">
+                <td className="border-l-2 border-rule-strong px-1.5 py-1.5 text-right text-[15px] font-extrabold tabular-nums">
                   {row.storeroom}
                 </td>
-                <td className="px-2 py-1.5 text-right text-[15px] font-extrabold tabular-nums">
+                <td className="px-1.5 py-1.5 text-right text-[15px] font-extrabold tabular-nums">
                   {row.total}
                 </td>
                 {/* Blank by design — Phase 3 fills it; until then it is
@@ -118,7 +146,7 @@ export function StockMatrix({
                     says whose column it is. */}
                 <td
                   aria-label={`order for ${row.key}`}
-                  className="bg-accent-100 px-2 py-1.5"
+                  className="bg-accent-100 px-1.5 py-1.5"
                 />
               </tr>
             ))}

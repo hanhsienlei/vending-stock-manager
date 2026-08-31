@@ -87,7 +87,13 @@ describe('the global nav', () => {
     await user.click(screen.getByRole('button', { name: 'History' }))
 
     const shell = screen.getByRole('navigation').parentElement
-    expect(shell).toHaveClass('lg:max-w-none')
+    // Asserts the REQUIREMENT — no width cap — rather than the mechanism.
+    // This previously asserted `lg:max-w-none`, which passed while the screen
+    // was still capped on the device it was written for: Tailwind's `lg` is
+    // 1024px and an iPhone 15 in landscape is 852px, so `max-w-lg` (512px)
+    // never lifted and the operator got a narrow centred column. A test that
+    // names the class cannot catch a class that never fires.
+    expect(shell).not.toHaveClass('max-w-lg')
   })
 
   it('keeps the Machines screen a phone-width column even on a wide viewport', async () => {

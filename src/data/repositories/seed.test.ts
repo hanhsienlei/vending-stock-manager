@@ -13,15 +13,40 @@ beforeEach(async () => {
 })
 
 describe('seedStarterCatalogue', () => {
-  it('creates all 60 items, each with par 5 and box size 1', async () => {
+  it('creates all 60 items at par 5', async () => {
     await seedStarterCatalogue()
 
     const items = await listItems()
     expect(items).toHaveLength(60)
     for (const item of items) {
       expect(item.basePar).toBe(5)
-      expect(item.boxSize).toBe(1)
     }
+  })
+
+  // Box size used to be hard-coded to 1 for every item — a placeholder that
+  // made the storeroom's boxes+loose split inert and the report's Box column
+  // meaningless. The real carton sizes come off the operator's paper
+  // stocktake sheets via `packageSizes.ts`.
+  it('seeds the supplier carton size where the stocktake sheets give one', async () => {
+    await seedStarterCatalogue()
+
+    const items = await listItems()
+    const byName = new Map(items.map((i) => [i.name, i]))
+    expect(byName.get('Coke')?.boxSize).toBe(24)
+    expect(byName.get("Smith's Salt & Vinegar Chips")?.boxSize).toBe(21)
+    expect(byName.get('Accor Shaving Kit — Wood Midscale')?.boxSize).toBe(200)
+  })
+
+  // The sheets leave the Package column blank for the sundries, and guessing
+  // a carton size behind an ordering decision is worse than admitting the
+  // gap. Those items keep the placeholder and read blank in the report.
+  it('leaves an item the sheets do not cover at the placeholder', async () => {
+    await seedStarterCatalogue()
+
+    const items = await listItems()
+    const byName = new Map(items.map((i) => [i.name, i]))
+    expect(byName.get('Tampon')?.boxSize).toBe(1)
+    expect(byName.get('Dove')?.boxSize).toBe(1)
   })
 
   it('creates fifteen machines, L2 through L16', async () => {

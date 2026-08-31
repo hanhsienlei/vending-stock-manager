@@ -9,6 +9,11 @@ export interface MatrixRow {
   itemId: Id
   itemName: string
   size?: string
+  /** Units per supplier carton — the paper sheet's `Package` column. `1` is
+   * the placeholder every item was seeded with, and means "not known",
+   * which is why the matrix renders it blank rather than as a carton of
+   * one. */
+  boxSize: number
   /** Units of this item in that machine, summed over every slot it occupies
    * there. */
   perMachine: Map<Id, number>
@@ -96,6 +101,7 @@ export function buildStockMatrix(input: StockMatrixInput): MatrixRow[] {
       itemId: item.id,
       itemName: item.name,
       size: item.size,
+      boxSize: item.boxSize,
       perMachine,
       storeroom,
       total: inMachines + storeroom,
