@@ -71,6 +71,32 @@ describe('HistoryScreen', () => {
     expect(recorded).toHaveTextContent('5')
   })
 
+  // The receipt itself no longer names the machine (that moved into the
+  // header this screen builds for that level) — so the "never read against
+  // the wrong machine" guarantee has to be locked in here, on a receipt that
+  // actually has content, not just on the empty-state case.
+  it('names the machine in the receipt header, so a receipt is never read against the wrong one', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+    await putCountLine({
+      id: newId(), visitId: visit.id, slotNumber: 58, itemId: coke.id,
+      before: 2, after: 5, touched: true, filled: true, price: 0, updatedAt: now(),
+    })
+    await finalizeVisit(visit.id)
+
+    render(<HistoryScreen />)
+    await user.click(await screen.findByLabelText('run 2026-08-27'))
+    await user.click(await screen.findByLabelText('visit to L7'))
+    await screen.findByText('Coke')
+
+    const heading = screen.getByRole('heading')
+    expect(heading).toHaveTextContent('L7')
+    expect(heading).toHaveTextContent('Lift lobby')
+  })
+
   it('distinguishes a finished machine from one still open', async () => {
     const user = userEvent.setup()
     const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
@@ -135,7 +161,7 @@ describe('HistoryScreen — §9 layout', () => {
 
     expect(row.className).toContain('shadow-[inset_4px_0_0_var(--color-accent)]')
     expect(row).toHaveTextContent('In progress · 0 of 2 counted')
-    expect(row).toHaveTextContent('0/2')
+    expect(row).toHaveTextContent('0 / 2')
   })
 
   it('marks a fully counted run Complete with no inset', async () => {
@@ -149,7 +175,7 @@ describe('HistoryScreen — §9 layout', () => {
 
     expect(row.className).not.toContain('shadow-[inset_4px_0_0_var(--color-accent)]')
     expect(row).toHaveTextContent('Complete')
-    expect(row).toHaveTextContent('1/1')
+    expect(row).toHaveTextContent('1 / 1')
   })
 
   it('shows the Receipts / Report toggle as pressed segments', async () => {

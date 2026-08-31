@@ -121,7 +121,7 @@ export function HistoryScreen() {
           <ScreenHeader
             back={{ label: '← RUNS', onClick: () => setOpenRun(null) }}
             title={formatRunDate(openRun.date)}
-            figure={`${visits.filter((v) => v.status === 'finalized').length}/${machines.length}`}
+            figure={`${visits.filter((v) => v.status === 'finalized').length} / ${machines.length}`}
           />
         }
       >
@@ -211,7 +211,7 @@ export function HistoryScreen() {
                     </span>
                   </span>
                   <span className="shrink-0 text-[19px] font-extrabold tabular-nums">
-                    {finished}/{machines.length}
+                    {finished} / {machines.length}
                   </span>
                 </button>
               </li>

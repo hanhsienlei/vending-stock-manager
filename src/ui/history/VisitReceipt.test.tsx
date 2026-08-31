@@ -124,13 +124,24 @@ describe('VisitReceipt — §9 layout', () => {
     expect(screen.queryByText(/^Filled$/i)).not.toBeInTheDocument()
   })
 
-  it('marks a slot that reached zero with the accent inset', async () => {
+  it('marks a slot that reached zero with the accent inset, but not one that did not', async () => {
+    const gum = await saveItem({ name: 'Gum', price: 2, basePar: 5, boxSize: 24 })
     const { visit, machine } = await seedVisit()   // slot 58 was found at 2, slot 12 at 4
+    // Found 0, left at 0 — ran dry and was not refilled.
+    await putCountLine({
+      id: newId(), visitId: visit.id, slotNumber: 99, itemId: gum.id,
+      before: 0, after: 0, touched: true, filled: false, price: 0, updatedAt: now(),
+    })
+
     render(<VisitReceipt visitId={visit.id} machine={machine} />)
     await screen.findByText('Coke')
-    // Neither seeded line reached zero, so neither row is marked.
+
+    // Neither seeded line in `seedVisit` reached zero, so that row is not marked.
     expect(screen.getByLabelText('slot 58 record').className)
       .not.toContain('shadow-[inset_4px_0_0_var(--color-accent)]')
+    // The slot left at zero is the one that ran dry, so it IS marked.
+    expect(screen.getByLabelText('slot 99 record').className)
+      .toContain('shadow-[inset_4px_0_0_var(--color-accent)]')
   })
 
   it('carries no rounded corner and no legacy palette class', async () => {
