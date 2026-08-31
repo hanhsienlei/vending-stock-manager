@@ -1,175 +1,145 @@
-# Handover — 2026-08-28, night before the run
+# Handover — 2026-08-31
 
-Supersedes the handover from the evening of 2026-08-27. Tonight's work is the
-interface refinement plan — the run screen, the machines list, the machine map
-and the shell were redone. Nothing else was touched.
+Supersedes the handover of 2026-08-28. That one covered the run screen, the
+machines list and the machine map. This round did the eight screens that one
+deliberately left alone: the slot editor, the adjustment sheet, the storeroom,
+history and its receipt, the report, the stock matrix, and the two item
+screens.
 
-**Branch:** `interface-refinement`, clean. 482 tests passing, `tsc --noEmit`
-clean, `vite build` clean, schema unchanged at version 3.
+**On `main`, merged.** 528 tests passing, `tsc` clean, `vite build` clean with
+zero warnings, schema unchanged at version 3.
 
 ---
 
-## 1. Before you count tomorrow
+## 1. Before you use it
 
 **Open the app and refresh once.** That is the only thing you have to do. The
-service worker otherwise keeps serving tonight's old bundle until it updates on
-its own.
+service worker otherwise keeps serving the old bundle until it updates on its
+own.
 
-**Do NOT clear the app's data.** An older handover told you to clear before
-counting — that advice has been wrong since schema v3, and it is still wrong
-tonight. The schema did not move: verified directly, zero files touched under
-`src/data` or `src/domain` in this whole round of work. No migration runs, and
-nothing gets rewritten. Clearing would throw away run 1's history — which is
-what makes tomorrow's counts seed themselves, see below — your machine map
-corrections, and the catalogue. If you remember the old advice, ignore it.
+**Do NOT clear the app's data.** Same as last time, and for the same reason:
+the schema did not move. Zero files under `src/data` or `src/domain` changed in
+this entire round — that is verified, not assumed. Clearing would throw away
+your history, your machine map corrections and the catalogue for nothing.
 
 ---
 
-## 2. Counts should seed themselves tomorrow — with one condition
+## 2. What did NOT change
 
-`finalize()` writes a count line for every slot in a machine, and history only
-looks at visits marked finalized. So each slot should open tomorrow at whatever
-you left it at during the last visit — you shouldn't have to re-enter a starting
-number from memory.
+**The run screen is exactly as you left it.** Counting, typing, Fill, the tray
+tabs, the ran-dry edge — none of it was touched. If the typed count cells or
+Fill's new location in the `⋯` sheet felt wrong on the 29th, that is still
+open and still the thing worth telling me about.
 
-The condition: **a machine that is still sitting as a draft contributes
-nothing** and opens at 0 tomorrow, same as if it had never been visited. You can
-check this yourself — **History → Receipts** marks each machine finalized or
-not.
-
-If you find a stale draft and finish it to fix this, **be careful what you
-finalize**: finishing a draft writes whatever numbers are currently sitting in
-it as the after-counts, and those become tomorrow's opening. A draft full of
-zeros, finalized now, is worse than an unseeded machine tomorrow — it plants a
-wrong number where an honest gap would have been obvious.
+**The over-eager red edge is still there.** The 2026-08-28 handover said it was
+"the first thing being fixed after this run" — it has not been fixed, because
+you chose this round's work instead, and that was a reasonable trade. To
+restate it: after `Fill tray to par`, saving anything from a slot's `⋯` sheet
+can put the red ran-dry edge on slots that are simply empty and were never
+counted. **No count is wrong.** It is a display flag being too eager.
 
 ---
 
-## 3. What changed on the run screen
+## 3. What changed, screen by screen
 
-In your terms, not the code's:
+**The slot editor** (the sheet behind `⋯` on a slot). It now says which machine
+and tray you are in at the top — `Slot 31 · L7 · Tray 3`. The buttons on each
+item used to read `Adjust Red Rock Deli Chips Honey Soy Chicken`, four buttons
+all starting with the same forty characters; now the item name is the row and
+the button just says `ADJUST` or `REMOVE`. Adding an item has a search box, and
+each item shows the slot it normally lives in — `· usually 34` — which is the
+fastest way to catch that you are about to put something in the wrong channel.
+A two-item slot now warns you about the changeover problem where you will meet
+it.
 
-- **Both count columns are typable now.** Tap a figure and it selects — typing
-  replaces the number rather than appending to it. This is the one you asked
-  for. Selecting now happens reliably on the phone itself, not just on a
-  keyboard: a tap selects the figure directly, so typing "3" into a cell
-  showing "12" can't turn into "312" because the cursor landed after the old
-  number instead of over it.
-- **The row no longer overflows.** Long item names truncate instead of pushing
-  the row wider than the screen.
-- **RAN DRY and OVER CAPACITY are quieter.** They used to be red boxes of text.
-  Now a red edge on the left of the row means it ran dry, and a red figure means
-  it's over capacity — same information, less shouting.
-- **The header says where you are.** Which machine, and how far through it you
-  are. Every level looked the same before; this was the thing that most needed
-  fixing. The progress bar under it also can't run past its own edge any more
-  if you remove an item from a slot partway through a count.
+**The adjustment sheet.** The reason was a dropdown, and that was the defect:
+the reason decides which fields appear below it, so the destination and
+direction controls sat underneath a control you had already scrolled past.
+Reason is now tiles at the top. There is a new **Result** cell that states both
+sides in plain terms before you commit — `L7·31 down 3` / `L9·31 up 3` — because
+a transfer writes both sides at once and is the one place this sheet can
+silently do the wrong thing. The commit button names the reason now: `Record
+move`, `Record delivery`. Both warnings from the known-gaps list are on screen
+at the point of the mistake.
 
----
+**The storeroom.** The two numbers on the right of each row are now named as
+columns — `APP ESTIMATE` and `YOUR COUNT` — because nothing said which was
+which. The "verified" line is relative now (`Verified 3 days ago`) instead of a
+full timestamp. A never-verified row carries the red edge.
 
-## 4. Fill moved — this is the change most likely to feel worse
+**History.** A run row says `Complete` or `In progress · 3 of 15 counted`, with
+`3 / 15` on the right, and an in-progress run carries the red edge. **The
+receipt now reads as the same table you typed into** — same four columns, same
+`COUNTED` / `REFILLED TO` heads as the counting screen — with `READ ONLY` in
+the header where counting says `COUNTING`. The `FILLED` pill is gone: two named
+columns already say it.
 
-Fill used to be a button on every row. It is not, any more.
+One consequence worth knowing: a slot that was topped up while already at
+capacity — where counted and refilled-to are the same number — no longer shows
+any mark. That is the cost of dropping the pill, and it is deliberate.
 
-There is now a **`Fill tray to par`** button in the footer, which fills the
-whole visible tray in one tap. Per-slot Fill still exists, but it moved into
-the `⋯` sheet on each slot — one more tap than before.
+**The report.** The period's sold total is now the poster it should be: a
+full-bleed red field with the units figure large. The "lines not counted"
+warning has moved out of the totals card onto its own band directly beneath,
+because it is the one thing on that screen that must not read as decoration —
+a censored line has no figure, so the totals quietly count it as zero, and a
+range covering a machine's first visit reads "0 units · $0.00" exactly like a
+period that genuinely sold nothing. Sales lines are a proper table now.
 
-**`Fill tray to par` now leaves a hand-typed figure alone.** If you've entered
-a "Refilled to" number on a slot — a part-refill because the trolley ran out,
-say — tapping the tray fill skips that slot and your number stands; the rest
-of the tray still fills to capacity. To deliberately override your own typed
-figure, use Fill inside that slot's `⋯` sheet instead. Before tonight's fix,
-the tray action silently rewrote your figure to capacity and saved it — and
-that figure is what next period opens at. If a slot you part-filled still
-shows your number after `Fill tray to par`, that is this working correctly,
-not a bug.
+**The stock matrix.** Restyled only — same rows, same columns, same order. The
+machine toggles are black when shown and struck through when hidden. **The
+`Order` column now has a red header and a pink tint**, because it is the only
+column that is yours rather than the app's and it has to be obviously blank in
+a screenshot. Rows alternate shading so a 60-row screenshot stays readable.
 
-**`Fill tray to par` also no longer claims you looked at every slot.** It used
-to mark every slot in the tray as observed, which put the red ran-dry edge on
-slots with no previous figure at all, and recorded "counted, found empty" for
-slots you never actually looked at. Filling a tray now only sets what you
-leave behind — it says nothing about what you found. Tapping Fill on a single
-slot in its `⋯` sheet still counts as looking at that slot, same as before.
-
-**Fill buttons that could never do anything are hidden now, not just inert.**
-The footer's `Fill tray to par` is hidden on a machine with nothing mapped,
-and a slot's per-slot Fill in the `⋯` sheet is hidden when that slot isn't on
-the machine's map. If you don't see a Fill button somewhere you expected one,
-that's why — it would have done nothing anyway.
-
-Say plainly: **this is the change most likely to feel worse in the field, and
-nothing in a test suite can catch that.** It reads fine on a screen; whether it
-still feels fast with fifteen machines and a trolley is only known tomorrow. If
-your habit turns out to be fill-then-glance at the row and the extra tap breaks
-your rhythm, there's already a fallback direction designed for this — a
-"stacked ledger" layout, written up in the design spec under "Directions not
-taken." It has not been built. If Fill's new location is the thing you flag
-tomorrow, that's where the fix would start.
-
----
-
-## 5. Machine map: editing an unstocked slot's capacity is safer now
-
-Tapping `⋯` on a "Not stocked" row on the machine map used to open the sheet
-with the capacity field pre-filled `0`, and Save looked ready to tap — but
-tapping it did nothing, silently, forever, because a capacity below 1 is
-rejected. That sheet now opens with the field **empty** and Save **disabled**
-until you type a real number. If you're mapping a machine tomorrow and Save
-won't light up, that's the sheet correctly waiting for a capacity, not
-broken.
+**The item screens.** The list shows the base slot, and price and par as
+separate figures instead of one grey caption. Tray headings name the category —
+`TRAY 1 · CHIPS`. A remark is a short tag now instead of three lines of italic
+amber outweighing the item name; the full text is still on the edit screen.
+On the edit screen the name is edited in place as the title, the four value
+fields are a 2×2 grid with par marked red as the only required one, and **the
+slot picker is a full-width ten-column grid** — one row per tray, so the whole
+machine reads as a shape. That last one was a real bug: the old picker
+overflowed the screen on your phone.
 
 ---
 
-## 6. Miscount is gone from the `⋯` sheet at a machine slot
+## 4. What I could not check
 
-It used to be there and did nothing — it was stored and read by nothing,
-never entered any calculation, never showed back anywhere. It has been
-removed from that sheet. If a count is wrong, correct it in place: tap the
-figure and type the right number. The Storeroom screen already worked this
-way; the slot sheet now matches it.
+Two screens never got looked at in a real browser at phone width, because the
+data on hand could not reach them: the **stock matrix** (needs a run where
+machines were finished twice) and the **counting screen** (needs a run in
+progress). Both are covered by tests and both were reviewed, but neither has
+been seen at 393 pixels.
 
----
+The stock matrix is the one that matters, because a screenshot of it is what
+you actually carry. **Open the report in landscape once and look at it before
+you rely on it.**
 
-## 7. What still looks old — on purpose
-
-The **storeroom, history, report and items screens**, and the **interior of
-the slot editor sheet** (the one that opens when you edit what's in a slot,
-not the `⋯` menu) — all of these keep their current styling. Only the run
-screen, the machines list, the machine map and the surrounding shell were
-redone tonight. If one of those screens looks out of step with the rest, that
-is not a bug — it is scoped for later, recorded in the design spec as steps 4
-through 12 not yet done.
-
-**One more thing that will look odd: the red ran-dry edge can be over-eager
-after a tray fill.** If you tap `Fill tray to par` and then save anything from
-a slot's `⋯` sheet, the app re-marks those tray-filled slots as observed, so
-the red left edge can show up on slots that are simply empty and were never
-actually counted. **No count is wrong** — every "Counted" and "Refilled to"
-figure stays exactly as recorded, and nothing you typed is touched by this. It
-is a display flag being too eager, nothing more, and it is the first thing
-being fixed after this run.
+Everything else was checked in a real browser at phone width: no screen runs
+off the side, and the ten-column slot picker measures 361px inside a 393px
+screen.
 
 ---
 
-## 8. Rollback is safe
+## 5. Rollback is safe
 
-Because nothing in the schema changed, tonight's bundle and tomorrow's data
-are interchangeable either direction — today's app can read tomorrow's data,
-and if you roll back, tomorrow's app can read today's. If the typed-number run
-screen turns out worse at the machines than the old stepper screen, reverting
-the deploy costs nothing and loses nothing.
+Nothing in the schema changed, so this build and your data are interchangeable
+in either direction. If any of this reads worse in your hand than what it
+replaced, reverting costs nothing and loses nothing.
 
 ---
 
-## 9. What to do tomorrow
+## 6. What to do next
 
-**Write design problems down as they hit you, ideally with a screenshot.**
-That is how the last round worked: thirteen annotated screenshots became a fix
-plan, and two of the bugs in that plan were never caught by any test — only by
-looking at a real screen in your hand. The same is almost certainly true of
-whatever's wrong tomorrow. A note that says "this felt off at machine 7" is
-useful; a screenshot of the exact moment is much more useful.
+Same as last time, and it worked: **write problems down as they hit you, with a
+screenshot.** Thirteen annotated screenshots became a fix plan last round, and
+two of those bugs were invisible to every test — only looking at a real screen
+caught them.
+
+The two things most worth your judgement this time: whether the **adjustment
+sheet's reason tiles** are faster than the dropdown was, and whether the
+**receipt reading as the count table** actually helps you check a machine.
 
 ---
 
@@ -177,12 +147,25 @@ useful; a screenshot of the exact moment is much more useful.
 
 | What | Where |
 |---|---|
-| Interface refinement spec | `docs/design/2026-08-28-interface-refinement.md` |
+| This round's plan | `docs/superpowers/plans/2026-08-31-interface-refinement-steps-4-12.md` |
+| Interface refinement spec (§6–§12 are this round) | `docs/design/2026-08-28-interface-refinement.md` |
 | Design tokens | `docs/design/tokens.md` |
 | Design spec (original authority) | `docs/superpowers/specs/2026-08-26-vending-stock-manager-design.md` |
-| Phase 2 design | `docs/superpowers/specs/2026-08-27-phase-2-understand-design.md` |
 | Known gaps | `docs/known-gaps.md` |
 | Decisions and reasoning | `docs/decisions.md` |
-| Execution ledger for tonight's work | `.superpowers/sdd/2026-08-28-interface-refinement-steps-1-3/progress.md` |
-| Device-test fix plan (last round) | `docs/fix-plan-2026-08-27.md` |
-| Device-test screenshots (last round) | `devs/debug/` |
+| Last round's execution log | `docs/interface-refinement-execution-log.md` |
+
+## For whoever picks this up next
+
+Three things were deliberately left, and are not oversights:
+
+1. **The over-eager ran-dry edge** (`useCounting.ts`, the mid-count re-seed
+   marks tray-filled slots `touched`). Still the top follow-up.
+2. **`src/ui/components/Stepper.tsx` is unused and still in the old palette.**
+   Kept on purpose — the spec's "stacked ledger" fallback keeps the ± steppers,
+   and it is the named fallback if typed cells fail in the field. The file now
+   carries a comment saying so.
+3. **`tokens.md` says "Every figure carries `tabular-nums`."** Taken literally
+   that would mean every numeral in every sentence, including dates and
+   `box of 24`. What it means, and what the code does, is every figure in a
+   column that has to align. Worth one line of clarification in that file.
