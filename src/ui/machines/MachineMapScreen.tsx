@@ -147,7 +147,7 @@ export function MachineMapScreen({
               onClick={(e) => e.stopPropagation()}
             >
               <SlotEditSheet
-                machineId={machine.id}
+                machine={machine}
                 slotNumber={editing.slotNumber}
                 items={[...items.values()]}
                 currentItemIds={editing.accepts}

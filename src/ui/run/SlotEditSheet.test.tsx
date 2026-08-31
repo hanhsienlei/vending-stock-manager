@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem, listItems } from '../../data/repositories/items'
@@ -8,12 +8,14 @@ import { setPlacement, listPlacements } from '../../data/repositories/placements
 import { listSlotConfigs } from '../../data/repositories/slotConfigs'
 import { effectivePlacement, resolveMachineMap } from '../../domain/placement'
 import { SlotEditSheet } from './SlotEditSheet'
-import type { Id } from '../../domain/types'
+import type { Id, Machine } from '../../domain/types'
 
 beforeEach(async () => {
   await db.delete()
   await db.open()
 })
+
+const MACHINE: Machine = { id: 'L7', label: 'Level 7', level: 7, updatedAt: 0 }
 
 /** Renders the sheet and returns the `onSaved` spy. Every edit persists behind
  * the tap, so tests wait for `onSaved` — which fires only once the writes have
@@ -23,7 +25,7 @@ function renderSheet(props: {
   items?: Awaited<ReturnType<typeof listItems>>
   currentItemIds?: Id[]
   capacity?: number
-  machineId?: string
+  machine?: Machine
   isFilled?: boolean
   onToggleFill?: () => void
   slotInMap?: boolean
@@ -31,7 +33,7 @@ function renderSheet(props: {
   const onSaved = vi.fn()
   render(
     <SlotEditSheet
-      machineId={props.machineId ?? 'L7'}
+      machine={props.machine ?? MACHINE}
       slotNumber={props.slotNumber ?? 58}
       items={props.items ?? []}
       currentItemIds={props.currentItemIds ?? []}
@@ -166,13 +168,13 @@ describe('SlotEditSheet', () => {
       items: await listItems(),
       currentItemIds: [sunkist.id],
       capacity: 5,
-      machineId: 'L7',
+      machine: MACHINE,
     })
 
     const input = screen.getByLabelText('Capacity')
     await user.clear(input)
     await user.type(input, '20')
-    await user.click(screen.getByRole('button', { name: 'Save capacity' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(onSaved).toHaveBeenCalled())
 
     expect((await resolvedSlot('L7', 52))?.capacity).toBe(20)
@@ -194,7 +196,7 @@ describe('SlotEditSheet', () => {
     const input = screen.getByLabelText('Capacity')
     await user.clear(input)
     await user.type(input, '0')
-    await user.click(screen.getByRole('button', { name: 'Save capacity' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
 
     // Give any (wrongly) in-flight write a turn to land before asserting.
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -214,7 +216,7 @@ describe('SlotEditSheet', () => {
     const input = screen.getByLabelText('Capacity')
     await user.clear(input)
     await user.type(input, '-3')
-    await user.click(screen.getByRole('button', { name: 'Save capacity' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
 
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(onSaved).not.toHaveBeenCalled()
@@ -238,7 +240,7 @@ describe('SlotEditSheet', () => {
     const input = screen.getByLabelText('Capacity')
     await user.clear(input)
     await user.type(input, '9')
-    await user.click(screen.getByRole('button', { name: 'Save capacity' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(onSaved).toHaveBeenCalled())
 
     const slot = await resolvedSlot('L7', 52)
@@ -253,7 +255,7 @@ describe('SlotEditSheet', () => {
 
     render(
       <SlotEditSheet
-        machineId={machine.id}
+        machine={machine}
         slotNumber={58}
         items={[coke]}
         currentItemIds={[coke.id]}
@@ -322,14 +324,14 @@ describe('SlotEditSheet', () => {
 
   it('disables Save capacity while the field is empty', () => {
     renderSheet({ capacity: 0 })
-    expect(screen.getByRole('button', { name: 'Save capacity' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 
   it('disables Save capacity while the typed value is below 1, and re-enables once it is not', async () => {
     const user = userEvent.setup()
     renderSheet({ capacity: 0 })
     const input = screen.getByLabelText('Capacity')
-    const save = screen.getByRole('button', { name: 'Save capacity' })
+    const save = screen.getByRole('button', { name: 'Save' })
 
     await user.type(input, '0')
     expect(save).toBeDisabled()
@@ -341,6 +343,78 @@ describe('SlotEditSheet', () => {
 
   it('enables Save capacity immediately for a slot with a real starting capacity', () => {
     renderSheet({ capacity: 5 })
-    expect(screen.getByRole('button', { name: 'Save capacity' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled()
+  })
+})
+
+describe('SlotEditSheet — §6 layout', () => {
+  it('says which machine and tray the slot is in', () => {
+    renderSheet({ slotNumber: 31 })
+    expect(screen.getByText('Slot 31')).toBeInTheDocument()
+    expect(screen.getByText('L7 · Tray 3')).toBeInTheDocument()
+  })
+
+  // The defect §6 exists to fix: the visible label WAS the accessible name,
+  // so a two-item slot rendered four buttons all starting with the same
+  // forty characters. The row is the subject; the button is the verb.
+  it('shows the verb as the visible label and keeps the full string as the accessible name', async () => {
+    const chips = await saveItem({
+      name: 'Red Rock Deli Chips Honey Soy Chicken', price: 3.5, basePar: 5, boxSize: 1,
+    })
+    renderSheet({ items: await listItems(), currentItemIds: [chips.id] })
+
+    const remove = screen.getByRole('button', {
+      name: 'Remove Red Rock Deli Chips Honey Soy Chicken',
+    })
+    expect(remove).toHaveTextContent(/^REMOVE$/)
+    const adjust = screen.getByRole('button', {
+      name: 'Adjust Red Rock Deli Chips Honey Soy Chicken',
+    })
+    expect(adjust).toHaveTextContent(/^ADJUST$/)
+  })
+
+  it('warns about the changeover only when the slot holds two items', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    const fanta = await saveItem({ name: 'Fanta', price: 4.5, basePar: 5, boxSize: 1 })
+    const items = await listItems()
+
+    renderSheet({ items, currentItemIds: [coke.id] })
+    expect(screen.queryByText(/changeover/i)).not.toBeInTheDocument()
+    cleanup()
+
+    renderSheet({ items, currentItemIds: [coke.id, fanta.id] })
+    expect(screen.getByText(/Two items means a changeover/)).toBeInTheDocument()
+  })
+
+  // §6: "the usual slot is the fastest way to catch that you are about to
+  // place something in the wrong channel."
+  it('shows each addable item its base slot', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    await setPlacement(coke.id, { kind: 'base' }, [34])
+    renderSheet({ items: await listItems(), currentItemIds: [] })
+
+    await waitFor(() => expect(screen.getByText('· usually 34')).toBeInTheDocument())
+  })
+
+  it('filters the add list by the search field', async () => {
+    const user = userEvent.setup()
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    await saveItem({ name: 'Fanta', price: 4.5, basePar: 5, boxSize: 1 })
+    renderSheet({ items: await listItems(), currentItemIds: [] })
+
+    await user.type(screen.getByLabelText('Search items to add'), 'fan')
+    expect(screen.getByRole('button', { name: 'Add Fanta' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add Coke' })).not.toBeInTheDocument()
+  })
+
+  it('carries no rounded corner and no legacy palette class', () => {
+    const { container } = render(
+      <SlotEditSheet
+        machine={MACHINE} slotNumber={31} items={[]} currentItemIds={[]} capacity={5}
+        onSaved={vi.fn()} onCancel={vi.fn()}
+      />,
+    )
+    expect(container.innerHTML).not.toMatch(/rounded-/)
+    expect(container.innerHTML).not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
   })
 })

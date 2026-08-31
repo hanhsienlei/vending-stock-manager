@@ -211,7 +211,7 @@ export function CountScreen({
 
         {editingSlot !== null && (
           <SlotEditSheet
-            machineId={machineId}
+            machine={machine}
             slotNumber={editingSlot}
             items={[...counting.items.values()]}
             currentItemIds={
