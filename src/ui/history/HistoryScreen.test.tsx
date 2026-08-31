@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
-import { saveMachine } from '../../data/repositories/machines'
+import { listMachines, saveMachine } from '../../data/repositories/machines'
 import { createRun } from '../../data/repositories/runs'
 import { openVisit, putCountLine, finalizeVisit } from '../../data/repositories/visits'
 import { newId, now } from '../../domain/ids'
@@ -83,7 +83,9 @@ describe('HistoryScreen', () => {
     render(<HistoryScreen />)
     await user.click(await screen.findByLabelText('run 2026-08-27'))
 
-    expect(await screen.findByLabelText('visit to L7')).toHaveTextContent('Finished')
+    // The finished mark is a filled tick square, not the word "Finished" —
+    // the pill text moved to an accessible label on the mark itself.
+    expect(await screen.findByLabelText('visit to L7')).toHaveTextContent('✓')
     expect(screen.getByLabelText('visit to L8')).toHaveTextContent('In progress')
   })
 
@@ -99,10 +101,10 @@ describe('HistoryScreen', () => {
     await user.click(await screen.findByLabelText('visit to L7'))
     await screen.findByText(/nothing was recorded/i)
 
-    await user.click(screen.getByText('← Back'))
+    await user.click(screen.getByText('← Thu 27 Aug 2026'))
     expect(await screen.findByLabelText('visit to L7')).toBeInTheDocument()
 
-    await user.click(screen.getByText('← Back'))
+    await user.click(screen.getByText('← RUNS'))
     expect(await screen.findByLabelText('run 2026-08-27')).toBeInTheDocument()
   })
 
@@ -118,5 +120,43 @@ describe('HistoryScreen', () => {
 
     await user.click(screen.getByRole('button', { name: 'Receipts' }))
     expect(await screen.findByLabelText('run 2026-08-27')).toBeInTheDocument()
+  })
+})
+
+describe('HistoryScreen — §9 layout', () => {
+  it('marks an in-progress run with the accent inset and says how far it got', async () => {
+    await saveMachine({ label: 'Lift lobby', level: 7 })
+    await saveMachine({ label: 'Level 9', level: 9 })
+    const run = await createRun('2026-08-27')
+    await openVisit(run.id, (await listMachines())[0].id)
+
+    render(<HistoryScreen />)
+    const row = await screen.findByTestId('run-row-2026-08-27')
+
+    expect(row.className).toContain('shadow-[inset_4px_0_0_var(--color-accent)]')
+    expect(row).toHaveTextContent('In progress · 0 of 2 counted')
+    expect(row).toHaveTextContent('0/2')
+  })
+
+  it('marks a fully counted run Complete with no inset', async () => {
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+    await finalizeVisit(visit.id)
+
+    render(<HistoryScreen />)
+    const row = await screen.findByTestId('run-row-2026-08-27')
+
+    expect(row.className).not.toContain('shadow-[inset_4px_0_0_var(--color-accent)]')
+    expect(row).toHaveTextContent('Complete')
+    expect(row).toHaveTextContent('1/1')
+  })
+
+  it('shows the Receipts / Report toggle as pressed segments', async () => {
+    render(<HistoryScreen />)
+    const receipts = await screen.findByRole('button', { name: 'Receipts' })
+    expect(receipts).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Report' }))
+      .toHaveAttribute('aria-pressed', 'false')
   })
 })

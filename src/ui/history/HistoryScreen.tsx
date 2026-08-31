@@ -49,50 +49,39 @@ export function HistoryScreen() {
   if (loading) {
     return (
       <ScreenLayout header={<ScreenHeader title="History" />}>
-        <div className="p-4">Loading…</div>
+        <div className="px-4 py-3 text-[13px]">Loading…</div>
       </ScreenLayout>
     )
   }
 
-  // Same header on every one of this screen's states, including the two
-  // levels of drill-down below: the nested back affordance those states
-  // deserve (§2) is a later task's work (task-3-brief.md decision #1), so
-  // for now they keep the top-level `History` chrome and their own existing
-  // inline "← Back" control rather than losing the tab bar altogether.
-  const header = <ScreenHeader eyebrow={`${runs.length} RUNS RECORDED`} title="History" />
+  const listHeader = (
+    <ScreenHeader eyebrow={`${runs.length} RUNS RECORDED`} title="History" />
+  )
 
   const machineById = new Map(machines.map((m) => [m.id, m]))
 
   const toggle = (
-    <div className="mb-3 flex gap-2">
-      <button
-        type="button"
-        onClick={() => setView('receipts')}
-        className={`flex-1 rounded-lg border p-2 text-sm font-semibold ${
-          view === 'receipts' ? 'bg-blue-600 text-white' : 'text-gray-700'
-        }`}
-      >
-        Receipts
-      </button>
-      <button
-        type="button"
-        onClick={() => setView('report')}
-        className={`flex-1 rounded-lg border p-2 text-sm font-semibold ${
-          view === 'report' ? 'bg-blue-600 text-white' : 'text-gray-700'
-        }`}
-      >
-        Report
-      </button>
+    <div className="flex border-b-2 border-rule-strong">
+      {(['receipts', 'report'] as const).map((name) => (
+        <button
+          key={name}
+          type="button"
+          aria-pressed={view === name}
+          onClick={() => setView(name)}
+          className={`flex-1 px-4 py-2.5 text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] ${
+            view === name ? 'bg-ink text-ground' : 'bg-ground text-neutral-700'
+          }`}
+        >
+          {name === 'receipts' ? 'Receipts' : 'Report'}
+        </button>
+      ))}
     </div>
   )
 
   if (view === 'report') {
     return (
-      <ScreenLayout header={header}>
-        <div className="p-4">
-          {toggle}
-          <ReportScreen />
-        </div>
+      <ScreenLayout header={listHeader} stickyExtra={toggle}>
+        <ReportScreen />
       </ScreenLayout>
     )
   }
@@ -101,12 +90,17 @@ export function HistoryScreen() {
     const machine = machineById.get(openVisit.machineId)
     if (machine) {
       return (
-        <ScreenLayout header={header}>
-          <VisitReceipt
-            visitId={openVisit.id}
-            machine={machine}
-            onBack={() => setOpenVisit(null)}
-          />
+        <ScreenLayout
+          header={
+            <ScreenHeader
+              back={{ label: `← ${formatRunDate(openRun.date)}`, onClick: () => setOpenVisit(null) }}
+              state="READ ONLY"
+              title={`L${machine.level}`}
+              subtitle={distinctLabel(machine)}
+            />
+          }
+        >
+          <VisitReceipt visitId={openVisit.id} machine={machine} />
         </ScreenLayout>
       )
     }
@@ -122,89 +116,109 @@ export function HistoryScreen() {
     )
 
     return (
-      <ScreenLayout header={header}>
-        <div className="p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setOpenRun(null)}
-              className="text-blue-600"
-            >
-              ← Back
-            </button>
-            <span className="text-sm font-semibold">{formatRunDate(openRun.date)}</span>
-          </div>
-
-          {visits.length === 0 ? (
-            <p className="text-sm text-gray-500">No machines were counted in this run.</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {visits.map((visit) => {
-                const machine = machineById.get(visit.machineId)
-                return (
-                  <li key={visit.id}>
-                    <button
-                      type="button"
-                      aria-label={`visit to L${machine?.level ?? '?'}`}
-                      onClick={() => setOpenVisit(visit)}
-                      className="flex w-full items-center gap-2 rounded-lg border p-3 text-left"
-                    >
-                      <span className="font-semibold">L{machine?.level ?? '?'}</span>
-                      {machine && distinctLabel(machine) && (
-                        <span className="text-gray-500">{distinctLabel(machine)}</span>
-                      )}
-                      <span className="flex-1" />
-                      {visit.status === 'finalized' ? (
-                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold uppercase text-green-700">
-                          Finished
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold uppercase text-amber-700">
-                          In progress
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </div>
-      </ScreenLayout>
-    )
-  }
-
-  return (
-    <ScreenLayout header={header}>
-      <div className="p-4">
-        {toggle}
-
-        {runs.length === 0 ? (
-          <p className="text-sm text-gray-500">No runs recorded yet.</p>
+      <ScreenLayout
+        header={
+          <ScreenHeader
+            back={{ label: '← RUNS', onClick: () => setOpenRun(null) }}
+            title={formatRunDate(openRun.date)}
+            figure={`${visits.filter((v) => v.status === 'finalized').length}/${machines.length}`}
+          />
+        }
+      >
+        {visits.length === 0 ? (
+          <p className="px-4 py-3 text-[13px] text-neutral-500">
+            No machines were counted in this run.
+          </p>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {runs.map((run) => {
-              const finished = (visitsByRun.get(run.id) ?? [])
-                .filter((v) => v.status === 'finalized').length
+          <ul>
+            {visits.map((visit) => {
+              const machine = machineById.get(visit.machineId)
               return (
-                <li key={run.id}>
+                <li key={visit.id} className="border-b border-rule-light bg-paper">
                   <button
                     type="button"
-                    aria-label={`run ${run.date}`}
-                    onClick={() => setOpenRun(run)}
-                    className="flex w-full items-center gap-2 rounded-lg border p-3 text-left"
+                    aria-label={`visit to L${machine?.level ?? '?'}`}
+                    onClick={() => setOpenVisit(visit)}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left"
                   >
-                    <span className="flex-1 font-semibold">{formatRunDate(run.date)}</span>
-                    <span className="text-sm text-gray-500">
-                      {finished} of {machines.length} counted
+                    <span className="text-[15px] font-extrabold tabular-nums">
+                      L{machine?.level ?? '?'}
                     </span>
+                    {machine && distinctLabel(machine) && (
+                      <span className="min-w-0 flex-1 truncate text-[13px] text-neutral-700">
+                        {distinctLabel(machine)}
+                      </span>
+                    )}
+                    <span className="flex-1" />
+                    {visit.status === 'finalized' ? (
+                      <span
+                        aria-label="Finished"
+                        className="flex h-5 w-5 items-center justify-center bg-ink text-[11px] font-extrabold text-ground"
+                      >
+                        ✓
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-accent-700">
+                        In progress
+                      </span>
+                    )}
                   </button>
                 </li>
               )
             })}
           </ul>
         )}
-      </div>
+      </ScreenLayout>
+    )
+  }
+
+  return (
+    <ScreenLayout header={listHeader} stickyExtra={toggle}>
+      {runs.length === 0 ? (
+        <p className="px-4 py-3 text-[13px] text-neutral-500">No runs recorded yet.</p>
+      ) : (
+        <ul>
+          {runs.map((run) => {
+            const finished = (visitsByRun.get(run.id) ?? [])
+              .filter((v) => v.status === 'finalized').length
+            const inProgress = finished < machines.length
+            return (
+              <li
+                key={run.id}
+                data-testid={`run-row-${run.date}`}
+                className={`border-b border-rule-light bg-paper ${
+                  inProgress ? 'shadow-[inset_4px_0_0_var(--color-accent)]' : ''
+                }`}
+              >
+                <button
+                  type="button"
+                  aria-label={`run ${run.date}`}
+                  onClick={() => setOpenRun(run)}
+                  className="flex w-full items-baseline gap-3 px-4 py-2.5 text-left"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[16px] font-extrabold">
+                      {formatRunDate(run.date)}
+                    </span>
+                    <span
+                      className={`block text-[11px] font-medium ${
+                        inProgress ? 'text-accent-700' : 'text-neutral-700'
+                      }`}
+                    >
+                      {inProgress
+                        ? `In progress · ${finished} of ${machines.length} counted`
+                        : 'Complete'}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-[19px] font-extrabold tabular-nums">
+                    {finished}/{machines.length}
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </ScreenLayout>
   )
 }
