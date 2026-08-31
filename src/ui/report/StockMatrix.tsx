@@ -61,13 +61,17 @@ export function StockMatrix({
             <tr className="bg-ink text-left text-ground">
               <th scope="col" className="px-2 py-1.5 text-[9.5px] font-bold uppercase tracking-[0.10em]">Slot</th>
               <th scope="col" className="px-2 py-1.5 text-[9.5px] font-bold uppercase tracking-[0.10em]">Item</th>
-              <th scope="col" className="px-2 py-1.5 text-[9.5px] font-bold uppercase tracking-[0.10em]">Qty</th>
+              <th scope="col" className="px-2 py-1.5 text-[9.5px] font-bold uppercase tracking-[0.10em]">Size</th>
               {shown.map((m) => (
                 <th key={m.id} scope="col" className="px-2 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em]">
                   L{m.level}
                 </th>
               ))}
-              <th scope="col" className="border-l-2 border-rule-strong px-2 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em]">GF</th>
+              {/* Named, not `GF`: the ground-floor shorthand was never
+                  explained anywhere on the sheet, and this column is the one
+                  the operator reconciles against the storeroom screen, which
+                  calls it the storeroom. */}
+              <th scope="col" className="whitespace-nowrap border-l-2 border-rule-strong px-2 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em]">Storeroom</th>
               <th scope="col" className="px-2 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em]">Total</th>
               <th scope="col" className="px-2 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em] text-accent">Order</th>
             </tr>

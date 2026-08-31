@@ -104,21 +104,46 @@ overflowed the screen on your phone.
 
 ---
 
-## 4. What I could not check
+## 4. The report page — fixed after the first draft of this handover
 
-Two screens never got looked at in a real browser at phone width, because the
-data on hand could not reach them: the **stock matrix** (needs a run where
-machines were finished twice) and the **counting screen** (needs a run in
-progress). Both are covered by tests and both were reviewed, but neither has
-been seen at 393 pixels.
+**The master table was unreachable, and I first wrote this up as a data
+limitation rather than the bug it was.**
 
-The stock matrix is the one that matters, because a screenshot of it is what
-you actually carry. **Open the report in landscape once and look at it before
-you rely on it.**
+The table of every item against every machine — `Slot | Item | Size | L2…L16 |
+Storeroom | Total | Order` — was built correctly all along, but it sat inside
+a branch that only rendered once a **sales period** had closed, which needs a
+machine finished for a *second* time. Until then the whole Report page said
+"Nothing to report yet" and the table could not be reached at all. It never
+depended on sales: it reads current levels, storeroom balances and the item
+map, all of which exist from day one. So the one thing you wanted before a run
+— what to pull from the storeroom — was hidden until after two runs.
 
-Everything else was checked in a real browser at phone width: no screen runs
-off the side, and the ten-column slot picker measures 361px inside a 393px
-screen.
+It now leads the page, with no gate:
+
+1. The master table, with the landscape hint above it.
+2. **In machines / Storeroom / On hand now** — moved up here, because they
+   total the table, and they were sitting under date pickers that never
+   governed them.
+3. **Sales** below, under its own heading. That half still needs a closed
+   period and still says so when it has none.
+
+Two column names changed: `GF` is now **Storeroom** (the shorthand was never
+explained anywhere), and `Qty` — which showed a pack size like `27g`, never a
+quantity — is now **Size**.
+
+**One thing to expect:** with nothing counted yet, every machine cell reads a
+red `0`. That is the design working (a red figure means a machine at zero), but
+on an empty estate it is a wall of red that will settle once you have counted a
+run.
+
+**Still not checked in a browser:** the **counting screen** at phone width — it
+needs a run in progress. Everything else was, including the report table above:
+no screen runs off the side, and the ten-column slot picker measures 361px
+inside a 393px screen.
+
+The matrix itself is 1167px wide with all fifteen machines shown, so it scrolls
+sideways even in landscape (852px). That is what the machine toggles at the top
+are for — switch off the floors you are not doing and it narrows to fit.
 
 ---
 

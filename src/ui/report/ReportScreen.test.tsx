@@ -183,7 +183,7 @@ describe('ReportScreen', () => {
     })
   })
 
-  it('shows the stock matrix under the sales breakdown', async () => {
+  it('shows the stock matrix once placements exist', async () => {
     const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
     const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
     await setPlacement(coke.id, { kind: 'base' }, [58])
@@ -209,6 +209,65 @@ async function seedCensoredLine() {
   // The machine's first-ever visit: no opening count, so nothing to derive.
   await counted('2026-08-27', l7.id, coke.id, 4, 10)
 }
+
+/** The master table is the point of this screen (user story: "App shall
+ * calculate the stock level of all machines, stock room, and total"), and it
+ * was unreachable.
+ *
+ * The bug: `<StockMatrix>` sat inside the `reports.length === 0` branch, so
+ * the whole page collapsed to "Nothing to report yet" until a SALES period
+ * had closed — which needs a machine finished for a second time. The table
+ * depends on none of that. It is built from current levels, storeroom
+ * balances and placements, all of which exist from the first day. So the
+ * operator could not see what to pull from the storeroom until after they
+ * had already done two runs. */
+describe('ReportScreen — the stock table does not wait for a sales period', () => {
+  it('shows the stock table before any run has ever closed a period', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    await saveMachine({ label: 'Lift lobby', level: 7 })
+
+    render(<ReportScreen />)
+
+    // The sales half is correctly empty — no period has closed.
+    expect(await screen.findByText(/nothing to report yet/i)).toBeInTheDocument()
+    // The table does not depend on that, and must be here anyway.
+    expect(await screen.findByLabelText('stock row 58')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'L7' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Storeroom' })).toBeInTheDocument()
+  })
+
+  it('shows stock on hand before any run has closed a period', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    await saveMachine({ label: 'Lift lobby', level: 7 })
+
+    render(<ReportScreen />)
+
+    // Stock on hand is a "now" figure too — it never needed a closed period.
+    expect(await screen.findByLabelText('stock on hand')).toBeInTheDocument()
+  })
+
+  it('puts the stock table above the sales figures', async () => {
+    // Seeds its own placement: `seedTwoFinalizedVisits` deliberately has
+    // none, so it produces no matrix rows to order.
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    await counted('2026-08-20', l7.id, coke.id, 0, 10)
+    await counted('2026-08-27', l7.id, coke.id, 4, 10)
+
+    render(<ReportScreen />)
+
+    const totals = await screen.findByLabelText('report totals')
+    const table = screen.getByLabelText('stock row 58')
+    // The table is what you act on before a run; sales is what you read
+    // after one. Reading order follows.
+    expect(
+      table.compareDocumentPosition(totals) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+})
 
 describe('ReportScreen — §10 layout', () => {
   it('states the sold total as a poster figure with its period', async () => {

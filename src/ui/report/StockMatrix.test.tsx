@@ -17,16 +17,28 @@ const ROWS: MatrixRow[] = [{
 }]
 
 describe('StockMatrix', () => {
-  it('renders a column per machine, plus GF and Total', () => {
+  it('renders a column per machine, plus Storeroom and Total', () => {
     render(<StockMatrix rows={ROWS} machines={MACHINES} />)
 
     expect(screen.getByRole('columnheader', { name: 'L2' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'L7' })).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'GF' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Storeroom' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Total' })).toBeInTheDocument()
   })
 
-  it('shows the slot as the locator and the size as Qty', () => {
+  // `GF` named the ground-floor storeroom in shorthand the sheet never
+  // explained, and `Qty` headed a column that shows a pack size (`375ml`) and
+  // never a quantity — the two figures beside it are quantities, which is
+  // exactly the confusion §8 removed from the storeroom screen.
+  it('heads the pack-size column Size, not Qty', () => {
+    render(<StockMatrix rows={ROWS} machines={MACHINES} />)
+
+    expect(screen.getByRole('columnheader', { name: 'Size' })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Qty' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'GF' })).not.toBeInTheDocument()
+  })
+
+  it('shows the slot as the locator and the size beside it', () => {
     render(<StockMatrix rows={ROWS} machines={MACHINES} />)
 
     const row = screen.getByLabelText('stock row 58')
@@ -91,7 +103,7 @@ describe('StockMatrix — §11 restyle', () => {
 
   it('separates the summary columns from the machine block', () => {
     render(<StockMatrix rows={ROWS} machines={MACHINES} />)
-    expect(screen.getByRole('columnheader', { name: 'GF' }).className)
+    expect(screen.getByRole('columnheader', { name: 'Storeroom' }).className)
       .toContain('border-l-2')
   })
 

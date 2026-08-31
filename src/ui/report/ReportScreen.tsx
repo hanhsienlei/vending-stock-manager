@@ -70,6 +70,52 @@ export function ReportScreen() {
 
   return (
     <div>
+      {/* The master table leads the screen and is NOT gated on a closed sales
+          period. It is built from current levels, storeroom balances and
+          placements — none of which involve a period at all — and it is the
+          thing the operator acts on BEFORE a run ("estimate what I should
+          grab from the storeroom before going to these machines floor by
+          floor"). It used to sit inside the `reports.length === 0` branch
+          below, so the whole screen collapsed to "Nothing to report yet"
+          until a machine had been finished for a second time, and the table
+          could not be reached at all until after two runs. */}
+      <div className="flex items-baseline justify-between border-b-2 border-rule-strong bg-surface px-4 py-2.5">
+        <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-neutral-700">
+          Stock on hand — {matrixRows.length} items × {machines.length} machines
+        </span>
+        <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-accent-700">
+          Turn phone ⟳
+        </span>
+      </div>
+      <StockMatrix rows={matrixRows} machines={machines} />
+
+      {/* The three totals belong with the table they total, and above the
+          date pickers — they are a "now" figure that those dates have never
+          governed (design §7.2). Sitting under the pickers implied they did. */}
+      <div
+        aria-label="stock on hand"
+        className="grid grid-cols-3 gap-px border-y-2 border-rule-strong bg-rule-light"
+      >
+        {([
+          ['In machines', inMachines, 'bg-paper'],
+          ['Storeroom', inStoreroom, 'bg-paper'],
+          ['On hand now', inMachines + inStoreroom, 'bg-surface'],
+        ] as const).map(([label, value, fill]) => (
+          <div key={label} className={`${fill} px-4 py-3`}>
+            <div className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
+              {label}
+            </div>
+            <div className="mt-0.5 text-[21px] font-extrabold tabular-nums">{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Everything below is the sales half, and it alone needs a closed
+          period. */}
+      <div className="bg-ink px-4 py-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-ground">
+        Sales
+      </div>
+
       <div className="grid grid-cols-2 gap-px border-b-2 border-rule-strong bg-rule-light">
         {([['From', from, setFrom], ['To', to, setTo]] as const).map(([label, value, set]) => (
           <label key={label} className="flex flex-col gap-1 bg-paper px-4 py-3">
@@ -125,24 +171,6 @@ export function ReportScreen() {
               {censoredLines === 1 ? 'it is' : 'they are'} not in the totals above.
             </p>
           )}
-
-          <div
-            aria-label="stock on hand"
-            className="grid grid-cols-3 gap-px border-y-2 border-rule-strong bg-rule-light"
-          >
-            {([
-              ['In machines', inMachines, 'bg-paper'],
-              ['Storeroom', inStoreroom, 'bg-paper'],
-              ['On hand now', inMachines + inStoreroom, 'bg-surface'],
-            ] as const).map(([label, value, fill]) => (
-              <div key={label} className={`${fill} px-4 py-3`}>
-                <div className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
-                  {label}
-                </div>
-                <div className="mt-0.5 text-[21px] font-extrabold tabular-nums">{value}</div>
-              </div>
-            ))}
-          </div>
 
           <div className="grid grid-cols-[30px_26px_1fr_40px_62px] items-center gap-2 bg-ink px-3.5 py-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-ground">
             <span>LV</span>
@@ -207,15 +235,6 @@ export function ReportScreen() {
             )}
           </ul>
 
-          <div className="flex items-baseline justify-between border-t-2 border-rule-strong bg-surface px-4 py-2.5">
-            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-neutral-700">
-              Stock matrix — {matrixRows.length} items × {machines.length} machines
-            </span>
-            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-accent-700">
-              Turn phone ⟳
-            </span>
-          </div>
-          <StockMatrix rows={matrixRows} machines={machines} />
         </>
       )}
     </div>
