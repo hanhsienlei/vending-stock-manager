@@ -1,3 +1,18 @@
+/** Nothing in `src/` imports this file. It was orphaned when spec §3.3
+ * replaced the counting steppers with typed cells, and it is deliberately
+ * retained rather than deleted: the design spec's "Directions not taken"
+ * section (`docs/design/2026-08-28-interface-refinement.md`) describes a
+ * "stacked ledger" layout that keeps the `±` steppers, and names it as the
+ * fallback if typed cells prove worse in the field than they sound — see also
+ * `docs/handover.md` (~lines 103-108), which points back at that fallback.
+ *
+ * For that reason it is NOT restyled to the current tokens (`rounded-lg`,
+ * `bg-gray-200`, `text-emerald-700`, `text-gray-400` and `text-gray-900` all
+ * still stand below): §3.3 replaced this component's whole interaction model,
+ * not just its palette, so reviving the fallback would mean redesigning it
+ * against whatever the run screen looks like at that point, not resurrecting
+ * this file verbatim. This is why a legacy-palette grep over `src/ui/`
+ * returns exactly one file. */
 export function Stepper({
   value, onChange, min = 0, max = 99, label, dimmed = false, emerald = false,
 }: {

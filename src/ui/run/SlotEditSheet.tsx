@@ -1,15 +1,19 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { listPlacements, setPlacement } from '../../data/repositories/placements'
 import { pinSlotCapacities, setSlotConfig } from '../../data/repositories/slotConfigs'
 import { effectivePlacement } from '../../domain/placement'
+import { trayOf, trayLabel } from '../../domain/trays'
 import { AdjustmentSheet } from '../adjustments/AdjustmentSheet'
-import type { Id, Item } from '../../domain/types'
+import type { Id, Item, ItemPlacement, Machine } from '../../domain/types'
 
 export function SlotEditSheet({
-  machineId, slotNumber, items, currentItemIds, capacity, onSaved, onCancel,
+  machine, slotNumber, items, currentItemIds, capacity, onSaved, onCancel,
   isFilled, onToggleFill, slotInMap,
 }: {
-  machineId: Id
+  /** The machine this slot belongs to. Was `machineId`; the whole object is
+   * passed so the sheet's title bar can say `L7 · Tray 3` without a lookup.
+   * Both call sites already hold a `Machine`. */
+  machine: Machine
   slotNumber: number
   items: Item[]
   currentItemIds: Id[]
@@ -36,6 +40,8 @@ export function SlotEditSheet({
    * button. */
   slotInMap?: boolean
 }) {
+  const machineId = machine.id
+
   // Fix 4, 2026-08-28 whole-branch review: an unmapped map slot is fabricated
   // with capacity 0 (MachineMapScreen). Pre-filling "0" here let the
   // operator tap `⋯` on a "Not stocked" row and tap Save on a field that was
@@ -48,6 +54,29 @@ export function SlotEditSheet({
   const capacityValue = Number(capacityInput)
   const canSaveCapacity = capacityInput.trim() !== '' && Number.isFinite(capacityValue) && capacityValue >= 1
   const [adjusting, setAdjusting] = useState<Id | null>(null)
+
+  // The item's BASE slot, shown beside each addable item (§6). Loaded once
+  // here rather than per row: `listPlacements` is a single table read and the
+  // sheet already calls it on every add and remove.
+  const [basePlacements, setBasePlacements] = useState<ItemPlacement[]>([])
+  useEffect(() => {
+    void (async () => {
+      const all = await listPlacements()
+      setBasePlacements(all.filter((p) => p.scope.kind === 'base'))
+    })()
+  }, [])
+
+  const baseSlotByItem = useMemo(() => {
+    const map = new Map<Id, number>()
+    for (const p of basePlacements) {
+      const first = [...p.slots].sort((a, b) => a - b)[0]
+      if (first !== undefined) map.set(p.itemId, first)
+    }
+    return map
+  }, [basePlacements])
+
+  const [addSearch, setAddSearch] = useState('')
+
   async function slotsFor(itemId: Id): Promise<number[]> {
     const placements = await listPlacements()
     return effectivePlacement(itemId, machineId, placements)?.slots ?? []
@@ -101,11 +130,27 @@ export function SlotEditSheet({
   }
 
   const present = items.filter((i) => currentItemIds.includes(i.id))
-  const absent = items.filter((i) => !currentItemIds.includes(i.id))
+  const absent = items
+    .filter((i) => !currentItemIds.includes(i.id))
+    .filter((i) => i.name.toLowerCase().includes(addSearch.trim().toLowerCase()))
 
   return (
-    <div className="rounded-lg border bg-white p-3">
-      <h3 className="mb-2 font-semibold">Slot {slotNumber}</h3>
+    <div className="bg-paper">
+      <div className="flex items-baseline justify-between bg-ink px-4 py-2.5 text-ground">
+        <h3 className="text-[19px] font-extrabold">
+          Slot {slotNumber}
+          <span className="ml-2 text-[13px] font-medium opacity-70">
+            L{machine.level} · {trayLabel(trayOf(slotNumber))}
+          </span>
+        </h3>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-[10.5px] font-bold uppercase tracking-[0.12em]"
+        >
+          Close
+        </button>
+      </div>
 
       {onToggleFill && slotInMap && (
         <button
@@ -121,65 +166,122 @@ export function SlotEditSheet({
         </button>
       )}
 
-      <label className="mb-3 flex items-end gap-2">
-        <span className="flex flex-1 flex-col gap-1">
-          <span className="text-xs font-bold uppercase text-gray-500">Capacity</span>
+      <div className="border-b-2 border-rule-strong px-4 py-3">
+        <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
+          Capacity · this machine only
+        </span>
+        <div className="mt-1 flex items-end gap-3">
           <input
             aria-label="Capacity"
             type="number"
             inputMode="numeric"
             min={1}
-            className="rounded-lg border p-2"
+            className="w-20 border-b-2 border-ink bg-transparent pb-1 text-[24px] font-extrabold tabular-nums outline-none"
             value={capacityInput}
             onChange={(e) => setCapacityInput(e.target.value)}
           />
-        </span>
-        <button
-          type="button"
-          disabled={!canSaveCapacity}
-          onClick={() => void saveCapacity()}
-          className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Save capacity
-        </button>
-      </label>
+          <button
+            type="button"
+            disabled={!canSaveCapacity}
+            onClick={() => void saveCapacity()}
+            className="border-2 border-ink px-3 py-1.5 text-[12.5px] font-extrabold uppercase tracking-[0.04em] disabled:opacity-45"
+          >
+            Save
+          </button>
+        </div>
+        <p className="mt-2 text-[11px] font-medium text-neutral-700">
+          Overrides the item&rsquo;s par level here. Leave it if the whole estate
+          is the same depth.
+        </p>
+      </div>
 
-      <ul className="mb-3 flex flex-col gap-1">
-        {present.map((item) => (
-          <li key={item.id} className="flex items-center gap-2">
-            <span className="flex-1 text-sm">{item.name}</span>
-            <button
-              type="button"
-              onClick={() => setAdjusting(item.id)}
-              className="text-xs font-bold text-blue-600"
-            >
-              {`Adjust ${item.name}`}
-            </button>
-            <button
-              type="button"
-              onClick={() => void remove(item.id)}
-              className="text-xs font-bold text-red-600"
-            >
-              {`Remove ${item.name}`}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <div className="border-b-2 border-rule-strong">
+        <div className="bg-surface px-4 py-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
+          In this slot
+        </div>
+        {present.length === 0 ? (
+          <p className="px-4 py-2.5 text-[13px] text-neutral-500">Not stocked.</p>
+        ) : (
+          <ul>
+            {present.map((item) => (
+              <li
+                key={item.id}
+                className="flex items-center gap-3 border-b border-rule-light px-4 py-2.5"
+              >
+                <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">
+                  {item.name}
+                </span>
+                {/* §6: the row is the subject, the button is the verb. The
+                    full string stays as the accessible name. */}
+                <button
+                  type="button"
+                  aria-label={`Adjust ${item.name}`}
+                  onClick={() => setAdjusting(item.id)}
+                  className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-neutral-700"
+                >
+                  ADJUST
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Remove ${item.name}`}
+                  onClick={() => void remove(item.id)}
+                  className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-accent-700"
+                >
+                  REMOVE
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {present.length > 1 && (
+          <p className="bg-accent-200 px-4 py-2 text-[11px] font-medium text-accent-800">
+            Two items means a changeover. Fill tops up whichever sorts first
+            alphabetically, so step the outgoing line down by hand until it is
+            gone.
+          </p>
+        )}
+      </div>
 
-      <ul className="mb-3 flex max-h-48 flex-col gap-1 overflow-y-auto">
-        {absent.map((item) => (
-          <li key={item.id} className="flex items-center gap-2">
-            <span className="flex-1 text-sm text-gray-500">{item.name}</span>
-            <button
-              type="button"
-              onClick={() => void add(item.id)}
-              className="text-xs font-bold text-blue-600"
+      <div>
+        <div className="bg-surface px-4 py-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
+          Add an item
+        </div>
+        <div className="border-b border-rule-light px-4 py-2">
+          <input
+            type="search"
+            aria-label="Search items to add"
+            placeholder="Search items"
+            value={addSearch}
+            onChange={(e) => setAddSearch(e.target.value)}
+            className="w-full border-b-2 border-ink bg-transparent pb-1 text-[13.5px] outline-none"
+          />
+        </div>
+        <ul className="max-h-48 overflow-y-auto">
+          {absent.map((item) => (
+            <li
+              key={item.id}
+              className="flex items-center gap-3 border-b border-rule-light px-4 py-2.5"
             >
-              {`Add ${item.name}`}
-            </button>
-          </li>
-        ))}
-      </ul>
+              <span className="min-w-0 flex-1 truncate text-[13.5px] text-neutral-700">
+                {item.name}
+                {baseSlotByItem.has(item.id) && (
+                  <span className="ml-1.5 text-[11px] text-neutral-500">
+                    {`· usually ${baseSlotByItem.get(item.id)}`}
+                  </span>
+                )}
+              </span>
+              <button
+                type="button"
+                aria-label={`Add ${item.name}`}
+                onClick={() => void add(item.id)}
+                className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-accent-700"
+              >
+                Add
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
 
       {adjusting !== null && (
         <AdjustmentSheet
@@ -192,10 +294,6 @@ export function SlotEditSheet({
           onCancel={() => setAdjusting(null)}
         />
       )}
-
-      <button type="button" onClick={onCancel} className="text-sm text-gray-500">
-        Close
-      </button>
     </div>
   )
 }

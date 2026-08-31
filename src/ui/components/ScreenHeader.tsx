@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 /** The context header (§2). Scrolls away under the tab bar, which does not —
  * which is why this is rendered by each screen inside `ScreenLayout` rather
  * than hoisted into `App`: the screen owns the data the header states, and the
@@ -12,7 +14,10 @@ export function ScreenHeader({
   back?: { label: string; onClick: () => void }
   /** Right of the back line on the count screen: `COUNTING`, `READ ONLY`. */
   state?: string
-  title: string
+  /** Usually the screen name. `ReactNode` rather than `string` so the item
+   * editor can put its name field here and edit the title in place (§12);
+   * `input` is phrasing content, so it is valid inside the `h1`. */
+  title: ReactNode
   /** The distinct machine label, beside the title at 16px/500. */
   subtitle?: string
   /** The one figure the screen is about: `3 / 15`, `22 / 54`. */

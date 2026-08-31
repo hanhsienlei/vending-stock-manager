@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useReport, latestRunDate } from './useReport'
 import { StockMatrix } from './StockMatrix'
+import { formatRunDate } from '../../domain/date'
 import type { CensoredReason } from '../../domain/sales'
 
 const money = (n: number) => n.toFixed(2)
@@ -12,6 +13,14 @@ const CENSORED_REASONS: Record<CensoredReason, string> = {
   'no-previous-visit': 'no previous visit',
   'left-slot-with-stock': 'left the slot holding stock',
   'visit-not-finalized': 'visit not finished',
+}
+
+/** The period as an eyebrow. `formatRunDate` carries a year the poster field
+ * has no room for, so it is trimmed here rather than by adding a second
+ * formatter to `src/domain/date.ts` — this is display copy for one field. */
+function periodLabel(from: string, to: string): string {
+  const short = (d: string) => formatRunDate(d).replace(/ \d{4}$/, '').toUpperCase()
+  return from === to ? `SOLD · RUN OF ${short(from)}` : `SOLD · ${short(from)} – ${short(to)}`
 }
 
 /** Design §7.2. Scoped to a run by default — which is what close-out wants and
@@ -35,7 +44,7 @@ export function ReportScreen() {
   const { reports, items, machines, storeroomOnHand, levelsByMachine, matrixRows, loading } =
     useReport(from, to)
 
-  if (!ready || loading) return <div className="p-4">Loading…</div>
+  if (!ready || loading) return <div className="px-4 py-3 text-[13px]">Loading…</div>
 
   const allLines = reports.flatMap((r) => r.lines)
   const units = allLines.reduce((sum, l) => sum + (l.sold ?? 0), 0)
@@ -60,110 +69,153 @@ export function ReportScreen() {
   const machineById = new Map(machines.map((m) => [m.id, m]))
 
   return (
-    <div className="p-4">
-      <div className="mb-3 flex items-end gap-2">
-        <label className="flex flex-1 flex-col gap-1">
-          <span className="text-xs font-bold uppercase text-gray-500">From</span>
-          <input
-            aria-label="From"
-            type="date"
-            className="rounded-lg border p-2"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          />
-        </label>
-        <label className="flex flex-1 flex-col gap-1">
-          <span className="text-xs font-bold uppercase text-gray-500">To</span>
-          <input
-            aria-label="To"
-            type="date"
-            className="rounded-lg border p-2"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-          />
-        </label>
+    <div>
+      <div className="grid grid-cols-2 gap-px border-b-2 border-rule-strong bg-rule-light">
+        {([['From', from, setFrom], ['To', to, setTo]] as const).map(([label, value, set]) => (
+          <label key={label} className="flex flex-col gap-1 bg-paper px-4 py-3">
+            <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
+              {label}
+            </span>
+            <input
+              aria-label={label}
+              type="date"
+              className="w-full border-b-2 border-ink bg-transparent pb-1 text-[15px] font-bold tabular-nums outline-none"
+              value={value}
+              onChange={(e) => set(e.target.value)}
+            />
+          </label>
+        ))}
       </div>
 
       {reports.length === 0 ? (
-        <p className="text-sm text-gray-500">
+        <p className="px-4 py-3 text-[13px] text-neutral-500">
           Nothing to report yet — a period closes when a machine is finished for
           a second time.
         </p>
       ) : (
         <>
+          {/* The one poster moment in the app. The eyebrow is at full
+              opacity, never tinted: accent-to-ground is only 4.2:1 at full
+              strength and any tint takes it below the floor. */}
           <div
             aria-label="report totals"
-            className="mb-3 rounded-lg border bg-gray-50 p-3"
+            className="bg-accent px-4 pb-5 pt-[18px] text-ground"
           >
-            <div className="text-sm text-gray-500">Sold this period</div>
-            <div className="text-lg font-semibold">
-              {units} units · ${money(revenue)}
+            <div className="text-[10px] font-bold uppercase tracking-[0.12em]">
+              {periodLabel(from, to)}
             </div>
-            {censoredLines > 0 && (
-              <div className="mt-1 text-xs font-semibold text-amber-700">
-                {censoredLines} {censoredLines === 1 ? 'line' : 'lines'} not
-                counted — no figure exists for {censoredLines === 1 ? 'it' : 'them'},
-                so {censoredLines === 1 ? 'it is' : 'they are'} not in the total above
-              </div>
-            )}
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="text-[50px] font-extrabold leading-none tabular-nums">
+                {units}
+              </span>
+              <span className="text-[15px] font-semibold">units</span>
+            </div>
+            <div className="mt-1 text-[27px] font-extrabold tabular-nums">
+              ${money(revenue)}
+            </div>
           </div>
+
+          {censoredLines > 0 && (
+            <p
+              aria-label="censored lines"
+              className="bg-accent-200 px-4 py-2.5 text-[11px] font-bold text-accent-800"
+            >
+              {censoredLines} {censoredLines === 1 ? 'line' : 'lines'} not counted
+              — no figure exists for {censoredLines === 1 ? 'it' : 'them'}, so{' '}
+              {censoredLines === 1 ? 'it is' : 'they are'} not in the totals above.
+            </p>
+          )}
 
           <div
             aria-label="stock on hand"
-            className="mb-3 rounded-lg border p-3 text-sm"
+            className="grid grid-cols-3 gap-px border-y-2 border-rule-strong bg-rule-light"
           >
-            <div className="font-semibold">Stock on hand — now</div>
-            <div className="text-gray-500">
-              Machines {inMachines} · Storeroom {inStoreroom} ·
-              Total {inMachines + inStoreroom}
-            </div>
+            {([
+              ['In machines', inMachines, 'bg-paper'],
+              ['Storeroom', inStoreroom, 'bg-paper'],
+              ['On hand now', inMachines + inStoreroom, 'bg-surface'],
+            ] as const).map(([label, value, fill]) => (
+              <div key={label} className={`${fill} px-4 py-3`}>
+                <div className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
+                  {label}
+                </div>
+                <div className="mt-0.5 text-[21px] font-extrabold tabular-nums">{value}</div>
+              </div>
+            ))}
           </div>
 
-          <ul className="flex flex-col gap-1">
+          <div className="grid grid-cols-[30px_26px_1fr_40px_62px] items-center gap-2 bg-ink px-3.5 py-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-ground">
+            <span>LV</span>
+            <span>SL</span>
+            <span>Item</span>
+            <span className="text-right">Sold</span>
+            <span className="text-right">Revenue</span>
+          </div>
+
+          <ul>
             {reports.flatMap((report) =>
               report.lines.map((line) => {
                 const level = machineById.get(report.machineId)?.level ?? '?'
+                const censored = line.sold === null
                 return (
                   <li
                     key={`${report.visit.id}-${line.slotNumber}-${line.itemId}`}
                     aria-label={`L${level} slot ${line.slotNumber} sales`}
-                    className="flex items-center gap-2 rounded-lg border p-2 text-sm"
+                    className={`border-b border-rule-light ${
+                      censored ? 'bg-neutral-100' : 'bg-paper'
+                    } ${line.ranDry ? 'shadow-[inset_4px_0_0_var(--color-accent)]' : ''}`}
                   >
-                    <span className="w-10 font-bold text-gray-500">L{level}</span>
-                    <span className="w-8 text-gray-500">{line.slotNumber}</span>
-                    <span className="flex-1">
-                      {items.get(line.itemId)?.name ?? 'Deleted item'}
-                    </span>
-                    {line.ranDry && (
-                      <span className="font-bold text-red-600">RAN DRY</span>
-                    )}
-                    {report.editedLate && (
-                      <span className="text-xs font-bold uppercase text-amber-600">
-                        Edited late
+                    <div className="grid grid-cols-[30px_26px_1fr_40px_62px] items-center gap-2 px-3.5 py-2">
+                      <span className="text-[13px] font-extrabold tabular-nums">L{level}</span>
+                      <span className="text-[13px] tabular-nums text-neutral-700">
+                        {line.slotNumber}
                       </span>
-                    )}
-                    {line.sold === null ? (
-                      <span className="text-right text-xs text-gray-500">
-                        not counted —{' '}
-                        {line.censoredReason
-                          ? CENSORED_REASONS[line.censoredReason]
-                          : 'reason not recorded'}
+                      <span className="min-w-0 truncate text-[13px] font-semibold">
+                        {items.get(line.itemId)?.name ?? 'Deleted item'}
+                        {line.ranDry && (
+                          <span className="ml-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-accent-700">
+                            Dry
+                          </span>
+                        )}
+                        {report.editedLate && (
+                          <span className="ml-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-accent-700">
+                            Edited late
+                          </span>
+                        )}
                       </span>
-                    ) : (
-                      <span className="font-semibold tabular-nums">
-                        {line.sold} · ${money(line.revenue ?? 0)}
-                      </span>
-                    )}
+                      {censored ? (
+                        <span className="col-span-2 text-right text-[11px] font-medium text-accent-800">
+                          Not counted —{' '}
+                          {line.censoredReason
+                            ? CENSORED_REASONS[line.censoredReason]
+                            : 'reason not recorded'}
+                        </span>
+                      ) : (
+                        <>
+                          <span className="text-right text-[15px] font-extrabold tabular-nums">
+                            {line.sold}
+                          </span>
+                          <span className="text-right text-[15px] font-extrabold tabular-nums">
+                            ${money(line.revenue ?? 0)}
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </li>
                 )
               }),
             )}
           </ul>
 
-          <div className="mt-4">
-            <div className="mb-2 font-semibold">Stock matrix</div>
-            <StockMatrix rows={matrixRows} machines={machines} />
+          <div className="flex items-baseline justify-between border-t-2 border-rule-strong bg-surface px-4 py-2.5">
+            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-neutral-700">
+              Stock matrix — {matrixRows.length} items × {machines.length} machines
+            </span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-accent-700">
+              Turn phone ⟳
+            </span>
           </div>
+          <StockMatrix rows={matrixRows} machines={machines} />
         </>
       )}
     </div>

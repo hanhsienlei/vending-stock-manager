@@ -355,3 +355,71 @@ describe('ItemEditScreen', () => {
     expect(await getItem(coke.id)).toBeDefined()
   })
 })
+
+describe('ItemEditScreen — §12 layout', () => {
+  it('edits the name in place as the screen title', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    render(<ItemEditScreen itemId={coke.id} onDone={vi.fn()} />)
+
+    // The input is present from the first render (empty, while the item
+    // loads), so `findByLabelText` resolves before the async load does —
+    // a 1-in-5-ish race, not a real wait. Wait on the value itself.
+    const name = await screen.findByLabelText('Name')
+    await waitFor(() => expect(name).toHaveValue('Coke'))
+    expect(name.closest('h1')).not.toBeNull()
+
+    await user.clear(name)
+    await user.type(name, 'Coke No Sugar')
+    expect(name).toHaveValue('Coke No Sugar')
+  })
+
+  it('marks par level as the only required figure', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    render(<ItemEditScreen itemId={coke.id} onDone={vi.fn()} />)
+
+    const par = await screen.findByLabelText('Par level')
+    expect(par.className).toContain('border-accent')
+    expect(screen.getByLabelText('Price').className).toContain('border-ink')
+  })
+
+  it('lays every tray out as a ten-column row', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    render(<ItemEditScreen itemId={coke.id} onDone={vi.fn()} />)
+
+    const picker = await screen.findByTestId('slot-picker')
+    expect(picker.className).toContain('grid-cols-[16px_repeat(10,1fr)]')
+    // Tray 1 is short: 10–14 only.
+    expect(screen.getByRole('button', { name: 'Slot 14' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Slot 15' })).not.toBeInTheDocument()
+  })
+
+  it('fills a selected slot with the accent', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    render(<ItemEditScreen itemId={coke.id} onDone={vi.fn()} />)
+
+    const slot = await screen.findByRole('button', { name: 'Slot 58' })
+    await user.click(slot)
+    expect(slot).toHaveAttribute('aria-pressed', 'true')
+    expect(slot.className).toContain('bg-accent')
+  })
+
+  it('keeps delete as text beside an accent Save', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    render(<ItemEditScreen itemId={coke.id} onDone={vi.fn()} />)
+
+    const del = await screen.findByRole('button', { name: 'Delete item' })
+    expect(del.className).toContain('text-accent-700')
+    expect(del.className).not.toContain('bg-accent')
+    expect(screen.getByRole('button', { name: 'Save' }).className).toContain('bg-accent')
+  })
+
+  it('carries no rounded corner and no legacy palette class', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    const { container } = render(<ItemEditScreen itemId={coke.id} onDone={vi.fn()} />)
+    await screen.findByLabelText('Name')
+    expect(container.innerHTML).not.toMatch(/rounded-/)
+    expect(container.innerHTML).not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
+  })
+})

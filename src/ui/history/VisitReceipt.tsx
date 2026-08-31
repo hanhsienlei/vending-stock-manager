@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { listItems } from '../../data/repositories/items'
 import { getCountLines } from '../../data/repositories/visits'
-import { distinctLabel } from '../machines/machineLabel'
 import type { CountLine, Id, Item, Machine } from '../../domain/types'
+
+const GRID = 'grid grid-cols-[30px_1fr_60px_60px] items-center gap-2 px-3.5'
 
 /** The numbers exactly as recorded, read back out of the database.
  *
@@ -10,13 +11,20 @@ import type { CountLine, Id, Item, Machine } from '../../domain/types'
  * editable, and it deliberately shows the stored figures rather than
  * anything derived from them, so the operator can confirm the app kept what
  * they typed. Corrections go through the counting screen, which is still
- * open to a finished machine (spec §7, amended 2026-08-27). */
+ * open to a finished machine (spec §7, amended 2026-08-27).
+ *
+ * The four columns mirror the count screen's own — `30px 1fr 60px 60px`,
+ * `COUNTED` / `REFILLED TO` — so the receipt reads as the same table the
+ * operator typed into, not a different presentation of it. The back
+ * affordance and the machine identity now live in the `ScreenHeader` that
+ * `HistoryScreen` builds for this level; `machine` stays a prop only for the
+ * empty-state copy below, so a blank receipt still names which machine it's
+ * blank for. */
 export function VisitReceipt({
-  visitId, machine, onBack,
+  visitId, machine,
 }: {
   visitId: Id
   machine: Machine
-  onBack: () => void
 }) {
   const [lines, setLines] = useState<CountLine[]>([])
   const [items, setItems] = useState<Map<Id, Item>>(new Map())
@@ -37,56 +45,60 @@ export function VisitReceipt({
     })()
   }, [visitId])
 
-  if (loading) return <div className="p-4">Loading…</div>
+  if (loading) return <div className="px-4 py-3 text-[13px]">Loading…</div>
 
   return (
-    <div className="p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <button type="button" onClick={onBack} className="text-blue-600">
-          ← Back
-        </button>
-        <span className="text-sm">
-          <span className="font-semibold">L{machine.level}</span>
-          {distinctLabel(machine) && (
-            <span className="ml-2 text-gray-500">{distinctLabel(machine)}</span>
-          )}
-        </span>
+    <div>
+      <div
+        data-testid="receipt-column-header"
+        className={`${GRID} bg-ink py-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-ground`}
+      >
+        <span>SL</span>
+        <span>Item</span>
+        <span className="text-center">Counted</span>
+        <span className="text-center leading-tight">Refilled<br />to</span>
       </div>
 
       {lines.length === 0 ? (
         // An abandoned machine has a draft visit and no lines. A blank screen
         // here reads as data loss, so say which it is.
-        <p className="text-sm text-gray-500">
-          Nothing was recorded for this machine.
+        <p className="px-4 py-3 text-[13px] text-neutral-500">
+          Nothing was recorded for L{machine.level}.
         </p>
       ) : (
-        <ul className="flex flex-col gap-1">
+        <ul>
           {lines.map((line) => (
             <li
               key={line.id}
               aria-label={`slot ${line.slotNumber} record`}
-              className="flex items-center gap-3 rounded-lg border p-2"
+              className={`border-b border-rule-light bg-paper ${
+                line.after === 0 ? 'shadow-[inset_4px_0_0_var(--color-accent)]' : ''
+              }`}
             >
-              <span className="w-8 text-sm font-bold text-gray-500">
-                {line.slotNumber}
-              </span>
-              <span className="flex-1 text-sm">
-                {items.get(line.itemId)?.name ?? 'Deleted item'}
-              </span>
-              {line.filled && (
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold uppercase text-green-700">
-                  Filled
+              <div className={`${GRID} h-[46px]`}>
+                <span className="text-[15px] font-extrabold tabular-nums">
+                  {line.slotNumber}
                 </span>
-              )}
-              <span className="text-sm tabular-nums">
-                <span className="font-semibold">{line.before}</span>
-                <span className="mx-1 text-gray-400">→</span>
-                <span className="font-semibold text-emerald-700">{line.after}</span>
-              </span>
+                <span className="truncate text-[13px] font-semibold">
+                  {items.get(line.itemId)?.name ?? 'Deleted item'}
+                </span>
+                <span className="border-x border-rule-light text-center text-[19px] font-extrabold tabular-nums">
+                  {line.before}
+                </span>
+                <span className="border-x border-rule-light bg-surface text-center text-[19px] font-extrabold tabular-nums">
+                  {line.after}
+                </span>
+              </div>
             </li>
           ))}
         </ul>
       )}
+
+      <p className="bg-surface px-4 py-3 text-[11px] font-medium text-neutral-700">
+        <strong>Counted</strong> is what was in the slot on arrival;{' '}
+        <strong>refilled to</strong> is what was left behind. A red edge marks a
+        slot that had reached zero.
+      </p>
     </div>
   )
 }

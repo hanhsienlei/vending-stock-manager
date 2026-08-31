@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
@@ -114,14 +114,14 @@ describe('StoreroomScreen', () => {
     await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 1 })
 
     render(<StoreroomScreen />)
-    expect(await screen.findByText('0 / 2 counted')).toBeInTheDocument()
+    expect(await screen.findByText('LEDGER · 0 OF 2 VERIFIED')).toBeInTheDocument()
 
     const input = await screen.findByLabelText('Coke units')
     await user.clear(input)
     await user.type(input, '5')
 
     await waitFor(() => {
-      expect(screen.getByText('1 / 2 counted')).toBeInTheDocument()
+      expect(screen.getByText('LEDGER · 1 OF 2 VERIFIED')).toBeInTheDocument()
     })
   })
 
@@ -161,10 +161,10 @@ describe('StoreroomScreen', () => {
       expect(await screen.findByLabelText('Coke on hand')).toHaveTextContent('100')
 
       await user.click(screen.getByRole('button', { name: 'Adjust Coke' }))
-      await user.selectOptions(await screen.findByLabelText('Reason'), 'delivery')
-      await user.clear(screen.getByLabelText('Quantity'))
-      await user.type(screen.getByLabelText('Quantity'), '24')
-      await user.click(screen.getByRole('button', { name: 'Record' }))
+      await user.click(await screen.findByRole('button', { name: 'Delivery arrived' }))
+      await user.clear(screen.getByLabelText('Units'))
+      await user.type(screen.getByLabelText('Units'), '24')
+      await user.click(screen.getByRole('button', { name: 'Record delivery' }))
 
       await waitFor(() => {
         expect(screen.getByLabelText('Coke on hand')).toHaveTextContent('124')
@@ -195,11 +195,11 @@ describe('StoreroomScreen', () => {
 
       render(<StoreroomScreen />)
       await user.click(await screen.findByRole('button', { name: 'Adjust Coke' }))
-      expect(await screen.findByLabelText('Reason')).toBeInTheDocument()
+      expect(await screen.findByLabelText('Units')).toBeInTheDocument()
 
       await user.click(screen.getByLabelText('Close adjustment sheet'))
       await waitFor(() => {
-        expect(screen.queryByLabelText('Reason')).not.toBeInTheDocument()
+        expect(screen.queryByLabelText('Units')).not.toBeInTheDocument()
       })
     })
 
@@ -214,8 +214,9 @@ describe('StoreroomScreen', () => {
       render(<StoreroomScreen />)
       await user.click(await screen.findByRole('button', { name: 'Adjust Coke' }))
 
-      const options = within(await screen.findByLabelText('Reason')).getAllByRole('option')
-      expect(options.map((o) => o.textContent)).not.toContain('Miscount correction')
+      await screen.findByLabelText('Units')
+      expect(screen.queryByRole('button', { name: 'Miscount correction' }))
+        .not.toBeInTheDocument()
     })
   })
 
@@ -357,14 +358,68 @@ describe('StoreroomScreen', () => {
       await setStoreroomBalance(coke.id, 40)
 
       render(<StoreroomScreen />)
-      expect(await screen.findByText('1 / 2 counted')).toBeInTheDocument()
+      expect(await screen.findByText('LEDGER · 1 OF 2 VERIFIED')).toBeInTheDocument()
 
       await user.type(screen.getByRole('searchbox', { name: /search/i }), 'fan')
 
       // Fanta (the only row still visible) is itself uncounted, so a total
       // computed off the filtered subset would misreport "0 / 1" here.
       expect(screen.queryByText('Coke')).not.toBeInTheDocument()
-      expect(screen.getByText('1 / 2 counted')).toBeInTheDocument()
+      expect(screen.getByText('LEDGER · 1 OF 2 VERIFIED')).toBeInTheDocument()
     })
+  })
+})
+
+describe('StoreroomScreen — §8 layout', () => {
+  it('names the two figures as columns', async () => {
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    render(<StoreroomScreen />)
+    await screen.findByText('Coke')
+
+    const header = screen.getByTestId('storeroom-column-header')
+    expect(header).toHaveTextContent(/Item/i)
+    expect(header).toHaveTextContent(/App\s*estimate/i)
+    expect(header).toHaveTextContent(/Your\s*count/i)
+  })
+
+  it('marks a never-verified row with the accent inset', async () => {
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    render(<StoreroomScreen />)
+    const row = await screen.findByTestId('storeroom-row-Coke')
+
+    expect(row.className).toContain('shadow-[inset_4px_0_0_var(--color-accent)]')
+    expect(screen.getByText('Never verified')).toBeInTheDocument()
+  })
+
+  it('drops the inset once a count has been typed', async () => {
+    const user = userEvent.setup()
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    render(<StoreroomScreen />)
+    await screen.findByText('Coke')
+
+    const field = screen.getByLabelText('Coke units')
+    await user.clear(field)
+    await user.type(field, '12')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('storeroom-row-Coke').className)
+        .not.toContain('shadow-[inset_4px_0_0_var(--color-accent)]')
+    })
+    expect(screen.queryByText('Never verified')).not.toBeInTheDocument()
+  })
+
+  it('states what the app estimate is', async () => {
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    render(<StoreroomScreen />)
+    await screen.findByText('Coke')
+    expect(screen.getByText(/your last count plus every delivery/i)).toBeInTheDocument()
+  })
+
+  it('carries no rounded corner and no legacy palette class', async () => {
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    const { container } = render(<StoreroomScreen />)
+    await screen.findByText('Coke')
+    expect(container.innerHTML).not.toMatch(/rounded-/)
+    expect(container.innerHTML).not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
   })
 })

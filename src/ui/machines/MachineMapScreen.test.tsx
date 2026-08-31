@@ -149,7 +149,7 @@ describe('MachineMapScreen', () => {
       await user.click(screen.getByLabelText('Edit slot 10'))
 
       expect(await screen.findByLabelText('Capacity')).toHaveValue(null)
-      expect(screen.getByRole('button', { name: 'Save capacity' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
     })
 
     // Caught by running the app, not by the tests above: the sheet is the last
@@ -222,7 +222,7 @@ describe('MachineMapScreen', () => {
       await screen.findByText(/TRAY 5/)
       await user.click(screen.getByLabelText('Edit slot 58'))
 
-      await user.click(await screen.findByText('Add Fanta'))
+      await user.click(await screen.findByRole('button', { name: 'Add Fanta' }))
 
       // The sheet closes and the row re-reads from the database.
       await waitFor(() => {
@@ -246,7 +246,7 @@ describe('MachineMapScreen', () => {
       const capacity = await screen.findByLabelText('Capacity')
       await user.clear(capacity)
       await user.type(capacity, '20')
-      await user.click(screen.getByText('Save capacity'))
+      await user.click(screen.getByText('Save'))
 
       await waitFor(() => {
         expect(within(row).getByText('20')).toBeInTheDocument()

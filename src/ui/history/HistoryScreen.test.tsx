@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
-import { saveMachine } from '../../data/repositories/machines'
+import { listMachines, saveMachine } from '../../data/repositories/machines'
 import { createRun } from '../../data/repositories/runs'
 import { openVisit, putCountLine, finalizeVisit } from '../../data/repositories/visits'
 import { newId, now } from '../../domain/ids'
@@ -71,6 +71,32 @@ describe('HistoryScreen', () => {
     expect(recorded).toHaveTextContent('5')
   })
 
+  // The receipt itself no longer names the machine (that moved into the
+  // header this screen builds for that level) — so the "never read against
+  // the wrong machine" guarantee has to be locked in here, on a receipt that
+  // actually has content, not just on the empty-state case.
+  it('names the machine in the receipt header, so a receipt is never read against the wrong one', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+    await putCountLine({
+      id: newId(), visitId: visit.id, slotNumber: 58, itemId: coke.id,
+      before: 2, after: 5, touched: true, filled: true, price: 0, updatedAt: now(),
+    })
+    await finalizeVisit(visit.id)
+
+    render(<HistoryScreen />)
+    await user.click(await screen.findByLabelText('run 2026-08-27'))
+    await user.click(await screen.findByLabelText('visit to L7'))
+    await screen.findByText('Coke')
+
+    const heading = screen.getByRole('heading')
+    expect(heading).toHaveTextContent('L7')
+    expect(heading).toHaveTextContent('Lift lobby')
+  })
+
   it('distinguishes a finished machine from one still open', async () => {
     const user = userEvent.setup()
     const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
@@ -83,7 +109,9 @@ describe('HistoryScreen', () => {
     render(<HistoryScreen />)
     await user.click(await screen.findByLabelText('run 2026-08-27'))
 
-    expect(await screen.findByLabelText('visit to L7')).toHaveTextContent('Finished')
+    // The finished mark is a filled tick square, not the word "Finished" —
+    // the pill text moved to an accessible label on the mark itself.
+    expect(await screen.findByLabelText('visit to L7')).toHaveTextContent('✓')
     expect(screen.getByLabelText('visit to L8')).toHaveTextContent('In progress')
   })
 
@@ -99,10 +127,10 @@ describe('HistoryScreen', () => {
     await user.click(await screen.findByLabelText('visit to L7'))
     await screen.findByText(/nothing was recorded/i)
 
-    await user.click(screen.getByText('← Back'))
+    await user.click(screen.getByText('← Thu 27 Aug 2026'))
     expect(await screen.findByLabelText('visit to L7')).toBeInTheDocument()
 
-    await user.click(screen.getByText('← Back'))
+    await user.click(screen.getByText('← RUNS'))
     expect(await screen.findByLabelText('run 2026-08-27')).toBeInTheDocument()
   })
 
@@ -118,5 +146,61 @@ describe('HistoryScreen', () => {
 
     await user.click(screen.getByRole('button', { name: 'Receipts' }))
     expect(await screen.findByLabelText('run 2026-08-27')).toBeInTheDocument()
+  })
+})
+
+describe('HistoryScreen — §9 layout', () => {
+  it('marks an in-progress run with the accent inset and says how far it got', async () => {
+    await saveMachine({ label: 'Lift lobby', level: 7 })
+    await saveMachine({ label: 'Level 9', level: 9 })
+    const run = await createRun('2026-08-27')
+    await openVisit(run.id, (await listMachines())[0].id)
+
+    render(<HistoryScreen />)
+    const row = await screen.findByTestId('run-row-2026-08-27')
+
+    expect(row.className).toContain('shadow-[inset_4px_0_0_var(--color-accent)]')
+    expect(row).toHaveTextContent('In progress · 0 of 2 counted')
+    expect(row).toHaveTextContent('0 / 2')
+  })
+
+  it('marks a fully counted run Complete with no inset', async () => {
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const run = await createRun('2026-08-27')
+    const visit = await openVisit(run.id, machine.id)
+    await finalizeVisit(visit.id)
+
+    render(<HistoryScreen />)
+    const row = await screen.findByTestId('run-row-2026-08-27')
+
+    expect(row.className).not.toContain('shadow-[inset_4px_0_0_var(--color-accent)]')
+    expect(row).toHaveTextContent('Complete')
+    expect(row).toHaveTextContent('1 / 1')
+  })
+
+  it('shows the Receipts / Report toggle as pressed segments', async () => {
+    render(<HistoryScreen />)
+    const receipts = await screen.findByRole('button', { name: 'Receipts' })
+    expect(receipts).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Report' }))
+      .toHaveAttribute('aria-pressed', 'false')
+  })
+
+  // Every other restyled screen in this branch has this sweep; History was
+  // the one missing it. It matters more here than elsewhere: switching to
+  // Report view mounts HistoryScreen → ReportScreen → StockMatrix as one
+  // tree, and no other test in the branch covers that composition.
+  it('carries no rounded corner and no legacy palette class, in report view', async () => {
+    const user = userEvent.setup()
+    await createRun('2026-08-27')
+
+    const { container } = render(<HistoryScreen />)
+    await screen.findByLabelText('run 2026-08-27')
+
+    await user.click(screen.getByRole('button', { name: 'Report' }))
+    await screen.findByLabelText('From')
+
+    expect(container.innerHTML).not.toMatch(/rounded-/)
+    expect(container.innerHTML).not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
   })
 })

@@ -29,7 +29,7 @@ export function StockMatrix({
 
   return (
     <div>
-      <div className="mb-2 flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-px bg-rule-light">
         {machines.map((m) => {
           const isHidden = hidden.has(m.id)
           return (
@@ -39,8 +39,12 @@ export function StockMatrix({
               aria-label={`${isHidden ? 'Show' : 'Hide'} L${m.level}`}
               aria-pressed={!isHidden}
               onClick={() => toggle(m.id)}
-              className={`rounded-lg px-2 py-1 text-xs font-semibold ${
-                isHidden ? 'bg-gray-200 text-gray-500' : 'bg-blue-600 text-white'
+              // Ink, not accent: fifteen accent chips would spend the whole
+              // screen's colour budget on a control (§11).
+              className={`px-2.5 py-1.5 text-[11px] font-bold tabular-nums ${
+                isHidden
+                  ? 'bg-surface text-neutral-600 line-through'
+                  : 'bg-ink text-ground'
               }`}
             >
               L{m.level}
@@ -52,51 +56,77 @@ export function StockMatrix({
       {/* The only horizontally scrolling surface in the app. Every other
           screen is a phone-width column and should stay one. */}
       <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
+        <table className="min-w-full">
           <thead>
-            <tr className="border-b text-left">
-              <th scope="col" className="px-2 py-1">Slot</th>
-              <th scope="col" className="px-2 py-1">Item</th>
-              <th scope="col" className="px-2 py-1">Qty</th>
+            <tr className="bg-ink text-left text-ground">
+              <th scope="col" className="px-2 py-1.5 text-[9.5px] font-bold uppercase tracking-[0.10em]">Slot</th>
+              <th scope="col" className="px-2 py-1.5 text-[9.5px] font-bold uppercase tracking-[0.10em]">Item</th>
+              <th scope="col" className="px-2 py-1.5 text-[9.5px] font-bold uppercase tracking-[0.10em]">Qty</th>
               {shown.map((m) => (
-                <th key={m.id} scope="col" className="px-2 py-1 text-right">
+                <th key={m.id} scope="col" className="px-2 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em]">
                   L{m.level}
                 </th>
               ))}
-              <th scope="col" className="px-2 py-1 text-right">GF</th>
-              <th scope="col" className="px-2 py-1 text-right">Total</th>
-              <th scope="col" className="px-2 py-1 text-right">Order</th>
+              <th scope="col" className="border-l-2 border-rule-strong px-2 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em]">GF</th>
+              <th scope="col" className="px-2 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em]">Total</th>
+              <th scope="col" className="px-2 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.10em] text-accent">Order</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {rows.map((row, i) => (
               <tr
                 key={row.key}
                 aria-label={`stock row ${row.key}`}
-                className="border-b"
+                // At 60 rows by 12 columns, banding is what keeps a
+                // screenshot readable (§11).
+                className={`border-b border-rule-light ${i % 2 === 0 ? 'bg-paper' : 'bg-neutral-100'}`}
               >
-                <td className="whitespace-nowrap px-2 py-1 font-bold text-gray-500">
+                <td className="whitespace-nowrap px-2 py-1.5 text-[15px] font-extrabold tabular-nums">
                   {row.key}
                 </td>
-                <td className="whitespace-nowrap px-2 py-1">{row.itemName}</td>
-                <td className="px-2 py-1 text-gray-500">{row.size ?? ''}</td>
-                {shown.map((m) => (
-                  <td key={m.id} className="px-2 py-1 text-right tabular-nums">
-                    {row.perMachine.get(m.id) ?? 0}
-                  </td>
-                ))}
-                <td className="px-2 py-1 text-right tabular-nums">{row.storeroom}</td>
-                <td className="px-2 py-1 text-right font-semibold tabular-nums">
+                <td className="whitespace-nowrap px-2 py-1.5 text-[13px] font-semibold">
+                  {row.itemName}
+                </td>
+                <td className="px-2 py-1.5 text-[11px] font-medium text-neutral-700">
+                  {row.size ?? ''}
+                </td>
+                {shown.map((m) => {
+                  const value = row.perMachine.get(m.id) ?? 0
+                  return (
+                    <td
+                      key={m.id}
+                      className={`px-2 py-1.5 text-right text-[15px] font-extrabold tabular-nums ${
+                        value === 0 ? 'text-accent-700' : 'text-ink'
+                      }`}
+                    >
+                      {value}
+                    </td>
+                  )
+                })}
+                <td className="border-l-2 border-rule-strong px-2 py-1.5 text-right text-[15px] font-extrabold tabular-nums">
+                  {row.storeroom}
+                </td>
+                <td className="px-2 py-1.5 text-right text-[15px] font-extrabold tabular-nums">
                   {row.total}
                 </td>
                 {/* Blank by design — Phase 3 fills it; until then it is
-                    hand-written, exactly as on the paper sheet. */}
-                <td aria-label={`order for ${row.key}`} className="px-2 py-1" />
+                    hand-written, exactly as on the paper sheet. The tint
+                    says whose column it is. */}
+                <td
+                  aria-label={`order for ${row.key}`}
+                  className="bg-accent-100 px-2 py-1.5"
+                />
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      <p className="bg-surface px-4 py-3 text-[11px] font-medium text-neutral-700">
+        Order stays blank for your pen until Phase 3 fills it — the red header
+        marks it as the column that is yours, not the app&rsquo;s. A red figure
+        is a machine at zero.
+      </p>
     </div>
   )
 }
