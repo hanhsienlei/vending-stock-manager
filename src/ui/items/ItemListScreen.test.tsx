@@ -73,6 +73,9 @@ describe('ItemListScreen', () => {
     spy.mockRestore()
   })
 
+  // §12 shrinks a remark to a short tag (first three words, uppercased);
+  // the full remark stays reachable as the tag's accessible name and title
+  // rather than as visible prose (see the "§12 layout" describe below).
   it('shows the remark when the item has one', async () => {
     await saveItem({
       name: 'Red Bull Energy Drink',
@@ -85,7 +88,7 @@ describe('ItemListScreen', () => {
     render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
 
     expect(
-      await screen.findByText('Size on the stock sheet is unverified'),
+      await screen.findByLabelText('Size on the stock sheet is unverified'),
     ).toBeInTheDocument()
   })
 
@@ -124,6 +127,9 @@ describe('ItemListScreen', () => {
   // Operator decision: group by tray — derivable today from base
   // placements, no schema change — plus a search box.
   describe('grouping by tray', () => {
+    // §12 names the tray heading with its catalogue category (e.g.
+    // "TRAY 5 · CANS"); the assertions below match on that full heading
+    // rather than the bare "Tray N" text this screen used to render.
     it('groups items under Tray 1..Tray 6, not Tray 10..Tray 60', async () => {
       const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
       await setPlacement(coke.id, { kind: 'base' }, [58, 59])
@@ -132,10 +138,10 @@ describe('ItemListScreen', () => {
 
       render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
 
-      expect(await screen.findByText('Tray 5')).toBeInTheDocument()
-      expect(await screen.findByText('Tray 1')).toBeInTheDocument()
-      expect(screen.queryByText('Tray 50')).not.toBeInTheDocument()
-      expect(screen.queryByText('Tray 10')).not.toBeInTheDocument()
+      expect(await screen.findByText('TRAY 5 · CANS')).toBeInTheDocument()
+      expect(await screen.findByText('TRAY 1 · CHIPS')).toBeInTheDocument()
+      expect(screen.queryByText('TRAY 50 · CANS')).not.toBeInTheDocument()
+      expect(screen.queryByText('TRAY 10 · CHIPS')).not.toBeInTheDocument()
     })
 
     it('lists an item under every tray it is placed across', async () => {
@@ -148,8 +154,8 @@ describe('ItemListScreen', () => {
 
       render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
 
-      const tray1 = (await screen.findByText('Tray 1')).closest('section')
-      const tray2 = (await screen.findByText('Tray 2')).closest('section')
+      const tray1 = (await screen.findByText('TRAY 1 · CHIPS')).closest('section')
+      const tray2 = (await screen.findByText('TRAY 2 · SUNDRIES')).closest('section')
       expect(tray1).toHaveTextContent('Spanning Item')
       expect(tray2).toHaveTextContent('Spanning Item')
     })
@@ -191,5 +197,49 @@ describe('ItemListScreen', () => {
 
       expect(screen.getByText('Coke')).toBeInTheDocument()
     })
+  })
+})
+
+describe('ItemListScreen — §12 layout', () => {
+  it('names the tray category in the group bar', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+    expect(await screen.findByText('TRAY 5 · CANS')).toBeInTheDocument()
+  })
+
+  it('shows the base slot, price and par as separate figures', async () => {
+    const chips = await saveItem({
+      name: 'Salt & Vinegar Chips', price: 3.5, basePar: 5, boxSize: 1, size: '27g',
+    })
+    await setPlacement(chips.id, { kind: 'base' }, [10])
+    render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+
+    const row = await screen.findByTestId(`item-row-${chips.id}`)
+    expect(row).toHaveTextContent('10')
+    expect(row).toHaveTextContent('27g · box of 1')
+    expect(row).toHaveTextContent('$3.50')
+    expect(row).toHaveTextContent('par 5')
+  })
+
+  it('shows a remark as a short tag, not three lines of prose', async () => {
+    const item = await saveItem({
+      name: 'Mother Energy Drink', price: 5.5, basePar: 5, boxSize: 1,
+      remark: 'size unverified from the photo',
+    })
+    await setPlacement(item.id, { kind: 'base' }, [44])
+    render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+
+    const tag = await screen.findByLabelText('size unverified from the photo')
+    expect(tag.className).toContain('bg-accent-200')
+    expect(tag).toHaveTextContent('SIZE UNVERIFIED FROM')
+  })
+
+  it('carries no rounded corner and no legacy palette class', async () => {
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 1 })
+    const { container } = render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+    await screen.findByText('Coke')
+    expect(container.innerHTML).not.toMatch(/rounded-/)
+    expect(container.innerHTML).not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
   })
 })
