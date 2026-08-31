@@ -50,10 +50,10 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    await user.clear(screen.getByLabelText('Quantity'))
-    await user.type(screen.getByLabelText('Quantity'), '2')
-    await user.selectOptions(screen.getByLabelText('Reason'), 'expired')
-    await user.click(screen.getByRole('button', { name: 'Record' }))
+    await user.clear(screen.getByLabelText('Units'))
+    await user.type(screen.getByLabelText('Units'), '2')
+    await user.click(screen.getByRole('button', { name: 'Expired' }))
+    await user.click(screen.getByRole('button', { name: 'Record write-off' }))
 
     await waitFor(() => expect(onSaved).toHaveBeenCalled())
     const [saved] = await listAdjustments()
@@ -76,10 +76,10 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    await user.clear(screen.getByLabelText('Quantity'))
-    await user.type(screen.getByLabelText('Quantity'), '24')
-    await user.selectOptions(screen.getByLabelText('Reason'), 'delivery')
-    await user.click(screen.getByRole('button', { name: 'Record' }))
+    await user.clear(screen.getByLabelText('Units'))
+    await user.type(screen.getByLabelText('Units'), '24')
+    await user.click(screen.getByRole('button', { name: 'Delivery arrived' }))
+    await user.click(screen.getByRole('button', { name: 'Record delivery' }))
 
     await waitFor(async () => {
       expect((await listAdjustments())[0]?.units).toBe(24)
@@ -100,14 +100,16 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    expect(screen.queryByLabelText('Destination')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('To machine')).not.toBeInTheDocument()
 
-    await user.selectOptions(screen.getByLabelText('Reason'), 'transfer')
-    expect(await screen.findByLabelText('Destination')).toBeInTheDocument()
+    await user.click(
+      screen.getByRole('button', { name: 'Move to another machine or the storeroom' }),
+    )
+    expect(await screen.findByLabelText('To machine')).toBeInTheDocument()
 
-    await user.clear(screen.getByLabelText('Quantity'))
-    await user.type(screen.getByLabelText('Quantity'), '3')
-    await user.click(screen.getByRole('button', { name: 'Record' }))
+    await user.clear(screen.getByLabelText('Units'))
+    await user.type(screen.getByLabelText('Units'), '3')
+    await user.click(screen.getByRole('button', { name: 'Record move' }))
 
     await waitFor(async () => {
       expect(await listAdjustments()).toHaveLength(2)
@@ -130,9 +132,9 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    await user.clear(screen.getByLabelText('Quantity'))
-    await user.type(screen.getByLabelText('Quantity'), '0')
-    await user.click(screen.getByRole('button', { name: 'Record' }))
+    await user.clear(screen.getByLabelText('Units'))
+    await user.type(screen.getByLabelText('Units'), '0')
+    await user.click(screen.getByRole('button', { name: 'Record write-off' }))
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(onSaved).not.toHaveBeenCalled()
@@ -157,16 +159,18 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    await user.selectOptions(screen.getByLabelText('Reason'), 'transfer')
-    await user.selectOptions(await screen.findByLabelText('Destination'), l7.id)
+    await user.click(
+      screen.getByRole('button', { name: 'Move to another machine or the storeroom' }),
+    )
+    await user.selectOptions(await screen.findByLabelText('To machine'), l7.id)
 
-    const slotField = await screen.findByLabelText('Destination slot')
+    const slotField = await screen.findByLabelText('Into slot')
     await user.clear(slotField)
     await user.type(slotField, '58')
 
-    await user.clear(screen.getByLabelText('Quantity'))
-    await user.type(screen.getByLabelText('Quantity'), '3')
-    await user.click(screen.getByRole('button', { name: 'Record' }))
+    await user.clear(screen.getByLabelText('Units'))
+    await user.type(screen.getByLabelText('Units'), '3')
+    await user.click(screen.getByRole('button', { name: 'Record move' }))
 
     await waitFor(async () => {
       expect(await listAdjustments()).toHaveLength(2)
@@ -191,16 +195,18 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    await user.selectOptions(screen.getByLabelText('Reason'), 'transfer')
-    await user.selectOptions(await screen.findByLabelText('Destination'), l7.id)
+    await user.click(
+      screen.getByRole('button', { name: 'Move to another machine or the storeroom' }),
+    )
+    await user.selectOptions(await screen.findByLabelText('To machine'), l7.id)
 
-    const slotField = await screen.findByLabelText('Destination slot')
+    const slotField = await screen.findByLabelText('Into slot')
     await user.clear(slotField)
     await user.type(slotField, '99')
 
-    await user.clear(screen.getByLabelText('Quantity'))
-    await user.type(screen.getByLabelText('Quantity'), '3')
-    await user.click(screen.getByRole('button', { name: 'Record' }))
+    await user.clear(screen.getByLabelText('Units'))
+    await user.type(screen.getByLabelText('Units'), '3')
+    await user.click(screen.getByRole('button', { name: 'Record move' }))
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(onSaved).not.toHaveBeenCalled()
@@ -233,14 +239,14 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    await user.selectOptions(screen.getByLabelText('Reason'), 'miscount')
+    await user.click(screen.getByRole('button', { name: 'Miscount correction' }))
     await user.selectOptions(
       await screen.findByLabelText('Correction direction'),
       'more',
     )
-    await user.clear(screen.getByLabelText('Quantity'))
-    await user.type(screen.getByLabelText('Quantity'), '2')
-    await user.click(screen.getByRole('button', { name: 'Record' }))
+    await user.clear(screen.getByLabelText('Units'))
+    await user.type(screen.getByLabelText('Units'), '2')
+    await user.click(screen.getByRole('button', { name: 'Record correction' }))
 
     await waitFor(async () => {
       expect((await listAdjustments())[0]?.units).toBe(2)
@@ -260,14 +266,14 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    await user.selectOptions(screen.getByLabelText('Reason'), 'miscount')
+    await user.click(screen.getByRole('button', { name: 'Miscount correction' }))
     await user.selectOptions(
       await screen.findByLabelText('Correction direction'),
       'fewer',
     )
-    await user.clear(screen.getByLabelText('Quantity'))
-    await user.type(screen.getByLabelText('Quantity'), '2')
-    await user.click(screen.getByRole('button', { name: 'Record' }))
+    await user.clear(screen.getByLabelText('Units'))
+    await user.type(screen.getByLabelText('Units'), '2')
+    await user.click(screen.getByRole('button', { name: 'Record correction' }))
 
     await waitFor(async () => {
       expect((await listAdjustments())[0]?.units).toBe(-2)
@@ -328,9 +334,9 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    await user.clear(screen.getByLabelText('Quantity'))
-    await user.type(screen.getByLabelText('Quantity'), '1.5')
-    await user.click(screen.getByRole('button', { name: 'Record' }))
+    await user.clear(screen.getByLabelText('Units'))
+    await user.type(screen.getByLabelText('Units'), '1.5')
+    await user.click(screen.getByRole('button', { name: 'Record write-off' }))
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(onSaved).not.toHaveBeenCalled()
@@ -359,14 +365,17 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    const options = within(screen.getByLabelText('Reason')).getAllByRole('option')
-    expect(options.map((o) => o.textContent)).toEqual([
+    for (const label of [
       'Move to another machine or the storeroom',
       'Expired',
       'Damaged or broken',
       'Missing or taken',
       'Delivery arrived',
-    ])
+    ]) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+    }
+    expect(screen.queryByRole('button', { name: 'Miscount correction' }))
+      .not.toBeInTheDocument()
   })
 
   // The storeroom screen passes its own narrower `reasons` explicitly, so
@@ -384,15 +393,9 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    const options = within(screen.getByLabelText('Reason')).getAllByRole('option')
-    expect(options.map((o) => o.textContent)).toEqual([
-      'Move to another machine or the storeroom',
-      'Expired',
-      'Damaged or broken',
-      'Missing or taken',
-      'Delivery arrived',
-      'Miscount correction',
-    ])
+    for (const spec of ADJUSTMENT_REASONS) {
+      expect(screen.getByRole('button', { name: spec.label })).toBeInTheDocument()
+    }
   })
 
   it('offers only the reasons passed in when a narrower list is given', async () => {
@@ -408,11 +411,11 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    const options = within(screen.getByLabelText('Reason')).getAllByRole('option')
-    expect(options.map((o) => o.textContent)).not.toContain('Miscount correction')
+    expect(screen.queryByRole('button', { name: 'Miscount correction' }))
+      .not.toBeInTheDocument()
   })
   // The storeroom screen offers `transfer`, and "Storeroom G" was the
-  // Destination select's first option — so the form's initial state was
+  // To machine select's first option — so the form's initial state was
   // storeroom-to-storeroom, which `recordTransfer` refuses. Nothing stopped
   // the operator submitting it.
   it('does not offer the storeroom as the destination of a transfer out of the storeroom', async () => {
@@ -429,8 +432,10 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    await user.selectOptions(screen.getByLabelText('Reason'), 'transfer')
-    const destination = await screen.findByLabelText('Destination')
+    await user.click(
+      screen.getByRole('button', { name: 'Move to another machine or the storeroom' }),
+    )
+    const destination = await screen.findByLabelText('To machine')
     await waitFor(() => {
       expect(within(destination).queryByRole('option', { name: 'Storeroom G' }))
         .not.toBeInTheDocument()
@@ -459,16 +464,131 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    await user.selectOptions(screen.getByLabelText('Reason'), 'transfer')
-    await user.selectOptions(await screen.findByLabelText('Destination'), l7.id)
-    const slotField = await screen.findByLabelText('Destination slot')
+    await user.click(
+      screen.getByRole('button', { name: 'Move to another machine or the storeroom' }),
+    )
+    await user.selectOptions(await screen.findByLabelText('To machine'), l7.id)
+    const slotField = await screen.findByLabelText('Into slot')
     await user.clear(slotField)
     await user.type(slotField, '58')
-    await user.click(screen.getByRole('button', { name: 'Record' }))
+    await user.click(screen.getByRole('button', { name: 'Record move' }))
 
     expect(await screen.findByRole('alert'))
       .toHaveTextContent('A transfer must not start and end at the same location')
     expect(onSaved).not.toHaveBeenCalled()
     expect(await listAdjustments()).toEqual([])
+  })
+})
+
+describe('AdjustmentSheet — §7 layout', () => {
+  it('offers the reasons as tiles in the domain table order, not a select', async () => {
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'storeroom' }} itemId="i1"
+        onSaved={vi.fn()} onCancel={vi.fn()}
+      />,
+    )
+    expect(screen.queryByLabelText('Reason')).not.toBeInTheDocument()
+
+    // The full table at the storeroom default: six reasons, six tiles.
+    for (const spec of ADJUSTMENT_REASONS) {
+      expect(screen.getByRole('button', { name: spec.label })).toBeInTheDocument()
+    }
+  })
+
+  it('marks the chosen tile as pressed and no other', async () => {
+    const user = userEvent.setup()
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'storeroom' }} itemId="i1"
+        onSaved={vi.fn()} onCancel={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Delivery arrived' }))
+    expect(screen.getByRole('button', { name: 'Delivery arrived' }))
+      .toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Expired' }))
+      .toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('names the reason on the commit button', async () => {
+    const user = userEvent.setup()
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'storeroom' }} itemId="i1"
+        onSaved={vi.fn()} onCancel={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Record write-off' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Delivery arrived' }))
+    expect(screen.getByRole('button', { name: 'Record delivery' })).toBeInTheDocument()
+    await user.click(
+      screen.getByRole('button', { name: 'Move to another machine or the storeroom' }),
+    )
+    expect(screen.getByRole('button', { name: 'Record move' })).toBeInTheDocument()
+  })
+
+  // The new cell. A transfer writes both sides atomically, so both sides are
+  // stated before the commit.
+  it('states both sides of a transfer before it is committed', async () => {
+    const user = userEvent.setup()
+    const source = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const target = await saveMachine({ label: 'Level 9', level: 9 })
+
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'machine', machineId: source.id, slotNumber: 31 }}
+        itemId="i1" onSaved={vi.fn()} onCancel={vi.fn()}
+      />,
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Move to another machine or the storeroom' }),
+    )
+    await waitFor(() => expect(screen.getByLabelText('To machine')).toBeInTheDocument())
+    await user.selectOptions(screen.getByLabelText('To machine'), target.id)
+    await user.clear(screen.getByLabelText('Units'))
+    await user.type(screen.getByLabelText('Units'), '3')
+
+    const result = screen.getByLabelText('Result')
+    expect(result).toHaveTextContent('L7·31 down 3')
+    expect(result).toHaveTextContent('L9·31 up 3')
+  })
+
+  it('warns on a move that a same-run move is already recorded by the counts', async () => {
+    const user = userEvent.setup()
+    await saveMachine({ label: 'Level 9', level: 9 })
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'storeroom' }} itemId="i1"
+        onSaved={vi.fn()} onCancel={vi.fn()}
+      />,
+    )
+    expect(screen.queryByText(/subtracts it twice/)).not.toBeInTheDocument()
+    await user.click(
+      screen.getByRole('button', { name: 'Move to another machine or the storeroom' }),
+    )
+    expect(screen.getByText(/subtracts it twice/)).toBeInTheDocument()
+  })
+
+  it('says at the storeroom why miscount is not on offer', () => {
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'storeroom' }} itemId="i1"
+        reasons={ADJUSTMENT_REASONS.filter((r) => r.entersResidual)}
+        onSaved={vi.fn()} onCancel={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(/Miscount is not offered here/)).toBeInTheDocument()
+  })
+
+  it('carries no rounded corner and no legacy palette class', () => {
+    const { container } = render(
+      <AdjustmentSheet
+        location={{ kind: 'storeroom' }} itemId="i1"
+        onSaved={vi.fn()} onCancel={vi.fn()}
+      />,
+    )
+    expect(container.innerHTML).not.toMatch(/rounded-/)
+    expect(container.innerHTML).not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
   })
 })

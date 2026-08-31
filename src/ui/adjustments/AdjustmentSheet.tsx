@@ -105,6 +105,37 @@ export function AdjustmentSheet({
   // caller passes a wider list, or a future reason is added upstream.
   const needsDirection = reasonSpec(reason).totalStock === 'unchanged' && reason !== 'transfer'
 
+  // §7's RESULT cell. Plain terms, both sides, before the commit — a
+  // transfer is the one place this sheet can silently do the wrong thing,
+  // and `recordTransfer` writes both rows atomically.
+  const machineById = new Map(machines.map((m) => [m.id, m]))
+  const magnitude = Number(quantity)
+  const shownUnits = Number.isInteger(magnitude) && magnitude >= 1 ? magnitude : 0
+  const here = location.kind === 'storeroom'
+    ? 'Storeroom G'
+    : `L${machineById.get(location.machineId)?.level ?? '?'}·${location.slotNumber}`
+  const there = destination === 'storeroom'
+    ? 'Storeroom G'
+    : `L${machineById.get(destination)?.level ?? '?'}·${destinationSlot || '—'}`
+  const sign = reason === 'transfer'
+    ? 'down'
+    : needsDirection
+      ? (direction === 'more' ? 'up' : 'down')
+      : (reasonSpec(reason).totalStock === 'increase' ? 'up' : 'down')
+
+  // §7: "The commit button names the reason: `Record move`, `Record
+  // delivery`. Not `Record`." Derived from the table, so a new reason gets a
+  // sensible verb without an edit here.
+  const commitLabel =
+    reason === 'transfer' ? 'Record move'
+      : reason === 'delivery' ? 'Record delivery'
+      : reason === 'miscount' ? 'Record correction'
+      : 'Record write-off'
+
+  const spanning = reasons.filter((r) => r.reason === 'transfer')
+  const tiles = reasons.filter((r) => r.reason !== 'transfer')
+  const miscountWithheld = !reasons.some((r) => r.reason === 'miscount')
+
   async function record() {
     const magnitude = Number(quantity)
     if (!Number.isInteger(magnitude) || magnitude < 1) {
@@ -183,108 +214,185 @@ export function AdjustmentSheet({
   }
 
   return (
-    <div className="rounded-lg border bg-white p-3">
-      <h3 className="mb-2 font-semibold">
-        {location.kind === 'storeroom'
-          ? 'Adjust storeroom stock'
-          : `Adjust slot ${location.slotNumber}`}
-      </h3>
+    <div className="bg-paper">
+      <div className="flex items-baseline justify-between bg-ink px-4 py-2.5 text-ground">
+        <h3 className="text-[19px] font-extrabold">
+          {location.kind === 'storeroom'
+            ? 'Adjust storeroom stock'
+            : `Adjust slot ${location.slotNumber}`}
+        </h3>
+      </div>
 
-      <label className="mb-2 flex flex-col gap-1">
-        <span className="text-xs font-bold uppercase text-gray-500">Quantity</span>
-        <input
-          aria-label="Quantity"
-          type="number"
-          inputMode="numeric"
-          min={1}
-          className="rounded-lg border p-2"
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
-        />
-      </label>
-
-      <label className="mb-2 flex flex-col gap-1">
-        <span className="text-xs font-bold uppercase text-gray-500">Reason</span>
-        <select
-          aria-label="Reason"
-          className="rounded-lg border p-2"
-          value={reason}
-          onChange={(e) => setReason(e.target.value as AdjustmentReason)}
-        >
-          {reasons.map((r) => (
-            <option key={r.reason} value={r.reason}>{r.label}</option>
+      <div className="border-b-2 border-rule-strong px-4 py-3">
+        <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
+          Reason
+        </span>
+        {/* Reason first, because reason governs which fields exist below and
+            which way the number goes. A `<select>` hid that: the destination
+            and direction fields rendered below a control the operator had
+            already scrolled past. */}
+        <div className="mt-1.5 grid grid-cols-2 gap-px bg-rule-light">
+          {tiles.map((r) => (
+            <button
+              key={r.reason}
+              type="button"
+              aria-pressed={reason === r.reason}
+              onClick={() => setReason(r.reason)}
+              className={`px-3 py-2.5 text-left text-[12.5px] font-bold ${
+                reason === r.reason ? 'bg-accent text-ground' : 'bg-paper text-ink'
+              }`}
+            >
+              {r.label}
+            </button>
           ))}
-        </select>
-      </label>
+          {spanning.map((r) => (
+            <button
+              key={r.reason}
+              type="button"
+              aria-pressed={reason === r.reason}
+              onClick={() => setReason(r.reason)}
+              className={`col-span-2 px-3 py-2.5 text-left text-[12.5px] font-bold ${
+                reason === r.reason ? 'bg-accent text-ground' : 'bg-paper text-ink'
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      {needsDirection && (
-        <label className="mb-2 flex flex-col gap-1">
-          <span className="text-xs font-bold uppercase text-gray-500">Correction direction</span>
-          <select
-            aria-label="Correction direction"
-            className="rounded-lg border p-2"
-            value={direction}
-            onChange={(e) => setDirection(e.target.value as 'more' | 'fewer')}
-          >
-            <option value="more">There are more than recorded</option>
-            <option value="fewer">There are fewer than recorded</option>
-          </select>
-        </label>
-      )}
-
-      {reason === 'transfer' && (
-        <label className="mb-2 flex flex-col gap-1">
-          <span className="text-xs font-bold uppercase text-gray-500">Destination</span>
-          <select
-            aria-label="Destination"
-            className="rounded-lg border p-2"
-            value={destination}
-            onChange={(e) => setDestination(e.target.value)}
-          >
-            {/* The storeroom is only a destination when it is not also the
-                source — a transfer that starts and ends in the same place is
-                refused by `recordTransfer`, so it must not be offerable. */}
-            {location.kind !== 'storeroom' && (
-              <option value="storeroom">Storeroom G</option>
-            )}
-            {machines
-              .filter((m) => location.kind !== 'machine' || m.id !== location.machineId)
-              .map((m) => (
-                <option key={m.id} value={m.id}>L{m.level}</option>
-              ))}
-          </select>
-        </label>
-      )}
-
-      {destinationIsMachine && (
-        <label className="mb-2 flex flex-col gap-1">
-          <span className="text-xs font-bold uppercase text-gray-500">Destination slot</span>
+      <div className="grid grid-cols-2 gap-px border-b-2 border-rule-strong bg-rule-light">
+        <label className="flex flex-col gap-1 bg-paper px-4 py-3">
+          <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
+            Units
+          </span>
           <input
-            aria-label="Destination slot"
+            aria-label="Units"
             type="number"
             inputMode="numeric"
-            className="rounded-lg border p-2"
-            value={destinationSlot}
-            onChange={(e) => setDestinationSlot(e.target.value)}
+            min={1}
+            className="w-full border-b-2 border-ink bg-transparent pb-1 text-[24px] font-extrabold tabular-nums outline-none"
+            value={quantity}
+            onFocus={(e) => e.currentTarget.select()}
+            onChange={(e) => setQuantity(e.target.value)}
           />
         </label>
+
+        <div
+          aria-label="Result"
+          className="flex flex-col justify-end gap-1 bg-neutral-100 px-4 py-3"
+        >
+          <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
+            Result
+          </span>
+          <span className="text-[13px] font-bold tabular-nums">
+            {here} {sign} {shownUnits}
+          </span>
+          {reason === 'transfer' && (
+            <span className="text-[13px] font-bold tabular-nums">
+              {there} up {shownUnits}
+            </span>
+          )}
+        </div>
+
+        {needsDirection && (
+          <label className="col-span-2 flex flex-col gap-1 bg-paper px-4 py-3">
+            <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
+              Correction direction
+            </span>
+            <select
+              aria-label="Correction direction"
+              className="border-b-2 border-ink bg-transparent pb-1 text-[13.5px] outline-none"
+              value={direction}
+              onChange={(e) => setDirection(e.target.value as 'more' | 'fewer')}
+            >
+              <option value="more">There are more than recorded</option>
+              <option value="fewer">There are fewer than recorded</option>
+            </select>
+          </label>
+        )}
+
+        {reason === 'transfer' && (
+          <label className="flex flex-col gap-1 bg-paper px-4 py-3">
+            <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
+              To machine
+            </span>
+            <select
+              aria-label="To machine"
+              className="border-b-2 border-ink bg-transparent pb-1 text-[13.5px] outline-none"
+              value={destination}
+              onChange={(e) => setDestination(e.target.value)}
+            >
+              {/* The storeroom is only a destination when it is not also the
+                  source — a transfer that starts and ends in the same place is
+                  refused by `recordTransfer`, so it must not be offerable. */}
+              {location.kind !== 'storeroom' && (
+                <option value="storeroom">Storeroom G</option>
+              )}
+              {machines
+                .filter((m) => location.kind !== 'machine' || m.id !== location.machineId)
+                .map((m) => (
+                  <option key={m.id} value={m.id}>L{m.level}</option>
+                ))}
+            </select>
+          </label>
+        )}
+
+        {destinationIsMachine && (
+          <label className="flex flex-col gap-1 bg-paper px-4 py-3">
+            <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
+              Into slot
+            </span>
+            <input
+              aria-label="Into slot"
+              type="number"
+              inputMode="numeric"
+              className="w-full border-b-2 border-ink bg-transparent pb-1 text-[24px] font-extrabold tabular-nums outline-none"
+              value={destinationSlot}
+              onChange={(e) => setDestinationSlot(e.target.value)}
+            />
+          </label>
+        )}
+      </div>
+
+      {/* Both known-gaps.md warnings, at the point of the mistake. */}
+      {reason === 'transfer' && (
+        <p className="bg-accent-200 px-4 py-2.5 text-[11px] font-medium text-accent-800">
+          Only for stock moved between visits. If you moved it during this run,
+          the two refilled-to counts already record it — logging it here as well
+          subtracts it twice.
+        </p>
+      )}
+      {location.kind === 'storeroom' && miscountWithheld && (
+        <p className="bg-surface px-4 py-2.5 text-[11px] font-medium text-neutral-700">
+          Miscount is not offered here. To correct the storeroom figure, type it
+          into <strong>your count</strong> on the storeroom row instead — that
+          resets the estimate to the truth.
+        </p>
       )}
 
       {error && (
-        <span role="alert" className="mb-2 block text-xs font-semibold text-red-600">
+        <span
+          role="alert"
+          className="block bg-accent-200 px-4 py-2.5 text-[11px] font-bold text-accent-800"
+        >
           {error}
         </span>
       )}
 
-      <div className="flex items-center gap-3">
+      <div className="flex border-t-2 border-rule-strong">
         <button
           type="button"
           onClick={() => void record()}
-          className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white"
+          className="flex-1 bg-accent px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] text-ground"
         >
-          Record
+          {commitLabel}
         </button>
-        <button type="button" onClick={onCancel} className="text-sm text-gray-500">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="bg-ground px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] text-neutral-700"
+        >
           Cancel
         </button>
       </div>

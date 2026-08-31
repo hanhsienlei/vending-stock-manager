@@ -267,7 +267,7 @@ describe('SlotEditSheet', () => {
 
     await user.click(screen.getByRole('button', { name: 'Adjust Coke' }))
 
-    expect(await screen.findByLabelText('Reason')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Units')).toBeInTheDocument()
   })
 
   it('offers Fill for this slot when opened during a count', async () => {
