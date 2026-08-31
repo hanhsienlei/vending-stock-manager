@@ -90,7 +90,9 @@ describe('ReportScreen', () => {
 
     render(<ReportScreen />)
 
-    expect(await screen.findByLabelText('L7 slot 58 sales')).toHaveTextContent('RAN DRY')
+    // §10 keeps the 4px inset for a ran-dry line and a small "DRY" (styled
+    // uppercase via CSS, not literal capitals) after the item name.
+    expect(await screen.findByLabelText('L7 slot 58 sales')).toHaveTextContent(/dry/i)
   })
 
   // Design §7.2 asks for "any censored period (§5.2), each with the reason it
@@ -112,15 +114,17 @@ describe('ReportScreen', () => {
     expect(row).toHaveTextContent(/no previous visit/i)
   })
 
-  it('counts the censored lines beside the totals, so a partial figure cannot read as a complete one', async () => {
+  it('counts the censored lines, so a partial figure cannot read as a complete one', async () => {
     const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
     const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
     await counted('2026-08-27', l7.id, coke.id, 4, 10)
 
     render(<ReportScreen />)
 
-    const totals = await screen.findByLabelText('report totals')
-    expect(totals).toHaveTextContent(/1 line not counted/i)
+    // §10 moves this warning off the totals card and onto its own
+    // `accent-200` band directly beneath it — see the "own band" test below.
+    const warning = await screen.findByLabelText('censored lines')
+    expect(warning).toHaveTextContent(/1 line not counted/i)
   })
 
   it('names the reason when an item left a slot still holding stock', async () => {
@@ -166,14 +170,16 @@ describe('ReportScreen', () => {
     render(<ReportScreen />)
     await screen.findByLabelText('report totals')
 
+    // §10 renders the label and its figure as separate cells ("In machines"
+    // then "10"), so the concatenated textContent has no space between them.
     const stockLatestOnly = await screen.findByLabelText('stock on hand')
-    expect(stockLatestOnly).toHaveTextContent('Machines 10')
+    expect(stockLatestOnly).toHaveTextContent(/In machines\D*10/i)
 
     await user.clear(screen.getByLabelText('From'))
     await user.type(screen.getByLabelText('From'), '2026-08-14')
 
     await waitFor(() => {
-      expect(screen.getByLabelText('stock on hand')).toHaveTextContent('Machines 10')
+      expect(screen.getByLabelText('stock on hand')).toHaveTextContent(/In machines\D*10/i)
     })
   })
 
@@ -187,5 +193,68 @@ describe('ReportScreen', () => {
     render(<ReportScreen />)
 
     expect(await screen.findByLabelText('stock row 58')).toHaveTextContent('Coke')
+  })
+})
+
+async function seedTwoFinalizedVisits() {
+  const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+  const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+  await counted('2026-08-20', l7.id, coke.id, 0, 10)
+  await counted('2026-08-27', l7.id, coke.id, 4, 10)
+}
+
+async function seedCensoredLine() {
+  const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+  const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+  // The machine's first-ever visit: no opening count, so nothing to derive.
+  await counted('2026-08-27', l7.id, coke.id, 4, 10)
+}
+
+describe('ReportScreen — §10 layout', () => {
+  it('states the sold total as a poster figure with its period', async () => {
+    await seedTwoFinalizedVisits()
+    render(<ReportScreen />)
+
+    const sold = await screen.findByLabelText('report totals')
+    expect(sold.className).toContain('bg-accent')
+    expect(sold).toHaveTextContent(/^SOLD · RUN OF /)
+    expect(sold).toHaveTextContent('units')
+  })
+
+  it('puts the censored warning on its own band, not inside the totals', async () => {
+    await seedCensoredLine()
+    render(<ReportScreen />)
+
+    const warning = await screen.findByLabelText('censored lines')
+    expect(warning.className).toContain('bg-accent-200')
+    expect(warning).toHaveTextContent(/not in the totals above/)
+  })
+
+  it('names the three stock-on-hand cells', async () => {
+    await seedTwoFinalizedVisits()
+    render(<ReportScreen />)
+
+    const onHand = await screen.findByLabelText('stock on hand')
+    expect(onHand).toHaveTextContent(/In machines/i)
+    expect(onHand).toHaveTextContent(/Storeroom/i)
+    expect(onHand).toHaveTextContent(/On hand now/i)
+  })
+
+  it('tells the operator the matrix needs landscape', async () => {
+    await seedTwoFinalizedVisits()
+    render(<ReportScreen />)
+    // Ruling 7: the markup renders "Turn phone ⟳" in sentence case under an
+    // `uppercase` CSS class (the codebase's prevailing idiom, matching
+    // ScreenHeader) — text-transform never changes `textContent`, so the
+    // match must be case-insensitive.
+    expect(await screen.findByText(/turn phone/i)).toBeInTheDocument()
+  })
+
+  it('carries no rounded corner and no legacy palette class', async () => {
+    await seedTwoFinalizedVisits()
+    const { container } = render(<ReportScreen />)
+    await screen.findByLabelText('report totals')
+    expect(container.innerHTML).not.toMatch(/rounded-/)
+    expect(container.innerHTML).not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
   })
 })
