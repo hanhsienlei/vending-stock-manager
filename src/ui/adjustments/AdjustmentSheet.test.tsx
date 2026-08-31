@@ -44,7 +44,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'machine', machineId: l7.id, slotNumber: 58 }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={onSaved}
         onCancel={vi.fn()}
       />,
@@ -70,7 +70,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'storeroom' }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -94,7 +94,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'machine', machineId: l7.id, slotNumber: 58 }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -126,7 +126,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'storeroom' }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={onSaved}
         onCancel={vi.fn()}
       />,
@@ -153,7 +153,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'storeroom' }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -189,7 +189,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'storeroom' }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={onSaved}
         onCancel={vi.fn()}
       />,
@@ -233,7 +233,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'storeroom' }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -260,7 +260,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'storeroom' }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -293,7 +293,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'machine', machineId: l7.id, slotNumber: 31 }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -308,7 +308,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'storeroom' }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -328,7 +328,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'storeroom' }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={onSaved}
         onCancel={vi.fn()}
       />,
@@ -359,7 +359,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'machine', machineId: l7.id, slotNumber: 58 }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -387,7 +387,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'storeroom' }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -404,7 +404,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'storeroom' }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         reasons={ADJUSTMENT_REASONS.filter((r) => r.reason !== 'miscount')}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -426,7 +426,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'storeroom' }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -458,7 +458,7 @@ describe('AdjustmentSheet', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'storeroom' }}
-        itemId={coke.id}
+        itemId={coke.id} itemName="Coke"
         onSaved={onSaved}
         onCancel={vi.fn()}
       />,
@@ -484,7 +484,7 @@ describe('AdjustmentSheet — §7 layout', () => {
   it('offers the reasons as tiles in the domain table order, not a select', async () => {
     render(
       <AdjustmentSheet
-        location={{ kind: 'storeroom' }} itemId="i1"
+        location={{ kind: 'storeroom' }} itemId="i1" itemName="Coke"
         onSaved={vi.fn()} onCancel={vi.fn()}
       />,
     )
@@ -514,7 +514,7 @@ describe('AdjustmentSheet — §7 layout', () => {
     const user = userEvent.setup()
     render(
       <AdjustmentSheet
-        location={{ kind: 'storeroom' }} itemId="i1"
+        location={{ kind: 'storeroom' }} itemId="i1" itemName="Coke"
         onSaved={vi.fn()} onCancel={vi.fn()}
       />,
     )
@@ -535,7 +535,7 @@ describe('AdjustmentSheet — §7 layout', () => {
     const user = userEvent.setup()
     render(
       <AdjustmentSheet
-        location={{ kind: 'storeroom' }} itemId="i1"
+        location={{ kind: 'storeroom' }} itemId="i1" itemName="Coke"
         onSaved={vi.fn()} onCancel={vi.fn()}
       />,
     )
@@ -553,7 +553,7 @@ describe('AdjustmentSheet — §7 layout', () => {
     const user = userEvent.setup()
     render(
       <AdjustmentSheet
-        location={{ kind: 'storeroom' }} itemId="i1"
+        location={{ kind: 'storeroom' }} itemId="i1" itemName="Coke"
         onSaved={vi.fn()} onCancel={vi.fn()}
       />,
     )
@@ -576,7 +576,7 @@ describe('AdjustmentSheet — §7 layout', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'machine', machineId: source.id, slotNumber: 31 }}
-        itemId="i1" onSaved={vi.fn()} onCancel={vi.fn()}
+        itemId="i1" itemName="Coke" onSaved={vi.fn()} onCancel={vi.fn()}
       />,
     )
     await user.click(
@@ -597,7 +597,7 @@ describe('AdjustmentSheet — §7 layout', () => {
     await saveMachine({ label: 'Level 9', level: 9 })
     render(
       <AdjustmentSheet
-        location={{ kind: 'storeroom' }} itemId="i1"
+        location={{ kind: 'storeroom' }} itemId="i1" itemName="Coke"
         onSaved={vi.fn()} onCancel={vi.fn()}
       />,
     )
@@ -611,7 +611,7 @@ describe('AdjustmentSheet — §7 layout', () => {
   it('says at the storeroom why miscount is not on offer', () => {
     render(
       <AdjustmentSheet
-        location={{ kind: 'storeroom' }} itemId="i1"
+        location={{ kind: 'storeroom' }} itemId="i1" itemName="Coke"
         reasons={ADJUSTMENT_REASONS.filter((r) => r.entersResidual)}
         onSaved={vi.fn()} onCancel={vi.fn()}
       />,
@@ -622,11 +622,62 @@ describe('AdjustmentSheet — §7 layout', () => {
   it('carries no rounded corner and no legacy palette class', () => {
     const { container } = render(
       <AdjustmentSheet
-        location={{ kind: 'storeroom' }} itemId="i1"
+        location={{ kind: 'storeroom' }} itemId="i1" itemName="Coke"
         onSaved={vi.fn()} onCancel={vi.fn()}
       />,
     )
     expect(container.innerHTML).not.toMatch(/rounded-/)
     expect(container.innerHTML).not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
+  })
+})
+
+/** The sheet said `Adjust storeroom stock` and nothing else. Opened from a
+ * sixty-row storeroom list it covers the row that was tapped, so there is
+ * nothing on screen naming the item being adjusted — and the RESULT cell says
+ * `Storeroom G down 1`, which names the place but still not the product.
+ *
+ * Writing a write-off against the wrong item is silent and, since
+ * `Adjustment` has no edit or delete path (known-gaps.md), permanent. */
+describe('AdjustmentSheet — naming the item being adjusted', () => {
+  it('names the item in the header at the storeroom', () => {
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'storeroom' }} itemId="i1"
+        itemName="Accor Dental Kit — Bamboo Generic"
+        onSaved={vi.fn()} onCancel={vi.fn()}
+      />,
+    )
+
+    const header = screen.getByTestId('adjustment-header')
+    expect(header).toHaveTextContent('Adjust storeroom stock')
+    expect(header).toHaveTextContent('Accor Dental Kit — Bamboo Generic')
+  })
+
+  it('names the item in the header at a machine slot', async () => {
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'machine', machineId: machine.id, slotNumber: 31 }}
+        itemId="i1" itemName="Coke No Sugar"
+        onSaved={vi.fn()} onCancel={vi.fn()}
+      />,
+    )
+
+    const header = screen.getByTestId('adjustment-header')
+    expect(header).toHaveTextContent('Adjust slot 31')
+    expect(header).toHaveTextContent('Coke No Sugar')
+  })
+
+  // The result line is the last thing read before committing, so it names the
+  // product too rather than only the place.
+  it('names the item in the result line', () => {
+    render(
+      <AdjustmentSheet
+        location={{ kind: 'storeroom' }} itemId="i1" itemName="Coke No Sugar"
+        onSaved={vi.fn()} onCancel={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByLabelText('Result')).toHaveTextContent('Coke No Sugar')
   })
 })

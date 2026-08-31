@@ -28,7 +28,19 @@ function formatVerifiedAt(timestamp: number | undefined): string {
   return weeks === 1 ? 'Verified 1 week ago' : `Verified ${weeks} weeks ago`
 }
 
-const GRID = 'grid grid-cols-[1fr_62px_88px] items-center gap-2 px-4'
+/** `1fr 44px 112px`. The count column holds the boxes+loose control — two
+ * 34px fields, a 4px gap either side of a `×200 +` separator — which needs
+ * ~108px. At 88px the flex was `justify-end` and spilled the excess LEFT, so
+ * the boxes input rendered under the `APP ESTIMATE` heading and overlapped
+ * the estimate figure by 12px (measured in a browser at 393px: heading
+ * 219-281, boxes input 269-303).
+ *
+ * The column was sized when every item was seeded `boxSize: 1` and the
+ * control was one plain field. Entering the real carton sizes flipped 46 of
+ * 60 items into the two-field form — the case the layout had never been
+ * checked against. The estimate column gives up the width because it only
+ * ever holds a figure; 44px still takes four digits at 18px. */
+const GRID = 'grid grid-cols-[1fr_44px_112px] items-center gap-2 px-4'
 
 // Design §7.1: the adjustment sheet is reached from the storeroom screen too,
 // but never with `miscount` on offer here. The storeroom's own correction
@@ -193,6 +205,7 @@ export function StoreroomScreen() {
             <AdjustmentSheet
               location={{ kind: 'storeroom' }}
               itemId={adjusting}
+              itemName={items.find((i) => i.id === adjusting)?.name ?? ''}
               reasons={STOREROOM_ADJUSTMENT_REASONS}
               onSaved={() => {
                 setAdjusting(null)

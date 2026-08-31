@@ -287,6 +287,7 @@ export function SlotEditSheet({
         <AdjustmentSheet
           location={{ kind: 'machine', machineId, slotNumber }}
           itemId={adjusting}
+          itemName={items.find((i) => i.id === adjusting)?.name ?? ''}
           onSaved={() => {
             setAdjusting(null)
             onSaved()

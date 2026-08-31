@@ -35,12 +35,20 @@ const SLOT_ADJUSTMENT_REASONS = ADJUSTMENT_REASONS.filter((r) => r.entersResidua
  * Quantity is entered as a positive magnitude; the sign is decided by the
  * reason, so the operator never types a minus. */
 export function AdjustmentSheet({
-  location, itemId,
+  location, itemId, itemName,
   reasons = location.kind === 'machine' ? SLOT_ADJUSTMENT_REASONS : ADJUSTMENT_REASONS,
   onSaved, onCancel,
 }: {
   location: AdjustmentLocation
   itemId: Id
+  /** The product being adjusted, named on screen.
+   *
+   * The sheet used to say only `Adjust storeroom stock`, and it covers the
+   * row that was tapped in a sixty-row list — so nothing on screen said WHICH
+   * item was about to be written off. `Adjustment` has no edit or delete path
+   * (known-gaps.md), so an adjustment against the wrong product is silent and
+   * permanent. Both call sites already hold the item. */
+  itemName: string
   /** Which reasons to offer. Defaults to the full table at the storeroom, and
    * to `SLOT_ADJUSTMENT_REASONS` (above) at a machine slot, where `miscount`
    * is withheld. The storeroom screen additionally passes its own narrower
@@ -215,12 +223,14 @@ export function AdjustmentSheet({
 
   return (
     <div className="bg-paper">
-      <div className="flex items-baseline justify-between bg-ink px-4 py-2.5 text-ground">
+      <div data-testid="adjustment-header" className="bg-ink px-4 py-2.5 text-ground">
         <h3 className="text-[19px] font-extrabold">
           {location.kind === 'storeroom'
             ? 'Adjust storeroom stock'
             : `Adjust slot ${location.slotNumber}`}
         </h3>
+        {/* Same treatment as the slot editor's `L7 · Tray 3` context line. */}
+        <p className="truncate text-[13px] font-medium opacity-70">{itemName}</p>
       </div>
 
       <div className="border-b-2 border-rule-strong px-4 py-3">
@@ -287,6 +297,9 @@ export function AdjustmentSheet({
           </span>
           <span className="text-[13px] font-bold tabular-nums">
             {here} {sign} {shownUnits}
+          </span>
+          <span className="truncate text-[11px] font-medium text-neutral-700">
+            {itemName}
           </span>
           {reason === 'transfer' && (
             <span className="text-[13px] font-bold tabular-nums">

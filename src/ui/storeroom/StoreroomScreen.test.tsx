@@ -423,3 +423,48 @@ describe('StoreroomScreen — §8 layout', () => {
     expect(container.innerHTML).not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
   })
 })
+
+/** The boxes+loose control is two inputs plus a `×200 +` separator — about
+ * 108px — and it lived in an 88px column. `justify-end` spilled the excess
+ * leftwards, so the boxes input rendered UNDER the `APP ESTIMATE` heading,
+ * overlapping the estimate figure by 12px. Measured in a real browser at
+ * 393px: header column 219-281, boxes input 269-303.
+ *
+ * Nobody saw it until now because the column was sized when every item was
+ * seeded `boxSize: 1` and the control was a single field. Backfilling the
+ * real carton sizes flipped 46 of 60 items into the two-field form, and the
+ * layout had never been checked against it.
+ *
+ * jsdom has no layout, so the column widths are asserted here and the actual
+ * geometry is verified in a browser. */
+describe('StoreroomScreen — the boxes+loose control has to fit its column', () => {
+  it('gives the count column room for two fields and the multiplier', async () => {
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    render(<StoreroomScreen />)
+    await screen.findByText('Coke')
+
+    const header = screen.getByTestId('storeroom-column-header')
+    // 112px holds 34 + 4 + 32 + 4 + 34. The estimate column gives up the
+    // width; it only ever holds a figure.
+    expect(header.className).toContain('grid-cols-[1fr_44px_112px]')
+  })
+
+  it('still renders both fields for an item with a real carton size', async () => {
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    render(<StoreroomScreen />)
+    await screen.findByText('Coke')
+
+    expect(screen.getByLabelText('Coke boxes')).toBeInTheDocument()
+    expect(screen.getByLabelText('Coke loose')).toBeInTheDocument()
+    expect(screen.getByText(/×24/)).toBeInTheDocument()
+  })
+
+  it('keeps one plain field for an item whose carton size is unknown', async () => {
+    await saveItem({ name: 'Tampon', price: 3, basePar: 5, boxSize: 1 })
+    render(<StoreroomScreen />)
+    await screen.findByText('Tampon')
+
+    expect(screen.getByLabelText('Tampon units')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Tampon boxes')).not.toBeInTheDocument()
+  })
+})
