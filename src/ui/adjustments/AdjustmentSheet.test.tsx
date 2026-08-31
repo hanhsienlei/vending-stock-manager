@@ -494,6 +494,20 @@ describe('AdjustmentSheet — §7 layout', () => {
     for (const spec of ADJUSTMENT_REASONS) {
       expect(screen.getByRole('button', { name: spec.label })).toBeInTheDocument()
     }
+
+    // Presence alone doesn't pin ORDER, and a loop keyed off `ADJUSTMENT_REASONS`
+    // can't catch a reworded label either — it reads its expectation from the
+    // same table the component renders from. §7: "`transfer` is the long one,
+    // so it takes the spanning cell rather than the first position — display
+    // order is preserved by reading the grid as four then one, not by
+    // reordering the table." Pinned as literal strings and scoped to the
+    // reason grid alone, so the sheet's commit/Cancel buttons can't sweep in.
+    const grid = screen.getByTestId('reason-grid')
+    const tileLabels = within(grid).getAllByRole('button').map((b) => b.textContent)
+    expect(tileLabels).toEqual([
+      'Expired', 'Damaged or broken', 'Missing or taken', 'Delivery arrived',
+      'Miscount correction', 'Move to another machine or the storeroom',
+    ])
   })
 
   it('marks the chosen tile as pressed and no other', async () => {

@@ -185,4 +185,22 @@ describe('HistoryScreen — §9 layout', () => {
     expect(screen.getByRole('button', { name: 'Report' }))
       .toHaveAttribute('aria-pressed', 'false')
   })
+
+  // Every other restyled screen in this branch has this sweep; History was
+  // the one missing it. It matters more here than elsewhere: switching to
+  // Report view mounts HistoryScreen → ReportScreen → StockMatrix as one
+  // tree, and no other test in the branch covers that composition.
+  it('carries no rounded corner and no legacy palette class, in report view', async () => {
+    const user = userEvent.setup()
+    await createRun('2026-08-27')
+
+    const { container } = render(<HistoryScreen />)
+    await screen.findByLabelText('run 2026-08-27')
+
+    await user.click(screen.getByRole('button', { name: 'Report' }))
+    await screen.findByLabelText('From')
+
+    expect(container.innerHTML).not.toMatch(/rounded-/)
+    expect(container.innerHTML).not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
+  })
 })

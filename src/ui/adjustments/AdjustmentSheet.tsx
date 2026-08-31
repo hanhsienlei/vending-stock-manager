@@ -231,7 +231,7 @@ export function AdjustmentSheet({
             which way the number goes. A `<select>` hid that: the destination
             and direction fields rendered below a control the operator had
             already scrolled past. */}
-        <div className="mt-1.5 grid grid-cols-2 gap-px bg-rule-light">
+        <div data-testid="reason-grid" className="mt-1.5 grid grid-cols-2 gap-px bg-rule-light">
           {tiles.map((r) => (
             <button
               key={r.reason}
