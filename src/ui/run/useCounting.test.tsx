@@ -1169,4 +1169,39 @@ describe('the editable after-count', () => {
     const lines = await getCountLines(visit.id)
     expect(lines.find((l) => l.slotNumber === 10)?.touched).toBe(false)
   })
+
+  // The same rule, one screen event later. The seeding effect's capacity
+  // recompute is the third Fill write site, and it was written (1bc556e)
+  // when both Fill paths still added their keys to `touched`, so it asserts
+  // `touched: true` for every line it rewrites. Fix 1 changed what a tray
+  // fill means and never reached here — so a `reload()`, which saving
+  // anything from a slot's `⋯` sheet performs, re-marked the whole filled
+  // tray touched and put the ran-dry edge back on slots nobody counted.
+  // A capacity correction is not an observation.
+  it('does not mark a tray-filled slot touched when the capacity recompute rewrites it', async () => {
+    const { chips, machine } = await seedTray()
+    const run = await createRun('2026-08-26')
+    const visit = await openVisit(run.id, machine.id)
+    const { result } = renderHook(() => useCounting(run.id, machine.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => { await result.current.fillTray([10]) })
+    expect(result.current.touched.has(`10:${chips.id}`)).toBe(false)
+
+    // Saving capacity from the `⋯` sheet: the config changes and reload()
+    // gives `map` a new identity, re-firing the effect with 10 in `filled`.
+    await setSlotConfig(machine.id, 10, { capacity: 20, accepts: [chips.id] })
+    await act(async () => { await result.current.reload() })
+
+    // The recompute did run — the fill followed capacity up …
+    await waitFor(() => expect(result.current.after.get(`10:${chips.id}`)).toBe(20))
+
+    // … without claiming anybody looked at the slot.
+    const slot = result.current.map.find((s) => s.slotNumber === 10)!
+    expect(result.current.touched.has(`10:${chips.id}`)).toBe(false)
+    expect(result.current.ranDry(slot)).toBe(false)
+
+    const lines = await getCountLines(visit.id)
+    expect(lines.find((l) => l.slotNumber === 10)?.touched).toBe(false)
+  })
 })

@@ -83,6 +83,12 @@ Every figure carries `font-variant-numeric: tabular-nums`. Columns of numbers
 that do not align are the reason a paper sheet beats a screen, and it is one
 declaration.
 
+Read "every figure" as every figure in a column that has to align — the count
+cells, the matrix, the receipt, the figure rows above. Not every numeral in
+every sentence: a date, a `box of 24`, a level in a heading are prose, and the
+code does not set them tabular. Tabular figures buy alignment at the cost of
+even spacing, so applying them to running text makes it worse, not better.
+
 ## Spacing
 
 Row padding `10–11px 16px`. Section bars `7–9px 16px`. Footer buttons

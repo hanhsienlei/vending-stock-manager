@@ -145,14 +145,21 @@ export function useCounting(runId: Id, machineId: Id) {
         }
 
         if (rewrites.length > 0) {
-          const rewriteKeys = rewrites.map((r) => levelKey(r.slotNumber, r.itemId))
           setAfterState((prev) => {
             const next = new Map(prev)
             for (const r of rewrites) next.set(levelKey(r.slotNumber, r.itemId), r.after)
             return next
           })
-          setTouched((prev) => new Set([...prev, ...rewriteKeys]))
-
+          // Fix 1's rule, at the third write site. This recompute was written
+          // when both Fill paths added their keys to `touched`, so asserting
+          // observation here matched them. `fillTray` no longer does (Fix 1,
+          // 2026-08-28), and a correction to a slot's capacity says nothing
+          // about whether anyone looked inside it — so carry whatever
+          // `touched` already holds rather than adding to it. Adding to it
+          // undid Fix 1 on every reload: saving anything from a slot's `⋯`
+          // sheet re-marks the whole filled tray, which paints the ran-dry
+          // edge on slots with no prior recorded level and persists a false
+          // "counted and found empty" for slots nobody counted.
           await putCountLines(
             rewrites.map((r) => ({
               id: newId(),
@@ -161,7 +168,7 @@ export function useCounting(runId: Id, machineId: Id) {
               itemId: r.itemId,
               before: r.before,
               after: r.after,
-              touched: true,
+              touched: touched.has(levelKey(r.slotNumber, r.itemId)),
               filled: true,
               price: items.get(r.itemId)?.price ?? 0,
               updatedAt: now(),

@@ -106,7 +106,12 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   adding one — a per-line `afterTouched`, which is a schema change and a
   migration for a case whose only symptom is a number reverting to the value
   it already had.
-- **`DatabaseClosedError` appears intermittently in `src/ui/App.e2e.test.tsx`.**
+- **`DatabaseClosedError` appears intermittently in component test files** —
+  first seen in `src/ui/App.e2e.test.tsx`, and since also in
+  `src/ui/report/ReportScreen.test.tsx` (once in three isolated runs of that
+  file on 2026-09-04, with all 19 tests passing each time). Not confined to
+  one file, so read the rest of this bullet as being about the harness, not
+  about `App.e2e`.
   Rare and predates this phase: it surfaced once in fourteen full-suite runs
   during the final fix round, and that run still reported all tests passing —
   it prints as a serialized stderr error rather than failing anything, which
@@ -129,6 +134,24 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
 ---
 
 ## Fixed since this list was written
+
+- **The over-eager ran-dry edge is fixed** (2026-09-04). After `Fill tray to
+  par`, saving anything from a slot's `⋯` sheet put the red ran-dry edge on
+  slots that were simply empty and had never been counted. The cause was the
+  third of Fill's write sites: the seeding effect's mid-count capacity
+  recompute (`useCounting.ts`), written in `1bc556e` when both `toggleFill`
+  and `fillTray` added their keys to `touched`, so asserting `touched: true`
+  for every line it rewrote was consistent then. The 2026-08-28 review's
+  Fix 1 changed `fillTray` to never claim observation, and never reached
+  this site — so every `reload()`, which a `⋯`-sheet save performs, re-marked
+  the whole filled tray touched and restored exactly the behaviour Fix 1 had
+  removed. The recompute now carries whatever `touched` already holds, the
+  way `fillTray` does: a correction to a slot's capacity says nothing about
+  whether anyone looked inside it. No count was ever wrong — but the false
+  `touched: true` was also persisted, so the same bug was writing "counted
+  and found empty" for slots nobody counted, which Phase 3's demand model
+  would have read as genuine zero demand. This was the top follow-up in the
+  2026-08-31 handover.
 
 - **An item's slots are picked, not typed** (`85a7660`). The free-text field
   is a toggle per physical slot, grouped by tray, several selectable — so Nu
