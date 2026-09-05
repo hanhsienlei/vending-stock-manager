@@ -113,9 +113,19 @@ export async function finalizeVisit(visitId: Id): Promise<Visit> {
 /** Newest-first, bounded. Count lines are only read for the visits that
  * survive the bound — unbounded history would grow at ~5,600 rows per machine
  * per year and is re-read on every screen entry, which spec §8 forbids on the
- * latency-critical path. Four is the window Phase 3's demand rate needs
- * (`mean over the last 4 non-censored periods`), and `lastRecordedLevels`
- * only ever consumes the newest value per key. */
+ * latency-critical path.
+ *
+ * Four is what the counting screen's carry-forward needs: `lastRecordedLevels`
+ * only ever consumes the newest value per key, and four visits give a slot
+ * skipped a few runs running a level to seed from.
+ *
+ * This comment used to claim four was also "the window Phase 3's demand rate
+ * needs". **It was off by one, and by more once censoring is counted.** A
+ * period is bounded by two visits, so four visits bound only three periods,
+ * and the rate wants four usable ones. The rate reads its own, wider window
+ * (`RATE_SEARCH_VISITS` in `repositories/forecast.ts`) on the load screen,
+ * which is unhurried desk work at G; this constant keeps its value and its
+ * own job, on the path where latency actually matters. */
 export const HISTORY_LIMIT = 4
 
 export async function historyForMachine(

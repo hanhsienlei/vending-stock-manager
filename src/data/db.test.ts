@@ -52,6 +52,26 @@ function openLegacyV2(): Dexie {
   return legacy
 }
 
+/** The database exactly as version 3 left it — `price` on count lines and the
+ * `adjustments` table present, but no `trolleyLines`. This is the shape an
+ * operator's browser holds today, on the last Phase 2 bundle. */
+function openLegacyV3(): Dexie {
+  const legacy = openLegacyV2()
+  legacy.version(3).stores({
+    items: 'id, name',
+    machines: 'id, level',
+    placements: 'id, itemId',
+    slotConfigs: 'id, [machineId+slotNumber]',
+    runs: 'id, date',
+    visits: 'id, runId, [runId+machineId], machineId',
+    countLines: 'id, visitId, [visitId+slotNumber]',
+    storeroomBalances: 'id, itemId',
+    adjustments:
+      'id, itemId, occurredAt, machineId, transferId, [machineId+slotNumber]',
+  })
+  return legacy
+}
+
 describe('schema version 2 upgrade', () => {
   beforeEach(async () => {
     db.close()
@@ -261,5 +281,86 @@ describe('schema version 3 upgrade', () => {
     expect(
       await db.adjustments.where('[machineId+slotNumber]').equals(['L7', 58]).toArray(),
     ).toHaveLength(1)
+  })
+})
+
+describe('schema version 4 upgrade', () => {
+  beforeEach(async () => {
+    db.close()
+    await Dexie.delete(DB_NAME)
+  })
+
+  it('adds trolleyLines indexed for the queries Phase 3 makes', async () => {
+    await db.open()
+
+    const indexes = db.trolleyLines.schema.indexes.map((i) => i.name)
+    expect(indexes).toContain('runId')
+    expect(indexes).toContain('[runId+itemId]')
+    expect(indexes).toContain('itemId')
+
+    await db.trolleyLines.put({
+      id: newId(), runId: 'r1', itemId: 'coke',
+      needed: 18, taken: 24, noneLeftInG: false, loadedAt: 1, updatedAt: 1,
+    })
+
+    expect(await db.trolleyLines.where('runId').equals('r1').toArray())
+      .toHaveLength(1)
+    expect(
+      await db.trolleyLines.where('[runId+itemId]').equals(['r1', 'coke']).toArray(),
+    ).toHaveLength(1)
+    expect(await db.trolleyLines.where('itemId').equals('coke').toArray())
+      .toHaveLength(1)
+  })
+
+  // v4 rewrites nothing, so this is the assertion that matters: an upgrade
+  // that touches no row must be provably innocent of touching one. Every row
+  // here is written through the *v3* schema and read back through v4 —
+  // writing them after the upgrade would prove nothing, which is exactly the
+  // mistake `5f6defc` exists to correct.
+  it('leaves every pre-upgrade row exactly as it was', async () => {
+    const legacy = openLegacyV3()
+    await legacy.open()
+
+    const line = {
+      id: newId(), visitId: 'v1', slotNumber: 58, itemId: 'coke',
+      before: 3, after: 8, touched: true, filled: true, price: 4.5, updatedAt: 1,
+    }
+    const visit = {
+      id: 'v1', runId: 'r1', machineId: 'L7',
+      status: 'finalized', finalizedAt: 1, updatedAt: 1,
+    }
+    const adjustment = {
+      id: newId(), itemId: 'coke', locationKind: 'storeroom',
+      reason: 'delivery', units: 24, occurredAt: 2, updatedAt: 2,
+    }
+    const balance = {
+      id: newId(), itemId: 'coke', units: 40, updatedAt: 3, verifiedAt: 3,
+    }
+
+    await legacy.table('countLines').put(line)
+    await legacy.table('visits').put(visit)
+    await legacy.table('adjustments').put(adjustment)
+    await legacy.table('storeroomBalances').put(balance)
+    legacy.close()
+
+    // Opening the app's real `db`, declared through version 4, against the
+    // database version 3 just left behind is what runs the upgrade.
+    await db.open()
+
+    expect(db.verno).toBe(4)
+    expect(await db.countLines.get(line.id)).toEqual(line)
+    expect(await db.visits.get('v1')).toEqual(visit)
+    expect(await db.adjustments.toArray()).toEqual([adjustment])
+    expect(await db.storeroomBalances.toArray()).toEqual([balance])
+  })
+
+  it('opens a database that has never held a trolley line', async () => {
+    const legacy = openLegacyV3()
+    await legacy.open()
+    legacy.close()
+
+    await db.open()
+
+    expect(await db.trolleyLines.toArray()).toEqual([])
   })
 })
