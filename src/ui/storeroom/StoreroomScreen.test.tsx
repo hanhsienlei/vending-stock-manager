@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
@@ -466,5 +466,68 @@ describe('StoreroomScreen — the boxes+loose control has to fit its column', ()
 
     expect(screen.getByLabelText('Tampon units')).toBeInTheDocument()
     expect(screen.queryByLabelText('Tampon boxes')).not.toBeInTheDocument()
+  })
+})
+
+/** The backup export (design §14). Schema v4 is a one-way door for the app
+ * bundle — a reverted build cannot open a database a newer build upgraded —
+ * and the storeroom screen is where the operator already does desk work at G,
+ * so the button lives here rather than behind a settings screen that does not
+ * exist.
+ *
+ * `URL.createObjectURL` is not implemented in jsdom and a real anchor click
+ * would try to navigate, so both are stubbed; what is asserted is that the
+ * real export ran and produced a named JSON file. */
+describe('StoreroomScreen — the backup export', () => {
+  const createObjectURL = vi.fn(() => 'blob:bundle')
+  const revokeObjectURL = vi.fn()
+  let clicked: HTMLAnchorElement | null = null
+
+  beforeEach(() => {
+    clicked = null
+    createObjectURL.mockClear()
+    revokeObjectURL.mockClear()
+    vi.stubGlobal('URL', Object.assign(Object.create(URL), URL, {
+      createObjectURL, revokeObjectURL,
+    }))
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      clicked = this
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('offers the export, dated, without spending the screen accent on it', async () => {
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    render(<StoreroomScreen />)
+    await screen.findByText('Coke')
+
+    const button = screen.getByRole('button', { name: /export a backup/i })
+    // Dated, so the operator can see which day's data they are about to
+    // save without opening the file — the filename carries the same day.
+    expect(button).toHaveTextContent(/Export a backup · \d{1,2} \w{3}/)
+    // A safety action, not a primary one: this screen's single accent is
+    // already spent on the never-verified inset (tokens.md).
+    expect(button.className).toContain('text-neutral-700')
+    expect(button.className).not.toContain('accent')
+  })
+
+  it('downloads every table when tapped', async () => {
+    const user = userEvent.setup()
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    render(<StoreroomScreen />)
+    await screen.findByText('Coke')
+
+    await user.click(screen.getByRole('button', { name: /export a backup/i }))
+
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1))
+    expect(clicked).not.toBeNull()
+    expect(clicked!.download).toMatch(/^vending-stock-manager-\d{4}-\d{2}-\d{2}\.json$/)
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:bundle')
   })
 })

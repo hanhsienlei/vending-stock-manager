@@ -5,6 +5,8 @@ import { ADJUSTMENT_REASONS } from '../../domain/adjustments'
 import { fromBoxesAndLoose, toBoxesAndLoose } from '../../domain/packs'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { ScreenLayout } from '../components/ScreenLayout'
+import { downloadBundle } from '../../backup/export'
+import { today } from '../../domain/date'
 import type { Id, Item } from '../../domain/types'
 
 /** A typed number field, floored at zero. An empty field reads as 0 rather
@@ -26,6 +28,21 @@ function formatVerifiedAt(timestamp: number | undefined): string {
   if (days < 7) return `Verified ${days} days ago`
   const weeks = Math.floor(days / 7)
   return weeks === 1 ? 'Verified 1 week ago' : `Verified ${weeks} weeks ago`
+}
+
+const MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+]
+
+/** A stored date (`yyyy-mm-dd`) as `4 Sep` — the export button's date, short
+ * enough to sit inside a label. Split by hand rather than parsed, for the
+ * reason `domain/date.ts` spells out: `new Date('2026-09-04')` is UTC
+ * midnight, which reads as the 3rd in every zone behind UTC. Display copy for
+ * this screen only, like `formatVerifiedAt` above. */
+function formatShortDate(date: string): string {
+  const [, month, day] = date.split('-').map(Number)
+  return `${day} ${MONTHS[month - 1]}`
 }
 
 /** `1fr 44px 112px`. The count column holds the boxes+loose control — two
@@ -184,6 +201,31 @@ export function StoreroomScreen() {
         adjustment since. Typing <strong>your count</strong> overrides it and the
         running total starts again from there.
       </p>
+
+      {/* The backup export (design §14). It sits here because this is the
+          screen the operator is already on when they are at G with a phone
+          and no trolley, and because there is no settings screen to hide it
+          behind. Neutral rather than accent: this screen's one accent is
+          already spent on the never-verified inset, and a safety action that
+          shouts competes with the work.
+          `void` and a swallowed rejection, like the writes above — the
+          failure mode is a download that does not start, which the operator
+          sees directly, and there is still no error surface on this screen
+          (known-gaps.md). */}
+      <div className="border-t border-rule-light">
+        <button
+          type="button"
+          onClick={() => { void downloadBundle().catch(() => {}) }}
+          className="w-full bg-ground px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] text-neutral-700"
+        >
+          Export a backup · {formatShortDate(today())}
+        </button>
+        <p className="px-4 pb-3 text-[11px] font-medium text-neutral-700">
+          Saves every table as one JSON file. Do it before you install a new
+          version: an older build cannot reopen a database a newer one has
+          upgraded.
+        </p>
+      </div>
 
       {/* A floating sheet, not an inline one — the same fix the machine map
           needed (94cf425). This list is the whole sixty-item catalogue, so a
