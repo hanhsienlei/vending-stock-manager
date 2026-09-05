@@ -5,6 +5,7 @@ import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
 import { setStoreroomBalance, listStoreroomBalances } from '../../data/repositories/storeroom'
 import { recordAdjustment } from '../../data/repositories/adjustments'
+import { exportBundle } from '../../backup/export'
 import { StoreroomScreen } from './StoreroomScreen'
 
 beforeEach(async () => {
@@ -529,5 +530,153 @@ describe('StoreroomScreen — the backup export', () => {
     expect(clicked).not.toBeNull()
     expect(clicked!.download).toMatch(/^vending-stock-manager-\d{4}-\d{2}-\d{2}\.json$/)
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:bundle')
+  })
+})
+
+/** The backup import, beside the export it undoes.
+ *
+ * Import deletes the database and rebuilds it, so the screen never acts on
+ * one tap: picking a file only reads and describes it, and a second,
+ * separate tap commits. The pattern is the one `ItemEditScreen` already uses
+ * for deleting an item — the destructive action in `accent-700` text, a
+ * `Cancel` in neutral beside it — rather than a new one invented here.
+ *
+ * jsdom has no file picker, so the file is handed to the input directly.
+ * Nothing else is stubbed: the import that runs is the real one, against the
+ * real fake-indexeddb database. */
+describe('StoreroomScreen — restoring a backup', () => {
+  /** Whatever is in the database right now, as a file the operator picked. */
+  async function backupFile(name = 'backup.json'): Promise<File> {
+    const bundle = await exportBundle()
+    return new File([JSON.stringify(bundle)], name, { type: 'application/json' })
+  }
+
+  it('offers the restore in accent text, because it destroys', async () => {
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    render(<StoreroomScreen />)
+    await screen.findByText('Coke')
+
+    const control = screen.getByText(/restore from a backup/i)
+    // tokens.md: a destructive action takes accent-700 as *text*, never an
+    // accent fill — the fill is the primary action's.
+    expect(control.className).toContain('text-accent-700')
+    expect(control.className).not.toContain('bg-accent')
+  })
+
+  it('describes the file and waits, rather than restoring on the tap that picks it', async () => {
+    const user = userEvent.setup()
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const file = await backupFile()
+
+    // Something else in the database by the time the file is picked.
+    await db.items.clear()
+    await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+
+    render(<StoreroomScreen />)
+    await screen.findByText('Fanta')
+    await user.upload(screen.getByLabelText(/backup file/i), file)
+
+    expect(await screen.findByText(/backup\.json/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /confirm restore/i })).toBeInTheDocument()
+    // Nothing written: the item in the file is still not here, and the item
+    // that is here has not been removed.
+    expect((await db.items.toArray()).map((i) => i.name)).toEqual(['Fanta'])
+  })
+
+  it('replaces the database once the restore is confirmed', async () => {
+    const user = userEvent.setup()
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const file = await backupFile()
+
+    await db.items.clear()
+    await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+
+    render(<StoreroomScreen />)
+    await screen.findByText('Fanta')
+    await user.upload(screen.getByLabelText(/backup file/i), file)
+    await user.click(await screen.findByRole('button', { name: /confirm restore/i }))
+
+    await waitFor(async () => {
+      expect((await db.items.toArray()).map((i) => i.name)).toEqual(['Coke'])
+    })
+    // And the screen is showing the restored data, not the data it was
+    // rendered with.
+    expect(await screen.findByText('Coke')).toBeInTheDocument()
+    expect(screen.queryByText('Fanta')).not.toBeInTheDocument()
+  })
+
+  it('leaves everything alone when the confirmation is cancelled', async () => {
+    const user = userEvent.setup()
+    await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const file = await backupFile()
+
+    await db.items.clear()
+    await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+
+    render(<StoreroomScreen />)
+    await screen.findByText('Fanta')
+    await user.upload(screen.getByLabelText(/backup file/i), file)
+    await user.click(await screen.findByRole('button', { name: /cancel/i }))
+
+    expect((await db.items.toArray()).map((i) => i.name)).toEqual(['Fanta'])
+    expect(screen.queryByRole('button', { name: /confirm restore/i })).not.toBeInTheDocument()
+    expect(screen.getByText(/restore from a backup/i)).toBeInTheDocument()
+  })
+
+  it('refuses a file that is not a backup, and says so without asking to confirm', async () => {
+    const user = userEvent.setup()
+    await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+
+    render(<StoreroomScreen />)
+    await screen.findByText('Fanta')
+    // A `.json` file rather than any old file: the input's `accept` keeps
+    // the picker to JSON, so the wrong file that actually reaches this code
+    // is one that is named like a backup and is not one.
+    await user.upload(
+      screen.getByLabelText(/backup file/i),
+      new File(['shopping list'], 'notes.json', { type: 'application/json' }),
+    )
+
+    expect(await screen.findByText(/not a JSON file/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /confirm restore/i })).not.toBeInTheDocument()
+    expect((await db.items.toArray()).map((i) => i.name)).toEqual(['Fanta'])
+  })
+
+  it('refuses a backup from a newer version of the app, naming both schemas', async () => {
+    const user = userEvent.setup()
+    await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+    const newer = JSON.stringify({
+      schemaVersion: db.verno + 1, exportedAt: Date.now(), tables: { items: [] },
+    })
+
+    render(<StoreroomScreen />)
+    await screen.findByText('Fanta')
+    await user.upload(
+      screen.getByLabelText(/backup file/i),
+      new File([newer], 'newer.json', { type: 'application/json' }),
+    )
+
+    expect(await screen.findByText(/newer version of the app/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /confirm restore/i })).not.toBeInTheDocument()
+    expect((await db.items.toArray()).map((i) => i.name)).toEqual(['Fanta'])
+  })
+
+  it('says what a backup from an older schema will do before it does it', async () => {
+    const user = userEvent.setup()
+    await saveItem({ name: 'Fanta', price: 3.5, basePar: 5, boxSize: 24 })
+    const older = JSON.stringify({
+      schemaVersion: 2, exportedAt: Date.now(), tables: { items: [], countLines: [] },
+    })
+
+    render(<StoreroomScreen />)
+    await screen.findByText('Fanta')
+    await user.upload(
+      screen.getByLabelText(/backup file/i),
+      new File([older], 'older.json', { type: 'application/json' }),
+    )
+
+    expect(await screen.findByRole('button', { name: /confirm restore/i })).toBeInTheDocument()
+    expect(screen.getByText(/older version of the app/i)).toBeInTheDocument()
+    expect(screen.getByText(/schema 2/i)).toBeInTheDocument()
   })
 })
