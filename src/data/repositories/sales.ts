@@ -6,6 +6,15 @@ import type { Id, Visit } from '../../domain/types'
 export interface PeriodReport {
   runId: Id
   runDate: string
+  /** The run date the period OPENED from — this machine's previous finalized
+   * visit, or null for its first ever (Phase 3 §5.3).
+   *
+   * `runDate` alone is only the closing end. The demand rate needs the
+   * period's length in calendar days, and a machine skipped in one run has a
+   * period spanning two, so the opening end cannot be inferred from the run
+   * calendar. `salesForRange` already pairs the visits; this returns the
+   * date it was computing and throwing away. */
+  previousRunDate: string | null
   machineId: Id
   visit: Visit
   /** The visit was edited after its period had already closed (design §3.2).
@@ -90,6 +99,7 @@ export async function salesForRange(
     return {
       runId: visit.runId,
       runDate: runById.get(visit.runId)?.date ?? '',
+      previousRunDate: previous ? runById.get(previous.runId)?.date ?? null : null,
       machineId: visit.machineId,
       visit,
       editedLate: wasEditedLate(visit, nextFor.get(visit.id)),

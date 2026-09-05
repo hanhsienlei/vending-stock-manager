@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { today, formatRunDate } from './date'
+import { today, formatRunDate, daysBetween } from './date'
 
 // fix-plan 2026-08-27, item 1 (critical): the run date must be the
 // operator's *local* calendar day, never UTC. This machine runs at
@@ -70,5 +70,38 @@ describe('formatRunDate', () => {
 
   it('handles the first of a month, where an off-by-one crosses the month', () => {
     expect(formatRunDate('2026-09-01')).toBe('Tue 1 Sep 2026')
+  })
+})
+
+// Phase 3 §5.3: the demand rate needs a period's *length*, and a period is
+// bounded by two run dates. Calendar days between them, never milliseconds
+// between `finalizedAt` stamps — a run date cannot move, and a late edit
+// re-stamps `finalizedAt` and would silently stretch a 3-day period to 10.
+describe('daysBetween', () => {
+  const originalTZ = process.env.TZ
+
+  afterEach(() => {
+    process.env.TZ = originalTZ
+  })
+
+  it('counts calendar days between two stored run dates', () => {
+    expect(daysBetween('2026-08-25', '2026-08-28')).toBe(3)   // Tue → Fri
+    expect(daysBetween('2026-08-28', '2026-09-01')).toBe(4)   // Fri → Tue
+    expect(daysBetween('2026-08-25', '2026-08-25')).toBe(0)
+  })
+
+  it('is not thrown off by a daylight-saving boundary', () => {
+    // Adelaide moves on the first Sunday in October.
+    process.env.TZ = 'Australia/Adelaide'
+    expect(daysBetween('2026-10-02', '2026-10-06')).toBe(4)
+  })
+
+  it('counts across a month and a year boundary', () => {
+    expect(daysBetween('2026-08-30', '2026-09-02')).toBe(3)
+    expect(daysBetween('2026-12-30', '2027-01-02')).toBe(3)
+  })
+
+  it('is negative when the dates are the wrong way round, not silently zero', () => {
+    expect(daysBetween('2026-08-28', '2026-08-25')).toBe(-3)
   })
 })

@@ -129,6 +129,51 @@ describe('salesForRange', () => {
     const [newer] = await salesForRange('2026-08-27', '2026-08-27')
     expect(newer.editedLate).toBe(false)
   })
+
+  // Phase 3 §5.3: the demand rate needs a period's length, and `runDate` is
+  // only the closing end of it. The opening end is already computed inside
+  // `salesForRange` and was thrown away.
+  it('reports the run date the period opened from', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await countMachine('2026-08-25', l7.id, coke.id, 0, 10)
+    await countMachine('2026-08-28', l7.id, coke.id, 4, 10)
+
+    const [report] = await salesForRange('2026-08-28', '2026-08-28')
+
+    expect(report.runDate).toBe('2026-08-28')
+    expect(report.previousRunDate).toBe('2026-08-25')
+  })
+
+  it('is null for a machine\'s first ever visit', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await countMachine('2026-08-25', l7.id, coke.id, 0, 10)
+
+    const [report] = await salesForRange('2026-08-25', '2026-08-25')
+
+    expect(report.previousRunDate).toBeNull()
+  })
+
+  // A skipped machine's period spans two runs, so its opening date is not the
+  // previous run's date — it is the previous date THIS machine was counted.
+  it('opens a skipped machine\'s period from its own last visit, not the last run', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    const l8 = await saveMachine({ label: 'Stairwell', level: 8 })
+    await countMachine('2026-08-21', l7.id, coke.id, 0, 10)
+    await countMachine('2026-08-21', l8.id, coke.id, 0, 10)
+    await countMachine('2026-08-25', l7.id, coke.id, 4, 10)   // L8 skipped
+    await countMachine('2026-08-28', l7.id, coke.id, 4, 10)
+    await countMachine('2026-08-28', l8.id, coke.id, 4, 10)
+
+    const reports = await salesForRange('2026-08-28', '2026-08-28')
+    const forL7 = reports.find((r) => r.machineId === l7.id)
+    const forL8 = reports.find((r) => r.machineId === l8.id)
+
+    expect(forL7?.previousRunDate).toBe('2026-08-25')
+    expect(forL8?.previousRunDate).toBe('2026-08-21')
+  })
 })
 
 describe('salesForRun', () => {
