@@ -25,6 +25,14 @@ export interface SalesLine {
   sold: number | null
   censoredReason?: CensoredReason
   ranDry: boolean
+  /** The residual went negative and was clamped to zero (Phase 3 §3.4).
+   *
+   * A negative residual is not a negative sale — it means stock arrived
+   * without being recorded, or a movement was counted twice. So the period's
+   * numbers did not reconcile and its zero is not an honest zero. Derived,
+   * never stored: `SalesLine` is computed at read time. Always `false` on a
+   * censored line, which has no residual to clamp. */
+  clamped: boolean
   price: number
   revenue: number | null
 }
@@ -65,6 +73,7 @@ export function salesForPeriod(
         sold: null,
         censoredReason: 'visit-not-finalized' as const,
         ranDry: l.before === 0,
+        clamped: false,
         price: l.price,
         revenue: null,
       }))
@@ -124,6 +133,7 @@ export function salesForPeriod(
         sold: opening > 0 ? null : 0,
         censoredReason: opening > 0 ? 'left-slot-with-stock' : undefined,
         ranDry: false,
+        clamped: false,
         price: 0,
         revenue: opening > 0 ? null : 0,
       })
@@ -135,8 +145,11 @@ export function salesForPeriod(
       previous === null ? 'no-previous-visit' : undefined
 
     // Clamped at zero: a negative residual means stock arrived without being
-    // recorded, which is not a negative sale.
-    const sold = censored ? null : Math.max(0, opening - closing + movements)
+    // recorded, which is not a negative sale. The unclamped figure is kept
+    // only long enough to say whether the clamp fired — Phase 3's rate skips
+    // a period whose numbers did not reconcile (§3.4).
+    const raw = opening - closing + movements
+    const sold = censored ? null : Math.max(0, raw)
 
     results.push({
       slotNumber: closingLine.slotNumber,
@@ -147,6 +160,7 @@ export function salesForPeriod(
       sold,
       censoredReason: censored,
       ranDry: closing === 0,
+      clamped: !censored && raw < 0,
       price: closingLine.price,
       revenue: sold === null ? null : sold * closingLine.price,
     })

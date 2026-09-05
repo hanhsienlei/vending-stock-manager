@@ -241,3 +241,83 @@ describe('salesForPeriod', () => {
     expect(result.movements).toBe(0)
   })
 })
+
+// Phase 3 §3.4: a clamped residual is the fingerprint of the redistribution
+// double-count `known-gaps.md` records. Feeding the forecast a clamped zero
+// teaches the slot to ask for nothing, so the rate must be able to see the
+// clamp and skip the period.
+describe('salesForPeriod — a clamped residual', () => {
+  it('reports a clamped residual as clamped, not as an honest zero sold', () => {
+    // Opening 5, closing 9: stock arrived without being recorded.
+    const [result] = salesForPeriod(
+      { visit: visit('v1', 100), lines: [line('v1', 58, 'coke', 3, 5)] },
+      { visit: visit('v2', 200), lines: [line('v2', 58, 'coke', 9, 9)] },
+      [],
+    )
+
+    expect(result.sold).toBe(0)
+    expect(result.clamped).toBe(true)
+  })
+
+  it('does not mark an honest zero as clamped', () => {
+    const [result] = salesForPeriod(
+      { visit: visit('v1', 100), lines: [line('v1', 58, 'coke', 3, 5)] },
+      { visit: visit('v2', 200), lines: [line('v2', 58, 'coke', 5, 5)] },
+      [],
+    )
+
+    expect(result.sold).toBe(0)
+    expect(result.clamped).toBe(false)
+  })
+
+  it('clamps on the residual, not on the levels — a delivery adjustment can push it negative', () => {
+    // Opening 5, closing 3, but +4 transferred in: 5 − 3 + 4 = 6 … positive.
+    // Reverse it: −4 out of the slot gives 5 − 3 − 4 = −2, which clamps.
+    const [result] = salesForPeriod(
+      { visit: visit('v1', 100), lines: [line('v1', 58, 'coke', 3, 5)] },
+      { visit: visit('v2', 200), lines: [line('v2', 58, 'coke', 3, 3)] },
+      [movement('coke', 58, -4, 'transfer', 150)],
+    )
+
+    expect(result.sold).toBe(0)
+    expect(result.clamped).toBe(true)
+  })
+
+  it('leaves a censored line unclamped — there is no residual to clamp', () => {
+    const [result] = salesForPeriod(
+      null,
+      { visit: visit('v2', 200), lines: [line('v2', 58, 'coke', 9, 9)] },
+      [],
+    )
+
+    expect(result.sold).toBeNull()
+    expect(result.censoredReason).toBe('no-previous-visit')
+    expect(result.clamped).toBe(false)
+  })
+
+  it('leaves a draft visit\'s lines unclamped', () => {
+    const draftCurrent: Visit = {
+      id: 'v2', runId: 'r1', machineId: 'L7', status: 'draft', updatedAt: 200,
+    }
+
+    const [result] = salesForPeriod(
+      { visit: visit('v1', 100), lines: [line('v1', 58, 'coke', 3, 5)] },
+      { visit: draftCurrent, lines: [line('v2', 58, 'coke', 9, 9)] },
+      [],
+    )
+
+    expect(result.clamped).toBe(false)
+  })
+
+  it('leaves a line for an item that left the slot unclamped', () => {
+    const lines = salesForPeriod(
+      { visit: visit('v1', 100), lines: [line('v1', 58, 'coke', 3, 5)] },
+      { visit: visit('v2', 200), lines: [line('v2', 58, 'fanta', 2, 2)] },
+      [],
+    )
+
+    const coke = lines.find((l) => l.itemId === 'coke')
+    expect(coke?.censoredReason).toBe('left-slot-with-stock')
+    expect(coke?.clamped).toBe(false)
+  })
+})
