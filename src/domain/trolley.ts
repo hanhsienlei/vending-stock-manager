@@ -10,8 +10,9 @@ import type { CountLine, Id } from './types'
  * and following it literally gives a wrong figure (design §16.5): since the
  * after-count became editable (spec §3.2 as amended, 2026-08-27) a refill is
  * recorded by typing a number with no Fill tap at all, and `Fill tray to par`
- * sets a whole tray at once. So **neither `filled` nor `touched` is read
- * here** — `after − before` covers every path stock takes off the trolley,
+ * sets a whole tray at once. So **no operator-attention flag is read here** —
+ * not `filled`, and not the one `purity.test.ts` forbids outright —
+ * because `after − before` covers every path stock takes off the trolley,
  * including ones that do not exist yet.
  *
  * **The sum is signed on purpose.** A positive `after − before` is stock that

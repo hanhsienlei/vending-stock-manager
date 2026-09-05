@@ -2,8 +2,9 @@ import type { Id } from './types'
 
 /** Everything the projection needs about one slot, and nothing else.
  *
- * It reads levels, dates and a rate. It does **not** read `CountLine.touched`
- * — see `purity.test.ts` for why that is a rule and not a preference. */
+ * It reads levels, dates and a rate — all of which are sound. The one field
+ * of `CountLine` it may not read is named and explained in `purity.test.ts`,
+ * which fails the build on it; that is a rule, not a preference. */
 export interface SlotNeedInput {
   machineId: Id
   slotNumber: number
