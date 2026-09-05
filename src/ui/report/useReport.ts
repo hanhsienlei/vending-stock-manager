@@ -6,10 +6,11 @@ import { listRuns } from '../../data/repositories/runs'
 import { salesForRange, type PeriodReport } from '../../data/repositories/sales'
 import { storeroomAdjustments } from '../../data/repositories/adjustments'
 import { listStoreroomBalances } from '../../data/repositories/storeroom'
+import { listTrolleyLines } from '../../data/repositories/trolley'
 import { historyForMachine } from '../../data/repositories/visits'
 import { lastRecordedLevels } from '../../domain/levels'
 import { effectivePlacement } from '../../domain/placement'
-import { ledgerBalance } from '../../domain/storeroom'
+import { ledgerBalance, storeroomMovements } from '../../domain/storeroom'
 import { buildStockMatrix, type MatrixRow } from '../../domain/stockMatrix'
 import type { Id, Item, Machine } from '../../domain/types'
 
@@ -41,20 +42,32 @@ export function useReport(from: string, to: string) {
   })
 
   const load = useCallback(async () => {
-    const [reports, items, machines, balances, movements, placements] = await Promise.all([
-      from && to ? salesForRange(from, to) : Promise.resolve([]),
-      listItems(),
-      listMachines(),
-      listStoreroomBalances(),
-      storeroomAdjustments(),
-      listPlacements(),
-    ])
+    const [reports, items, machines, balances, movements, placements, trolleyLines] =
+      await Promise.all([
+        from && to ? salesForRange(from, to) : Promise.resolve([]),
+        listItems(),
+        listMachines(),
+        listStoreroomBalances(),
+        storeroomAdjustments(),
+        listPlacements(),
+        listTrolleyLines(),
+      ])
 
     const byItem = new Map<Id, typeof movements>()
     for (const m of movements) {
       const list = byItem.get(m.itemId) ?? []
       list.push(m)
       byItem.set(m.itemId, list)
+    }
+
+    // The trolley is a storeroom movement source from Phase 3 on (design
+    // §3.5, §11). It is read here as well as on the storeroom screen because
+    // the two must not print different figures for the same shelf.
+    const trolleyByItem = new Map<Id, typeof trolleyLines>()
+    for (const line of trolleyLines) {
+      const list = trolleyByItem.get(line.itemId) ?? []
+      list.push(line)
+      trolleyByItem.set(line.itemId, list)
     }
 
     // Latest levels per machine, read fresh from each machine's own history
@@ -71,7 +84,10 @@ export function useReport(from: string, to: string) {
 
     const storeroomOnHand = new Map(items.map((i) => [
       i.id,
-      ledgerBalance(balances.find((b) => b.itemId === i.id), byItem.get(i.id) ?? []),
+      ledgerBalance(
+        balances.find((b) => b.itemId === i.id),
+        storeroomMovements(byItem.get(i.id) ?? [], trolleyByItem.get(i.id) ?? []),
+      ),
     ]))
 
     // Which slots each item occupies, anywhere in the estate — the base
