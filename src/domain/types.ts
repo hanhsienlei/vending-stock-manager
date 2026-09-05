@@ -127,3 +127,34 @@ export interface StoreroomBalance {
   updatedAt: number
   verifiedAt: number
 }
+
+/** What the trolley carried on one run, per item (spec §4.1, §6.2;
+ * Phase 3 design §5.1). One row per `(runId, itemId)`, upserted — re-typing
+ * the taken figure before leaving G corrects the row rather than appending.
+ *
+ * `needed` is a SNAPSHOT and is the one figure in this codebase stored rather
+ * than derived. A past run's pick list cannot be recomputed: it depended on
+ * the levels and rates as they stood before that run counted anything, and
+ * the run destroyed them. This records a decision, not a cache of a
+ * calculation (design §3.9).
+ *
+ * `taken` and `returned` are always in UNITS. Boxes + loose is an input
+ * convention (spec §5.4) that `packs.ts` converts; nothing stores boxes.
+ *
+ * `noneLeftInG` says the shelf was empty after taking `taken`. It is recorded
+ * here so the run explains why the balance moved; the balance itself moves
+ * through an ordinary manual count of zero (design §3.6). */
+export interface TrolleyLine {
+  id: Id
+  runId: Id
+  itemId: Id
+  needed: number
+  taken: number
+  noneLeftInG: boolean
+  /** When the load was recorded — the ledger's timestamp for `−taken`. */
+  loadedAt: number
+  /** Units brought back down; undefined until the run closes. */
+  returned?: number
+  returnedAt?: number
+  updatedAt: number
+}

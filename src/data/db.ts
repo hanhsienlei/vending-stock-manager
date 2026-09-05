@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type {
-  Adjustment, CountLine, Item, ItemPlacement, Machine, Run, SlotConfig, StoreroomBalance, Visit,
+  Adjustment, CountLine, Item, ItemPlacement, Machine, Run, SlotConfig, StoreroomBalance,
+  TrolleyLine, Visit,
 } from '../domain/types'
 
 export const db = new Dexie('vending-stock-manager') as Dexie & {
@@ -13,6 +14,7 @@ export const db = new Dexie('vending-stock-manager') as Dexie & {
   countLines: EntityTable<CountLine, 'id'>
   storeroomBalances: EntityTable<StoreroomBalance, 'id'>
   adjustments: EntityTable<Adjustment, 'id'>
+  trolleyLines: EntityTable<TrolleyLine, 'id'>
 }
 
 db.version(1).stores({
@@ -93,4 +95,36 @@ db.version(3).stores({
     // the units still count.
     line.price = priceById.get(line.itemId) ?? 0
   })
+})
+
+// v4 — additive, one change: the `trolleyLines` table (design §5.1, §13).
+//
+// There is NO upgrade function, and that is the whole character of this
+// migration: v2 rewrote every count line to derive `filled`, v3 rewrote every
+// count line to backfill `price`. v4 reads no existing row and writes none —
+// before v4 there were no trolley loads to record, so there is nothing to
+// backfill and nothing to derive. Every other table is redeclared verbatim
+// because Dexie requires the full index list per version, not a diff.
+//
+// Rollback (design §13.1): the DATA stays safe — nothing existing is altered
+// or reinterpreted, so a v4 database holds exactly the rows a v3 build wrote
+// plus one table it does not know about. The BUNDLE does not. IndexedDB
+// refuses to open a database at a version above the one requested, so a
+// reverted v3 build cannot open a v4 database at all (VersionError) — the
+// history is unreachable, not lost, until a v4-aware bundle is loaded again.
+// This was equally true of v2 and v3 and has never been written down. The
+// export in src/backup/ is the mitigation: export once before opening the new
+// build and the one-way door becomes a re-import.
+db.version(4).stores({
+  items: 'id, name',
+  machines: 'id, level',
+  placements: 'id, itemId',
+  slotConfigs: 'id, [machineId+slotNumber]',
+  runs: 'id, date',
+  visits: 'id, runId, [runId+machineId], machineId',
+  countLines: 'id, visitId, [visitId+slotNumber]',
+  storeroomBalances: 'id, itemId',
+  adjustments:
+    'id, itemId, occurredAt, machineId, transferId, [machineId+slotNumber]',
+  trolleyLines: 'id, runId, [runId+itemId], itemId',
 })
