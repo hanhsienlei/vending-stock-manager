@@ -5,7 +5,8 @@ import { ADJUSTMENT_REASONS } from '../../domain/adjustments'
 import { fromBoxesAndLoose, toBoxesAndLoose } from '../../domain/packs'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { ScreenLayout } from '../components/ScreenLayout'
-import { downloadBundle } from '../../backup/export'
+import { downloadBundle, type Bundle } from '../../backup/export'
+import { importBundle, planImport, readBundleFile, type ImportPlan } from '../../backup/import'
 import { today } from '../../domain/date'
 import type { Id, Item } from '../../domain/types'
 
@@ -58,6 +59,11 @@ function formatShortDate(date: string): string {
  * checked against. The estimate column gives up the width because it only
  * ever holds a figure; 44px still takes four digits at 18px. */
 const GRID = 'grid grid-cols-[1fr_44px_112px] items-center gap-2 px-4'
+
+/** A footer action, flush left at `15px 16px` (tokens.md). Shared by the
+ * export and the restore below so the two read as one block of desk work
+ * rather than two controls that happen to sit together. */
+const ACTION = 'px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em]'
 
 // Design §7.1: the adjustment sheet is reached from the storeroom screen too,
 // but never with `miscount` on offer here. The storeroom's own correction
@@ -216,7 +222,7 @@ export function StoreroomScreen() {
         <button
           type="button"
           onClick={() => { void downloadBundle().catch(() => {}) }}
-          className="w-full bg-ground px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] text-neutral-700"
+          className={`w-full bg-ground ${ACTION} text-neutral-700`}
         >
           Export a backup · {formatShortDate(today())}
         </button>
@@ -226,6 +232,8 @@ export function StoreroomScreen() {
           upgraded.
         </p>
       </div>
+
+      <RestoreFromBackup onFinished={() => { void refresh() }} />
 
       {/* A floating sheet, not an inline one — the same fix the machine map
           needed (94cf425). This list is the whole sixty-item catalogue, so a
@@ -260,6 +268,138 @@ export function StoreroomScreen() {
       )}
     </ScreenLayout>
   )
+}
+
+type RestoreState =
+  | { kind: 'idle' }
+  | { kind: 'confirming'; fileName: string; bundle: Bundle; plan: ImportPlan }
+  | { kind: 'restoring' }
+  | { kind: 'restored'; rows: number }
+  | { kind: 'refused'; message: string }
+
+/** The other half of the export above: putting a backup file back.
+ *
+ * Two taps, never one. Picking a file only reads and describes it — the
+ * import itself is behind a second, separately labelled `Confirm restore`,
+ * the same shape `ItemEditScreen` uses to delete an item, because the tap
+ * that commits deletes the database. `accent-700` as text and never a fill
+ * (tokens.md): the destructive action is marked, not made attractive.
+ *
+ * The picked file is validated *before* the confirmation is offered rather
+ * than after it is accepted, so a file that is not a backup, or one from a
+ * newer build, is refused while the operator's data is still there — a
+ * refusal they can act on, not a report of what has already happened.
+ *
+ * This is also the one place on this screen with an error surface
+ * (known-gaps.md: there is none anywhere else, and the writes above swallow
+ * their rejections). It has to be: every other action here is one cell of
+ * one row, and this one is the whole database. */
+function RestoreFromBackup({ onFinished }: { onFinished: () => void }) {
+  const [state, setState] = useState<RestoreState>({ kind: 'idle' })
+
+  async function pick(input: HTMLInputElement) {
+    const file = input.files?.[0]
+    // Cleared so that picking the same file again still fires `change` —
+    // after a refusal, re-picking the file just fixed is the obvious move.
+    input.value = ''
+    if (!file) return
+    try {
+      const bundle = await readBundleFile(file)
+      setState({ kind: 'confirming', fileName: file.name, bundle, plan: planImport(bundle) })
+    } catch (error) {
+      setState({ kind: 'refused', message: reasonFor(error) })
+    }
+  }
+
+  async function restore(bundle: Bundle, rows: number) {
+    setState({ kind: 'restoring' })
+    try {
+      await importBundle(bundle)
+      setState({ kind: 'restored', rows })
+    } catch (error) {
+      setState({ kind: 'refused', message: reasonFor(error) })
+    }
+    // Either way. A failed import leaves the database empty rather than
+    // half-written, and the screen should show that rather than the rows it
+    // was rendered with before the attempt.
+    onFinished()
+  }
+
+  return (
+    <div className="border-t border-rule-light">
+      {state.kind === 'confirming' && (
+        <>
+          <p className="px-4 pt-3 text-[11px] font-medium text-neutral-700">
+            <strong>{state.fileName}</strong>
+            {' — '}{state.plan.rows} rows, saved {formatShortDate(state.plan.takenOn)}.
+            Restoring deletes everything the app holds now and puts this file in
+            its place. There is no undo.
+          </p>
+          {state.plan.fromOlderSchema && (
+            <p className="px-4 pt-2 text-[11px] font-medium text-neutral-700">
+              It was written by an older version of the app (schema{' '}
+              {state.plan.schemaVersion}; this one reads schema{' '}
+              {state.plan.currentSchemaVersion}), so it is restored and then
+              brought up to date, exactly as your own data was.
+            </p>
+          )}
+          <div className="flex">
+            <button
+              type="button"
+              onClick={() => { void restore(state.bundle, state.plan.rows) }}
+              className={`bg-ground ${ACTION} text-accent-700`}
+            >
+              Confirm restore
+            </button>
+            <button
+              type="button"
+              onClick={() => setState({ kind: 'idle' })}
+              className={`bg-ground ${ACTION} text-neutral-700`}
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
+
+      {state.kind === 'restoring' && (
+        <div className={`bg-ground ${ACTION} text-neutral-700`}>Restoring…</div>
+      )}
+
+      {(state.kind === 'idle' || state.kind === 'restored' || state.kind === 'refused') && (
+        // A label rather than a button driving a hidden input: the file
+        // picker is the browser's, and a label opens it without a ref, a
+        // synthetic click, or a control that lies about what it is.
+        <label className={`block cursor-pointer bg-ground ${ACTION} text-accent-700`}>
+          Restore from a backup
+          <input
+            type="file"
+            accept="application/json,.json"
+            aria-label="Backup file"
+            className="sr-only"
+            onChange={(event) => { void pick(event.currentTarget) }}
+          />
+        </label>
+      )}
+
+      {state.kind === 'refused' ? (
+        <p className="px-4 pb-3 text-[11px] font-semibold text-accent-700">
+          {state.message}
+        </p>
+      ) : (
+        <p className="px-4 pb-3 text-[11px] font-medium text-neutral-700">
+          {state.kind === 'restored'
+            ? `Restored ${state.rows} rows. Everything that was here before is gone.`
+            : 'Replaces everything in the app with an exported file. Use it after '
+              + 'reinstalling an older version, or on a new phone.'}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function reasonFor(error: unknown): string {
+  return error instanceof Error ? error.message : 'That backup could not be restored.'
 }
 
 /** The ledger's quantity input. One plain field at `boxSize: 1`, boxes +
