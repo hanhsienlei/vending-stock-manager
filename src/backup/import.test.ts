@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import Dexie from 'dexie'
-import { db } from '../data/db'
+import { db, SCHEMA_VERSION } from '../data/db'
 import { exportBundle, type Bundle } from './export'
 import {
   ImportError, importBundle, planImport, readBundle, readBundleFile,
@@ -200,7 +200,7 @@ describe('importBundle', () => {
     // Still openable and still this build's schema — an empty database the
     // operator can retry into, not a broken one.
     expect(db.isOpen()).toBe(true)
-    expect(db.verno).toBe(3)
+    expect(db.verno).toBe(SCHEMA_VERSION)
   })
 
   it('restores a bundle from an older schema and runs the upgrades over it', async () => {
@@ -231,7 +231,7 @@ describe('importBundle', () => {
 
     await importBundle(bundle)
 
-    expect(db.verno).toBe(3)
+    expect(db.verno).toBe(SCHEMA_VERSION)
     expect((await db.countLines.toArray())[0].price).toBe(4.5)
     expect(await db.adjustments.count()).toBe(0)
     expect(await db.items.count()).toBe(1)
@@ -245,10 +245,11 @@ describe('importBundle', () => {
     await importBundle(backup)
 
     // Recreated at *this* build's version, from nothing — not opened,
-    // cleared and refilled. Native 30 is Dexie's `version(3)`; anything
-    // higher would mean the newer database was still underneath.
+    // cleared and refilled. Dexie's native version is the declared one times
+    // ten, so this must equal SCHEMA_VERSION * 10 exactly; anything higher
+    // would mean the newer database was still underneath.
     expect(db.isOpen()).toBe(true)
-    expect(db.backendDB().version).toBe(30)
+    expect(db.backendDB().version).toBe(SCHEMA_VERSION * 10)
     expect(db.backendDB().objectStoreNames.contains('somethingNew')).toBe(false)
     expect((await exportBundle()).tables).toEqual(backup.tables)
   })
@@ -269,7 +270,7 @@ describe('importBundle', () => {
 
     await db.open()
 
-    expect(db.backendDB().version).toBeGreaterThan(30)
+    expect(db.backendDB().version).toBeGreaterThan(SCHEMA_VERSION * 10)
     expect(db.backendDB().objectStoreNames.contains('somethingNew')).toBe(true)
   })
 })

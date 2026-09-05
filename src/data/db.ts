@@ -108,14 +108,33 @@ db.version(3).stores({
 //
 // Rollback (design §13.1): the DATA stays safe — nothing existing is altered
 // or reinterpreted, so a v4 database holds exactly the rows a v3 build wrote
-// plus one table it does not know about. The BUNDLE does not. IndexedDB
-// refuses to open a database at a version above the one requested, so a
-// reverted v3 build cannot open a v4 database at all (VersionError) — the
-// history is unreachable, not lost, until a v4-aware bundle is loaded again.
-// This was equally true of v2 and v3 and has never been written down. The
-// export in src/backup/ is the mitigation: export once before opening the new
-// build and the one-way door becomes a re-import.
-db.version(4).stores({
+// plus one table it does not know about. The BUNDLE is the problem, and not
+// in the way this comment first claimed.
+//
+// Raw IndexedDB does refuse to open a database stored above the requested
+// version, but Dexie does not surface that: it catches the VersionError,
+// retries with no version at all, finds the installed schema is not the one
+// declared, and patches its missing tables and indexes into the newer
+// database in place. So a reverted build does not fail loudly — it comes up
+// looking healthy on top of the newer build's stores. That is worse than a
+// refusal, because nothing announces it. Proven, not assumed:
+// `src/backup/import.test.ts`, "is needed because reopening the newer
+// database silently patches it instead".
+//
+// Two consequences. The export in src/backup/ is the mitigation, and it has
+// to be taken BEFORE the newer build is opened. And import DELETES the
+// database rather than clearing its tables — clearing would run through that
+// patched hybrid connection and restore into it, leaving the newer stores
+// underneath. This was equally true of v2 and v3 and went unwritten both
+// times.
+
+/** The schema version this build declares. Exported so tests assert against
+ * it rather than a literal: three assertions in `src/backup/import.test.ts`
+ * hard-coded `3` and broke the moment v4 landed, on a branch where both
+ * halves were green alone. */
+export const SCHEMA_VERSION = 4
+
+db.version(SCHEMA_VERSION).stores({
   items: 'id, name',
   machines: 'id, level',
   placements: 'id, itemId',
