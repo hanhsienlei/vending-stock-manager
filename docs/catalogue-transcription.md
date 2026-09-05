@@ -90,7 +90,7 @@ Lines marked **?** need your input.
 |---|---|---|---|
 | 60 | Hahn Super Dry | 375ml | $10.00 |
 | 61 | Spiked Iced Tea Peach RTD | 375ml | $12.00 |
-| 62 | **MIXED** — Sour Puss Grape RTD + Ginger Beer (new) | 375ml | $12.00 |
+| 62 | **MIXED** — Sour Puss Grape RTD + Matso's Ginger Beer | 375ml | $12.00 |
 | 63 | **MIXED** — Vodka Cruiser Zero Sugar Mixed Berry + Vodka Cruiser Lime + Tequila | 275ml | $12.00 |
 | 64 | Smirnoff Lime Seltzer | 375ml | $12.00 |
 | 65 | Gordon's London Dry Gin & Tonic 4.5% | 375ml | $12.00 |
@@ -122,8 +122,11 @@ their base placement; per-machine differences get recorded as you find them.
    most weeks — the fix would be to hide zero-count sub-rows.
 
 2. **Names confirmed or accepted as placeholders.** `Kirks Ginger Beer` at 53 is
-   confirmed from `vending-machine-picture-8`. The rest — Mother, Mother No
-   Sugar, Prancing Pony XPA, Fanta, Ginger Beer (new), Vodka Cruiser Lime,
+   confirmed from `vending-machine-picture-8`, and slot 62's `Ginger Beer
+   (new)` was identified from the product page on 2026-09-05 as **Matso's
+   Ginger Beer** — the same source gives its can as 330mL, against the 375ml
+   this sheet records; the sheet's figure stands here, per #3. The rest —
+   Mother, Mother No Sugar, Prancing Pony XPA, Fanta, Vodka Cruiser Lime,
    Tequila — are seeded under the names used here and **corrected in the app**
    during the next run. Every item name is editable on the item screen.
 

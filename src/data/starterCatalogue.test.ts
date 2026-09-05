@@ -25,7 +25,7 @@ describe('starter catalogue data', () => {
     expect(bySlot.get(51)).toEqual(['Coopers XPA', 'Prancing Pony XPA'])
     expect(bySlot.get(52)).toEqual(['Sunkist', 'Fanta'])
     expect(bySlot.get(53)).toEqual(['Pepsi', 'Kirks Ginger Beer'])
-    expect(bySlot.get(62)).toEqual(['Sour Puss Grape RTD', 'Ginger Beer (new)'])
+    expect(bySlot.get(62)).toEqual(['Sour Puss Grape RTD', "Matso's Ginger Beer"])
     expect(bySlot.get(63)).toEqual([
       'Vodka Cruiser Zero Sugar Mixed Berry',
       'Vodka Cruiser Lime',
@@ -141,7 +141,7 @@ describe('every slot/item pair against the transcription, table-driven', () => {
     { slot: 60, name: 'Hahn Super Dry', size: '375ml', price: 10 },
     { slot: 61, name: 'Spiked Iced Tea Peach RTD', size: '375ml', price: 12 },
     { slot: 62, name: 'Sour Puss Grape RTD', size: '375ml', price: 12 },
-    { slot: 62, name: 'Ginger Beer (new)', size: '375ml', price: 12 },
+    { slot: 62, name: "Matso's Ginger Beer", size: '375ml', price: 12 },
     { slot: 63, name: 'Vodka Cruiser Zero Sugar Mixed Berry', size: '275ml', price: 12 },
     { slot: 63, name: 'Vodka Cruiser Lime', size: '275ml', price: 12 },
     { slot: 63, name: 'Tequila', size: '275ml', price: 12 },

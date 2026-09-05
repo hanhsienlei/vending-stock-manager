@@ -125,9 +125,9 @@ export const STARTER_ITEMS: StarterCatalogueItem[] = [
   // Tray 60 — alcohol
   { name: 'Hahn Super Dry', price: 10, slots: [60], size: '375ml' },
   { name: 'Spiked Iced Tea Peach RTD', price: 12, slots: [61], size: '375ml' },
-  // 62 — MIXED: Sour Puss Grape RTD + Ginger Beer (new)
+  // 62 — MIXED: Sour Puss Grape RTD + Matso's Ginger Beer
   { name: 'Sour Puss Grape RTD', price: 12, slots: [62], size: '375ml' },
-  { name: 'Ginger Beer (new)', price: 12, slots: [62], size: '375ml' },
+  { name: "Matso's Ginger Beer", price: 12, slots: [62], size: '375ml' },
   // 63 — MIXED, three items: Vodka Cruiser Zero Sugar Mixed Berry +
   // Vodka Cruiser Lime + Tequila
   { name: 'Vodka Cruiser Zero Sugar Mixed Berry', price: 12, slots: [63], size: '275ml' },

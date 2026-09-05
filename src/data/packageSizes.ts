@@ -34,7 +34,7 @@
  *   the catalogue's `Fuze Peach Lemon Tea`, and `Smirnoff Ice Red` against
  *   `Smirnoff Lime Seltzer`. Same brand, different line.
  * - **Not on the sheets at all** — `Prancing Pony XPA`, `Kirks Ginger Beer`,
- *   `Ginger Beer (new)`, `Vodka Cruiser Lime`, `Tequila`.
+ *   `Matso's Ginger Beer`, `Vodka Cruiser Lime`, `Tequila`.
  *
  * All fourteen keep `boxSize: 1` and show blank in the report's Box column,
  * which is the honest reading: the size is unknown, not one. */

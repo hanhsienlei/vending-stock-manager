@@ -25,9 +25,11 @@ An obviously-wrong placeholder that gets corrected beats a plausible invention
 that never gets checked.
 
 **Product names go in as transcribed, placeholders included.** Mother, Prancing
-Pony XPA, Fanta, Ginger Beer (new), Vodka Cruiser Lime and Tequila are unverified.
-The operator renames them at the machine on the next run; every item name is
-editable for exactly that reason.
+Pony XPA, Fanta, Vodka Cruiser Lime and Tequila are unverified. The operator
+renames them at the machine on the next run; every item name is editable for
+exactly that reason. `Ginger Beer (new)` was a sixth until 2026-09-05, when the
+operator identified it from the product page as `Matso's Ginger Beer`; the seed
+now carries that name.
 
 **Sizes are recorded as written, including the wrong ones.** Slots 44 and 45 read
 `600ml` and `500ml`, which is wrong for Red Bull and is a colleague's error on the
