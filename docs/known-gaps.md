@@ -27,9 +27,14 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   through. So during a **Coke → Coke + Fanta → Fanta** changeover, "Coke" sorts
   before "Fanta" and Fill loads the item being drained. The workaround is to
   avoid Fill on that slot and step the numbers by hand until the outgoing line
-  is gone; no data is lost either way. Left unfixed by operator decision —
-  changeovers are rare enough to work around. Found while designing Phase 2,
-  where mixed slots matter because the sales residual pairs on `(slot, item)`.
+  is gone; no data is lost either way. Found while designing Phase 2, where
+  mixed slots matter because the sales residual pairs on `(slot, item)`.
+  **Fixed 2026-09-07 by `MAKE FIRST`** on the slot sheet (Phase 3 task 19,
+  D10): the preference order is now the operator's to set, so Fill loads the
+  incoming line as soon as they say so. It stopped being optional when the
+  order forecast started attributing a slot's whole demand to `accepts[0]` —
+  the same root cause was then costing two things, and reordering is the only
+  correction for either.
 - **Editing an item's `basePar` silently moves the derived capacity** of every
   unpinned slot where that item sorts first. Slot capacity is pinned when
   placements change, but not on a par-only save.
@@ -53,7 +58,22 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   `listPlacements()` full-scans on every map resolution. Any future scope-filtered
   query or sync partition will want a denormalised column plus a data-rewriting
   migration. The likeliest painful migration in the current schema.
-- **No ESLint configuration.**
+- **~~No ESLint configuration.~~** Added 2026-09-07 (`eslint.config.js`, flat
+  config, run in CI). It lands clean at 0 errors but **9 warnings**, and those
+  warnings are the real entry now. Four are
+  `react-hooks/set-state-in-effect` against the load-on-mount pattern
+  (`ItemListScreen`, `MachineListScreen`, `useReport`, `useMachineMap`): each
+  is `useEffect(() => { void reload() })` where `reload` is async, so its
+  `setState` calls run after an `await` and not synchronously in the effect
+  body. The rule cannot see through that boundary, so no current report is a
+  live defect. The pattern is still the one React is steering away from, and
+  the migration (an external store, or `useSyncExternalStore`) touches every
+  screen's loading path, so it is deliberately not being done in the same pass
+  that introduced the linter. The remaining warnings are
+  `react-refresh/only-export-components` on three files that export a helper
+  alongside a component, which costs a full reload in dev and nothing in
+  production, and one `exhaustive-deps` in `useCounting` where the omitted
+  dependencies are deliberate.
 - **`Item.remark` and `Item.size` are additions beyond spec §4.1**, which
   lists an `Item` as name, price, photo, box size, base par — no remark, no
   size. Both were added later (catalogue seed work) the same way: optional,
@@ -83,8 +103,16 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   real transfer that happened between visits. The fix is a design decision,
   not an edit: either the sheet withholds `transfer` at a slot during a run
   it is counting, or the residual learns to recognise a transfer whose units
-  are already inside two after-counts. Neither is obviously right, so the
-  behaviour is recorded rather than picked.
+  are already inside two after-counts.
+  **Picked 2026-09-07 (Phase 3 task 18, D9): the sheet withholds it.**
+  `transfer` is no longer offered at a machine slot whose visit is `draft` in
+  today's run, which is exactly when doing both would double-count. A transfer
+  between visits, after Finish machine, or from the map screen still works —
+  those are real movements the counts cannot carry on their own. The residual
+  was left alone deliberately: teaching it to recognise units already inside
+  two after-counts means inferring intent from figures, and withholding the
+  trap is cheaper and legible. **Rows written before this date can still carry
+  the double count**, and nothing can separate them after the fact.
 - **`setAfter` does not add its key to `touched`.** By the field's literal
   definition — "true once the operator alters `before`" (`domain/types.ts`) —
   that is correct: typing an after-count says nothing about the before-count.
@@ -96,6 +124,12 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   alone" from "never looked at". Left as it is because changing it changes
   what `touched` means, which is the resolved design question at the bottom
   of this file and not something to settle in a fix round.
+  **Finalised 2026-09-07.** Phase 3 does NOT read `touched` — the forecast
+  reads levels, and `src/domain/purity.test.ts` now fails the build if any
+  forecast file so much as mentions the field. So the contradiction above
+  costs nothing today, and this bullet is a boundary rather than a debt. It
+  becomes live again the moment something outside `src/ui/run/` reads the
+  flag; see the entry below on why it cannot be trusted before 2026-09-04.
 - **The resume heuristic cannot recognise a hand-entered after-count that
   equals its before-count.** Resuming a draft rebuilds `afterTouched` from
   the stored lines as "after differs from before, and Fill is off"
@@ -130,6 +164,78 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   a logged transfer. Expected, not a gap: recorded in the Phase 2 design
   (§2) as explicitly out of scope, and repeated here so it reads as a known
   boundary rather than a rediscovered omission.
+  **Closed 2026-09-07** (Phase 3 tasks 11 and 13): a trolley load writes
+  `trolleyLines` and `storeroomMovements` folds them into the balance, so the
+  ledger finally carries its largest movement source. The report and the
+  storeroom screen read the same function, so they cannot print different
+  figures for one shelf. Balances written before this date still under-
+  represent trolley movement and no back-fill is possible.
+- **`CountLine.touched` cannot be trusted on any visit finalized on or before
+  2026-09-04, and has no consumer outside `src/ui/run/`.** A bug fixed that day
+  (`4cad94e`) persisted `touched: true` for slots nobody counted, wherever
+  `Fill tray to par` was used — always before 2026-08-28, and after that
+  whenever a `⋯`-sheet save triggered a reload. Falsely-touched rows cannot be
+  separated from genuine ones on disk, because a real per-slot Fill tap writes
+  the same two flags. No figure was ever wrong: `before`, `after`, the sales
+  residual and the carried-forward levels are all sound. The flag is the only
+  casualty, and Phase 3's forecast deliberately reads it nowhere — enforced by
+  a guard in `src/domain/purity.test.ts`. Anything that starts reading it must
+  either exclude that window or accept that "counted and found empty" is
+  sometimes "nobody looked".
+- **Schema v4 is a one-way door for the app bundle, as v2 and v3 were — and it
+  fails quietly, not loudly.** The data is safe in both directions. The bundle
+  is not, and the reason was recorded wrongly twice before being checked: raw
+  IndexedDB does refuse to open a database stored above the requested version,
+  **but Dexie does not surface that**. It catches the `VersionError`, retries
+  with no version at all, finds the installed schema is not the one declared,
+  and patches its missing tables and indexes into the newer database in place
+  (`dexie.js:4599`, Dexie 4.4.5). So a reverted build does not fail — it comes
+  up looking healthy on top of newer stores, with nothing announcing it. That
+  is worse than a refusal. It is why `src/backup/import.ts` deletes the
+  database rather than clearing its tables, and it is pinned by a test:
+  `src/backup/import.test.ts`, "is needed because reopening the newer database
+  silently patches it instead". **The export and import halves are both built
+  and shipped** — the Phase 3 plan's task 20 says import is not, which was
+  true when the plan was written and is not now.
+- **The order suggestion does not know what has already been ordered.** Nothing
+  records that an order was placed, so nothing subtracts stock on order from
+  the next suggestion. Run the report twice before a delivery lands and it will
+  ask for the same cartons twice. Recorded in `src/domain/order.ts` beside the
+  arithmetic, and out of scope by design (§2): supplier records and purchase
+  orders are a document lifecycle this app does not have.
+- **The order forecast attributes a mixed slot's whole demand to `accepts[0]`.**
+  Spec §6.4's `Σ over slots accepting this item` double-counts every mixed
+  slot, so `slotRatesByItem` credits each slot to its first-choice item only
+  and the rates partition. The cost, through a **Coke → Coke + Fanta → Fanta**
+  changeover: the outgoing item is forecast demand it will never take and the
+  incoming one gets none, until the order is changed. `MAKE FIRST` is the
+  correction and the reason it is no longer optional. Proportional splitting
+  was rejected as more accurate but unexplainable — the operator would see a
+  fractional slot contribution with no way to check it (spec §6.1).
+- **A new build is not reliably delivered by a refresh.** The service worker
+  serves its cache; on 2026-09-07 a deployed change did not appear after a
+  normal reload and was nearly reported as broken, with the bundle hash on the
+  server confirming the deploy had landed. Every handover so far has said
+  "open the app and refresh once", which is weaker than it sounds. Nothing in
+  the app tells the operator a new build is waiting, and `registerSW` is
+  generated with no update prompt. This is the gap most likely to make a fix
+  look like it never shipped.
+- **The trolley watch was built and removed the same week** (spec §6.3,
+  removed 2026-09-07, operator decision). Design §12.3 specified one line
+  naming the level an item runs out at; the implementation looped a line per
+  short item, and an unloaded trolley makes every item short, so it covered
+  the count table with twenty-eight lines of "runs out at L2 · 0 left". Two
+  faults: the missing cap, and that a trolley never loaded reads as a total
+  shortage rather than as no information. `runsOutAt` and `trolleyRemaining`
+  remain in `src/domain/trolley.ts`, pure and tested, with a tombstone comment
+  on the count screen. Both faults must be answered before it returns.
+- **The pick list is empty whenever the storeroom ledger is.** Needs are
+  resolved only to items the storeroom is known to hold (spec §6.2), so on an
+  estate whose balances are all zero the load screen reads "Nothing to take.
+  Every machine is projected to be full enough, or the storeroom is out of what
+  they want." That is correct and it names both causes, but the two are far
+  apart in likelihood, and a first-time user will hit the second while reading
+  it as the first.
 
 ---
 
