@@ -3,16 +3,33 @@ import { listItems } from '../../data/repositories/items'
 import { listMachines } from '../../data/repositories/machines'
 import { listPlacements } from '../../data/repositories/placements'
 import { listRuns } from '../../data/repositories/runs'
+import { forecastForRun } from '../../data/repositories/forecast'
 import { salesForRange, type PeriodReport } from '../../data/repositories/sales'
 import { storeroomAdjustments } from '../../data/repositories/adjustments'
 import { listStoreroomBalances } from '../../data/repositories/storeroom'
 import { listTrolleyLines } from '../../data/repositories/trolley'
 import { historyForMachine } from '../../data/repositories/visits'
+import { today } from '../../domain/date'
 import { lastRecordedLevels } from '../../domain/levels'
+import { slotRatesByItem, type OrderFlag, type OrderInput } from '../../domain/order'
 import { effectivePlacement } from '../../domain/placement'
 import { ledgerBalance, storeroomMovements } from '../../domain/storeroom'
 import { buildStockMatrix, type MatrixRow } from '../../domain/stockMatrix'
-import type { Id, Item, Machine } from '../../domain/types'
+import type { Id, Item, Machine, TrolleyLine } from '../../domain/types'
+
+/** One item's input to `orderSuggestion`, plus what the screen needs to say
+ * where the figure came from.
+ *
+ * `ratedSlots` is the honest half. A slot has no rate until two of its
+ * periods are clean (`rate.ts`), and `orderSuggestion` counts a `null` rate
+ * as no slot at all — so an item with none reads as a forecast of zero, which
+ * is arithmetically right and, printed as an order, a lie. The screen uses
+ * this to say "no rate yet" instead. */
+export interface OrderItemInput extends OrderInput {
+  itemName: string
+  ratedSlots: number
+  slotCount: number
+}
 
 export interface ReportData {
   reports: PeriodReport[]
@@ -31,6 +48,11 @@ export interface ReportData {
    * in several slots is one row listing them all, so its storeroom balance is
    * counted once, not once per slot. */
   matrixRows: MatrixRow[]
+  /** Per item, everything `orderSuggestion` needs — but NOT the suggestion
+   * itself. The horizon and the safety days are edited on the screen, and
+   * re-deriving them here would re-read the whole estate on every keystroke;
+   * the arithmetic is pure and instant, so the screen does it. */
+  orderInputs: OrderItemInput[]
   loading: boolean
 }
 
@@ -38,6 +60,7 @@ export function useReport(from: string, to: string) {
   const [data, setData] = useState<ReportData>({
     reports: [], items: new Map(), machines: [],
     storeroomOnHand: new Map(), levelsByMachine: new Map(), matrixRows: [],
+    orderInputs: [],
     loading: true,
   })
 
@@ -111,6 +134,8 @@ export function useReport(from: string, to: string) {
       storeroomOnHand,
     })
 
+    const orderInputs = await buildOrderInputs(items, storeroomOnHand, trolleyLines)
+
     setData({
       reports,
       items: new Map(items.map((i) => [i.id, i])),
@@ -118,6 +143,7 @@ export function useReport(from: string, to: string) {
       storeroomOnHand,
       levelsByMachine,
       matrixRows,
+      orderInputs,
       loading: false,
     })
   }, [from, to])
@@ -132,4 +158,78 @@ export function useReport(from: string, to: string) {
 export async function latestRunDate(): Promise<string> {
   const runs = await listRuns()
   return runs[0]?.date ?? ''
+}
+
+/** Every item the app has something to say about, ready for `orderSuggestion`.
+ *
+ * The rates come from `forecastForRun`, which is the one place that knows how
+ * far back a rate looks, and they are attributed to items by `slotRatesByItem`
+ * — **which is where spec §6.4's double-count is corrected**. §6.4's `Σ over
+ * slots accepting this item` lands a mixed slot's whole rate in both its
+ * items' forecasts; `slotRatesByItem` gives each slot to its `accepts[0]`, so
+ * the slot rates partition (design §3.8, §16.1). Nothing here re-derives any
+ * of that arithmetic.
+ *
+ * Desk work at G, never during a walk (spec §8.1): this reads twelve visits
+ * per machine, the same read the load screen makes.
+ */
+async function buildOrderInputs(
+  items: Item[],
+  storeroomOnHand: Map<Id, number>,
+  trolleyLines: TrolleyLine[],
+): Promise<OrderItemInput[]> {
+  const slots = await forecastForRun(today())
+
+  const ratesByItem = slotRatesByItem(
+    slots.map((slot) => ({ accepts: slot.itemIds, rate: slot.rate })),
+  )
+
+  const flags = new Map<Id, Set<OrderFlag>>()
+  const flag = (itemId: Id, value: OrderFlag) => {
+    const set = flags.get(itemId) ?? new Set<OrderFlag>()
+    set.add(value)
+    flags.set(itemId, set)
+  }
+
+  for (const slot of slots) {
+    // The item the slot's rate was attributed to, so a flag lands on the same
+    // row the forecast did.
+    const owner = slot.itemIds[0]
+    if (owner === undefined) continue
+    if (slot.ranDryLastPeriod) flag(owner, 'ran-dry')
+    // §7.2's unfulfillable need, by `buildPickList`'s rule: the slot wants
+    // stock and every item it accepts is at a ledger balance of zero. A
+    // binary, never a quantity (design §3.7).
+    if (slot.need > 0 && slot.itemIds.every((id) => (storeroomOnHand.get(id) ?? 0) <= 0)) {
+      flag(owner, 'unfulfillable')
+    }
+  }
+
+  for (const line of trolleyLines) {
+    // `None left in G` is a fact about a shelf on a day, not for ever. It is
+    // carried only while the zero it wrote still stands: a delivery since then
+    // has answered it, and the flag would otherwise mark the item for good.
+    if (line.noneLeftInG && (storeroomOnHand.get(line.itemId) ?? 0) <= 0) {
+      flag(line.itemId, 'none-left')
+    }
+  }
+
+  return items
+    .map((item): OrderItemInput => {
+      const slotRates = ratesByItem.get(item.id) ?? []
+      return {
+        itemId: item.id,
+        itemName: item.name,
+        boxSize: item.boxSize,
+        onHand: storeroomOnHand.get(item.id) ?? 0,
+        slotRates,
+        flags: [...(flags.get(item.id) ?? [])],
+        ratedSlots: slotRates.filter((rate) => rate !== null).length,
+        slotCount: slotRates.length,
+      }
+    })
+    // An item with no measured rate and nothing wrong with it is left off
+    // entirely rather than listed at zero — its Order cell stays blank, which
+    // is the paper sheet's behaviour and the honest one.
+    .filter((input) => input.ratedSlots > 0 || input.flags.length > 0)
 }

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useReport, latestRunDate } from './useReport'
 import { StockMatrix } from './StockMatrix'
+import { OrderSection, orderCell, useOrderPreferences, type OrderRow } from './OrderSection'
+import { orderSuggestion } from '../../domain/order'
 import { formatRunDate } from '../../domain/date'
 import type { CensoredReason } from '../../domain/sales'
 
@@ -31,6 +33,8 @@ export function ReportScreen() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [ready, setReady] = useState(false)
+  const { horizon, safety, filled, setHorizon, setSafety, setFilled } =
+    useOrderPreferences()
 
   useEffect(() => {
     void (async () => {
@@ -41,8 +45,10 @@ export function ReportScreen() {
     })()
   }, [])
 
-  const { reports, items, machines, storeroomOnHand, levelsByMachine, matrixRows, loading } =
-    useReport(from, to)
+  const {
+    reports, items, machines, storeroomOnHand, levelsByMachine, matrixRows,
+    orderInputs, loading,
+  } = useReport(from, to)
 
   if (!ready || loading) return <div className="px-4 py-3 text-[13px]">Loading…</div>
 
@@ -68,6 +74,33 @@ export function ReportScreen() {
 
   const machineById = new Map(machines.map((m) => [m.id, m]))
 
+  // The arithmetic is `src/domain/order.ts`'s and is done here, not in
+  // `useReport`, so that editing the horizon re-computes without re-reading
+  // the estate. `orderSuggestion` preserves input order, so each line pairs
+  // with the input it came from.
+  const orderRows: OrderRow[] = orderSuggestion(orderInputs, horizon, safety)
+    .map((line, index) => ({
+      ...line,
+      itemName: orderInputs[index].itemName,
+      boxSize: orderInputs[index].boxSize,
+      ratedSlots: orderInputs[index].ratedSlots,
+      slotCount: orderInputs[index].slotCount,
+    }))
+    .sort((a, b) =>
+      b.suggested - a.suggested ||
+      b.flags.length - a.flags.length ||
+      a.itemName.localeCompare(b.itemName))
+
+  // One formatter for both places the figure appears (`orderCell`), and only
+  // for items there is a figure for — an item with no rate keeps a blank cell
+  // rather than a zero.
+  const orderByItem = new Map(
+    orderRows.flatMap((row) => {
+      const cell = orderCell(row)
+      return cell === null ? [] : [[row.itemId, cell] as const]
+    }),
+  )
+
   return (
     <div>
       {/* The master table leads the screen and is NOT gated on a closed sales
@@ -90,7 +123,14 @@ export function ReportScreen() {
           Turn phone ⟳
         </span>
       </div>
-      <StockMatrix rows={matrixRows} machines={machines} />
+      {/* D7: filled from the suggestion, with the toggle in the section below
+          handing the column back to the pen for a run where the operator
+          would rather write. */}
+      <StockMatrix
+        rows={matrixRows}
+        machines={machines}
+        orderByItem={filled ? orderByItem : undefined}
+      />
 
       {/* Everything below the sheet is portrait-only. In landscape the
           operator is holding a stock sheet, not reading a report: the table
@@ -246,6 +286,19 @@ export function ReportScreen() {
 
         </>
       )}
+
+      {/* Below the sales lines, per design §12.4 — and outside the closed-period
+          branch above, because the order depends on rates and balances, not on
+          a period having closed. */}
+      <OrderSection
+        rows={orderRows}
+        horizon={horizon}
+        safety={safety}
+        filled={filled}
+        onHorizonChange={setHorizon}
+        onSafetyChange={setSafety}
+        onFilledChange={setFilled}
+      />
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import type { MatrixRow } from '../../domain/stockMatrix'
-import type { Machine } from '../../domain/types'
+import type { Id, Machine } from '../../domain/types'
 
 /** The longest name the item column holds at its rendered width. Measured
  * rather than guessed: at 852px the column renders ~218px, and the longest
@@ -37,13 +37,23 @@ const CELL = 'px-1 py-1.5 text-[13px] font-medium tabular-nums'
  * fifteen machines** — a sixteenth would overflow, and would need either the
  * selector back or narrower cells.
  *
- * `Order` stays blank for hand-writing until Phase 3 fills it, as the paper
- * does today. */
+ * `Order` is the one column that is the operator's rather than the app's.
+ * Without `orderByItem` it renders blank for hand-writing, exactly as the
+ * paper sheet does; with it, it prints the suggestion (decision D7, design
+ * §12.4). The accent header and the `accent-100` fill stay either way — a
+ * suggested figure is still a figure the operator may cross out.
+ *
+ * The map is keyed by item and holds an already-formatted string (`2 × 24`,
+ * or plain units at `boxSize: 1`), so this component formats nothing and the
+ * matrix and the order section below it cannot drift apart. **An item absent
+ * from the map keeps its blank cell** — that is how "no rate yet" reads here,
+ * because a zero would claim the app had worked out that nothing is needed. */
 export function StockMatrix({
-  rows, machines,
+  rows, machines, orderByItem,
 }: {
   rows: MatrixRow[]
   machines: Machine[]
+  orderByItem?: Map<Id, string>
 }) {
   return (
     <div>
@@ -191,13 +201,15 @@ export function StockMatrix({
                   {row.storeroom}
                 </td>
                 <td className={`${CELL} text-right`}>{row.total}</td>
-                {/* Blank by design — Phase 3 fills it; until then it is
-                    hand-written, exactly as on the paper sheet. The tint
-                    says whose column it is. */}
+                {/* Filled from the suggestion when there is one, and blank
+                    for the pen when there is not — the tint says whose
+                    column it is in both states. */}
                 <td
                   aria-label={`order for ${row.key}`}
-                  className="bg-accent-100 px-1 py-1.5"
-                />
+                  className="bg-accent-100 px-1 py-1.5 text-right text-[12px] font-bold tabular-nums text-accent-800"
+                >
+                  {orderByItem?.get(row.itemId) ?? ''}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -207,9 +219,13 @@ export function StockMatrix({
       {/* Portrait only: in landscape the sheet owns the screen, and a legend
           under it would cost two rows of stock. */}
       <p className="bg-surface px-4 py-3 text-[11px] font-medium text-neutral-700 landscape:hidden">
-        Order stays blank for your pen until Phase 3 fills it — the red header
-        marks it as the column that is yours, not the app&rsquo;s. A red figure
-        is a machine at zero.
+        {orderByItem
+          ? <>Order is the suggestion below, in whole boxes where the carton
+              size is known. A blank one means no rate yet — that cell is still
+              yours. A red figure is a machine at zero.</>
+          : <>Order stays blank for your pen — the red header marks it as the
+              column that is yours, not the app&rsquo;s. A red figure is a
+              machine at zero.</>}
       </p>
     </div>
   )

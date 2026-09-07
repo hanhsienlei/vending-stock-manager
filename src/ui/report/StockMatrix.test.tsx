@@ -58,10 +58,32 @@ describe('StockMatrix', () => {
     expect(screen.getByRole('columnheader', { name: '7' })).toBeInTheDocument()
   })
 
-  it('leaves an Order column blank for hand-writing', () => {
+  // Both states are supported, and both must keep being covered: D7 fills the
+  // column from the suggestion, with a toggle that hands it back to the pen.
+  it('leaves an Order column blank for hand-writing when no suggestion is passed', () => {
     render(<StockMatrix rows={ROWS} machines={MACHINES} />)
 
     expect(screen.getByRole('columnheader', { name: 'Order' })).toBeInTheDocument()
+    expect(screen.getByLabelText('order for 58')).toBeEmptyDOMElement()
+  })
+
+  it('prints the suggested order when one is passed', () => {
+    render(
+      <StockMatrix
+        rows={ROWS}
+        machines={MACHINES}
+        orderByItem={new Map([['coke', '2 \u00d7 24']])}
+      />,
+    )
+
+    expect(screen.getByLabelText('order for 58')).toHaveTextContent('2 \u00d7 24')
+  })
+
+  // An item the app has no rate for is not given a zero: the cell stays blank
+  // and stays the operator's, which is what it has always been.
+  it('leaves the cell blank for an item the suggestion has no figure for', () => {
+    render(<StockMatrix rows={ROWS} machines={MACHINES} orderByItem={new Map()} />)
+
     expect(screen.getByLabelText('order for 58')).toBeEmptyDOMElement()
   })
 })
@@ -152,6 +174,22 @@ describe('StockMatrix — §11 restyle', () => {
     expect(cell).toBeEmptyDOMElement()
   })
 
+  // Filling it does not take it off the operator: the accent header and the
+  // tinted cell stay, because the figure is still theirs to overrule.
+  it('keeps the accent header and tint once the column is filled', () => {
+    render(
+      <StockMatrix
+        rows={ROWS}
+        machines={MACHINES}
+        orderByItem={new Map([['coke', '48']])}
+      />,
+    )
+
+    expect(screen.getByRole('columnheader', { name: 'Order' }).className)
+      .toContain('text-accent')
+    expect(screen.getByLabelText('order for 58').className).toContain('bg-accent-100')
+  })
+
   it('separates the summary columns from the machine block', () => {
     render(<StockMatrix rows={ROWS} machines={MACHINES} />)
     expect(screen.getByRole('columnheader', { name: 'GF' }).className)
@@ -161,6 +199,19 @@ describe('StockMatrix — §11 restyle', () => {
   it('says what the Order column is for', () => {
     render(<StockMatrix rows={ROWS} machines={MACHINES} />)
     expect(screen.getByText(/Order stays blank for your pen/)).toBeInTheDocument()
+    expect(screen.queryByText(/Phase 3/)).not.toBeInTheDocument()
+  })
+
+  it('says where the figure came from once it is filled', () => {
+    render(
+      <StockMatrix
+        rows={ROWS}
+        machines={MACHINES}
+        orderByItem={new Map([['coke', '2 \u00d7 24']])}
+      />,
+    )
+
+    expect(screen.getByText(/Order is the suggestion below/)).toBeInTheDocument()
   })
 
   it('carries no rounded corner and no legacy palette class', () => {
