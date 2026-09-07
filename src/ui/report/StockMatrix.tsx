@@ -1,4 +1,4 @@
-import { TRAYS, trayOf, trayHeading } from '../../domain/trays'
+import { trayOf, trayHeading } from '../../domain/trays'
 import { SectionBar, useCollapsedSections } from '../components/CollapsibleSections'
 import type { MatrixRow } from '../../domain/stockMatrix'
 import type { Id, Machine } from '../../domain/types'
@@ -11,12 +11,14 @@ const UNPLACED = 'unplaced'
  * `58, 59` all start with the slot the row is filed under, which is exactly
  * how `buildStockMatrix` ordered them in the first place. Read here rather
  * than added to `MatrixRow`: the domain already decided this row's position,
- * and a second field carrying the same fact is a second thing to keep true. */
+ * and a second field carrying the same fact is a second thing to keep true.
+ *
+ * `undefined` only for a locator with no leading number at all, which the
+ * matrix builder cannot produce today — the guard is here so that a row can
+ * never be lost to a grouping, which is a display decision. */
 function trayOfRow(row: MatrixRow): number | undefined {
   const slot = Number.parseInt(row.key, 10)
-  if (Number.isNaN(slot)) return undefined
-  const tray = trayOf(slot)
-  return (TRAYS as readonly number[]).includes(tray) ? tray : undefined
+  return Number.isNaN(slot) ? undefined : trayOf(slot)
 }
 
 /** The longest name the item column holds at its rendered width. Measured
@@ -76,9 +78,16 @@ export function StockMatrix({
   const sections = useCollapsedSections('vsm.matrix.collapsedTrays')
 
   // One group per tray, in tray order — which is the order `rows` already
-  // arrives in, so grouping never reorders the sheet, it only cuts it.
+  // arrives in, so grouping never reorders the sheet, it only cuts it. The
+  // trays come from the rows, like the receipt's: a tray nothing is placed in
+  // gets no bar, and a slot outside the six still gets a heading rather than
+  // losing its row.
+  const trays = [...new Set(rows.map(trayOfRow))]
+    .filter((tray): tray is number => tray !== undefined)
+    .sort((a, b) => a - b)
+
   const groups = [
-    ...TRAYS.map((tray) => ({
+    ...trays.map((tray) => ({
       key: String(tray),
       heading: trayHeading(tray),
       rows: rows.filter((row) => trayOfRow(row) === tray),

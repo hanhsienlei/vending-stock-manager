@@ -92,7 +92,9 @@ describe('HistoryScreen', () => {
     await user.click(await screen.findByLabelText('visit to L7'))
     await screen.findByText('Coke')
 
-    const heading = screen.getByRole('heading')
+    // Level 1 specifically: the receipt's own tray sections are headings too
+    // now, and it is the screen title that carries the machine's identity.
+    const heading = screen.getByRole('heading', { level: 1 })
     expect(heading).toHaveTextContent('L7')
     expect(heading).toHaveTextContent('Lift lobby')
   })

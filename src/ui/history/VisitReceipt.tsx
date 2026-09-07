@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { listItems } from '../../data/repositories/items'
 import { getCountLines } from '../../data/repositories/visits'
+import { trayOf, trayHeading } from '../../domain/trays'
+import { SectionBar, useCollapsedSections } from '../components/CollapsibleSections'
 import type { CountLine, Id, Item, Machine } from '../../domain/types'
 
 const GRID = 'grid grid-cols-[30px_1fr_60px_60px] items-center gap-2 px-3.5'
@@ -29,6 +31,7 @@ export function VisitReceipt({
   const [lines, setLines] = useState<CountLine[]>([])
   const [items, setItems] = useState<Map<Id, Item>>(new Map())
   const [loading, setLoading] = useState(true)
+  const sections = useCollapsedSections('vsm.receipt.collapsedTrays')
 
   useEffect(() => {
     void (async () => {
@@ -46,6 +49,51 @@ export function VisitReceipt({
   }, [visitId])
 
   if (loading) return <div className="px-4 py-3 text-[13px]">Loading…</div>
+
+  // Grouped by the tray the slot is in, in tray order — which is the order
+  // `lines` is already sorted into, so the sections cut the receipt without
+  // reordering it.
+  //
+  // The trays come from the lines themselves rather than from `TRAYS`, and
+  // that is the whole point: only trays this visit recorded get a bar (an
+  // empty `TRAY 2` on a receipt would be a tray the operator never touched),
+  // and a line recorded against a slot outside the six — history is history,
+  // and this screen exists to show exactly what was stored — still gets a
+  // heading and keeps its row rather than disappearing from the record.
+  const groups = [...new Set(lines.map((line) => trayOf(line.slotNumber)))]
+    .sort((a, b) => a - b)
+    .map((tray) => ({
+      key: String(tray),
+      heading: trayHeading(tray),
+      rows: lines.filter((line) => trayOf(line.slotNumber) === tray),
+    }))
+
+  function record(line: CountLine) {
+    return (
+      <li
+        key={line.id}
+        aria-label={`slot ${line.slotNumber} record`}
+        className={`border-b border-rule-light bg-paper ${
+          line.after === 0 ? 'shadow-[inset_4px_0_0_var(--color-accent)]' : ''
+        }`}
+      >
+        <div className={`${GRID} h-[46px]`}>
+          <span className="text-[15px] font-extrabold tabular-nums">
+            {line.slotNumber}
+          </span>
+          <span className="truncate text-[13px] font-semibold">
+            {items.get(line.itemId)?.name ?? 'Deleted item'}
+          </span>
+          <span className="border-x border-rule-light text-center text-[19px] font-extrabold tabular-nums">
+            {line.before}
+          </span>
+          <span className="border-x border-rule-light bg-surface text-center text-[19px] font-extrabold tabular-nums">
+            {line.after}
+          </span>
+        </div>
+      </li>
+    )
+  }
 
   return (
     <div>
@@ -66,32 +114,19 @@ export function VisitReceipt({
           Nothing was recorded for L{machine.level}.
         </p>
       ) : (
-        <ul>
-          {lines.map((line) => (
-            <li
-              key={line.id}
-              aria-label={`slot ${line.slotNumber} record`}
-              className={`border-b border-rule-light bg-paper ${
-                line.after === 0 ? 'shadow-[inset_4px_0_0_var(--color-accent)]' : ''
-              }`}
-            >
-              <div className={`${GRID} h-[46px]`}>
-                <span className="text-[15px] font-extrabold tabular-nums">
-                  {line.slotNumber}
-                </span>
-                <span className="truncate text-[13px] font-semibold">
-                  {items.get(line.itemId)?.name ?? 'Deleted item'}
-                </span>
-                <span className="border-x border-rule-light text-center text-[19px] font-extrabold tabular-nums">
-                  {line.before}
-                </span>
-                <span className="border-x border-rule-light bg-surface text-center text-[19px] font-extrabold tabular-nums">
-                  {line.after}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
+        groups.map((group) => (
+          <section key={group.key}>
+            <h3>
+              <SectionBar
+                heading={group.heading}
+                open={sections.isOpen(group.key)}
+                count={group.rows.length}
+                onToggle={() => sections.toggle(group.key)}
+              />
+            </h3>
+            {sections.isOpen(group.key) && <ul>{group.rows.map(record)}</ul>}
+          </section>
+        ))
       )}
 
       <p className="bg-surface px-4 py-3 text-[11px] font-medium text-neutral-700">
