@@ -115,14 +115,17 @@ export function StockMatrix({
                 storeroom holding ten cartons of 100 is a four-digit number,
                 and a clipped `4375` reading as `437` is a wrong figure, not a
                 cosmetic problem. Both are sized against four digits, measured.
-                The width comes from Order, which is blank by design and only
-                needs room for a pen stroke. */}
+                The width used to come from Order, back when Order was blank;
+                it no longer can, so these two stand on their own. */}
             <col style={{ width: '38px' }} />
             <col style={{ width: '42px' }} />
-            {/* Wide enough for the word ORDER in the header. Trimmed to 30px
-                it rendered as `ORDE`, and a clipped column heading reads as a
-                broken table rather than a narrow one. */}
-            <col style={{ width: '38px' }} />
+            {/* Sized for the widest FILLED figure, not for the header. 38px
+                was right while the column was blank — room for a pen stroke —
+                and became wrong the moment task 17 started printing into it:
+                `1 × 21` wrapped onto two lines and the heading clipped, which
+                reads as a broken table. `orderCell` emits `<boxes> × <carton>`,
+                so the worst case is three digits against three. */}
+            <col style={{ width: '72px' }} />
           </colgroup>
           <thead>
             <tr className="text-left">
@@ -206,7 +209,7 @@ export function StockMatrix({
                     column it is in both states. */}
                 <td
                   aria-label={`order for ${row.key}`}
-                  className="bg-accent-100 px-1 py-1.5 text-right text-[12px] font-bold tabular-nums text-accent-800"
+                  className="whitespace-nowrap bg-accent-100 px-1 py-1.5 text-right text-[12px] font-bold tabular-nums text-accent-800"
                 >
                   {orderByItem?.get(row.itemId) ?? ''}
                 </td>

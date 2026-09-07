@@ -219,4 +219,28 @@ describe('StockMatrix — §11 restyle', () => {
     expect(container.innerHTML).not.toMatch(/rounded-/)
     expect(container.innerHTML).not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
   })
+
+  // The Order column was sized at 38px when it was blank by design — "room
+  // for a pen stroke", per the comment in the colgroup. Filling it (task 17)
+  // made that width wrong without anyone noticing: `1 × 21` wrapped onto two
+  // lines and the header clipped, which the operator reported as a broken
+  // table. The widest cell the formatter can emit is a three-digit box count
+  // against a three-digit carton, so the column has to hold `100 × 200` on
+  // one line.
+  it('gives Order room for a filled figure, on one line', () => {
+    const { container } = render(
+      <StockMatrix
+        rows={ROWS}
+        machines={MACHINES}
+        orderByItem={new Map([[ROWS[0].itemId, '100 × 200']])}
+      />,
+    )
+
+    const cols = container.querySelectorAll('colgroup col')
+    const orderCol = cols[cols.length - 1] as HTMLElement
+    expect(parseInt(orderCol.style.width, 10)).toBeGreaterThanOrEqual(72)
+
+    const cell = screen.getByLabelText(`order for ${ROWS[0].key}`)
+    expect(cell.className).toContain('whitespace-nowrap')
+  })
 })
