@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useStoreroom } from './useStoreroom'
 import { AdjustmentSheet } from '../adjustments/AdjustmentSheet'
-import { ADJUSTMENT_REASONS } from '../../domain/adjustments'
 import { fromBoxesAndLoose, toBoxesAndLoose } from '../../domain/packs'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { ScreenLayout } from '../components/ScreenLayout'
@@ -70,10 +69,12 @@ const ACTION = 'px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase 
 // mechanism is the manual count below, which resets the ledger anchor
 // directly; a miscount recorded through the sheet would be excluded from
 // `ledgerBalance` (domain/storeroom.ts, fix round 1, finding 1) and so would
-// silently do nothing — worse than not offering it. Derived from
-// `entersResidual` rather than a hard-coded reason name, so this can never
-// drift from the rule it exists to respect.
-const STOREROOM_ADJUSTMENT_REASONS = ADJUSTMENT_REASONS.filter((r) => r.entersResidual)
+// silently do nothing — worse than not offering it.
+//
+// This screen no longer narrows the list itself: `miscount` is retired at the
+// table (design §4.1, `offered: false`), so the sheet's own default already
+// withholds it everywhere. One rule, in one place, rather than a filter each
+// call site has to remember.
 
 /** The storeroom balance is a ledger estimate, not a stocktake (spec §6.5):
  * "on hand" is the last manual count plus every storeroom movement logged
@@ -256,7 +257,6 @@ export function StoreroomScreen() {
               location={{ kind: 'storeroom' }}
               itemId={adjusting}
               itemName={items.find((i) => i.id === adjusting)?.name ?? ''}
-              reasons={STOREROOM_ADJUSTMENT_REASONS}
               onSaved={() => {
                 setAdjusting(null)
                 void refresh()

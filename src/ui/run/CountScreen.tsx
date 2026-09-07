@@ -246,6 +246,7 @@ export function CountScreen({
             }
             capacity={counting.map.find((s) => s.slotNumber === editingSlot)?.capacity ?? 0}
             slotInMap={counting.map.some((s) => s.slotNumber === editingSlot)}
+            visitOpen={counting.visitOpen}
             isFilled={counting.filled.has(editingSlot)}
             onToggleFill={() => {
               void counting.toggleFill(editingSlot).catch(() => {})

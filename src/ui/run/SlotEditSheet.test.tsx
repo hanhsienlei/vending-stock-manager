@@ -270,6 +270,59 @@ describe('SlotEditSheet', () => {
     expect(await screen.findByLabelText('Units')).toBeInTheDocument()
   })
 
+  // Design §4.2 (D9): stock moved between machines mid-run is already
+  // self-recording — the source's lower after-count and the destination's
+  // higher one carry it — so a `transfer` adjustment logged in the same
+  // window subtracts the move twice. The window is exactly the machine's own
+  // open visit, and it is the only window in which the double-count is
+  // possible.
+  async function openAdjust(visitOpen?: boolean) {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+
+    render(
+      <SlotEditSheet
+        machine={machine}
+        slotNumber={58}
+        items={[coke]}
+        currentItemIds={[coke.id]}
+        capacity={5}
+        visitOpen={visitOpen}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Adjust Coke' }))
+    await screen.findByLabelText('Units')
+  }
+
+  const MOVE = 'Move to another machine or the storeroom'
+
+  it("withholds transfer at a slot while that machine's visit is open", async () => {
+    await openAdjust(true)
+
+    expect(screen.queryByRole('button', { name: MOVE })).not.toBeInTheDocument()
+    // Everything else the sheet offers is untouched.
+    expect(screen.getByRole('button', { name: 'Missing or taken' })).toBeInTheDocument()
+  })
+
+  it('offers transfer at a slot once the machine is finished', async () => {
+    await openAdjust(false)
+
+    expect(screen.getByRole('button', { name: MOVE })).toBeInTheDocument()
+  })
+
+  it("offers transfer at a slot with no visit in today's run", async () => {
+    // The machine map screen opens this same sheet outside any count and
+    // passes nothing — a transfer between visits is exactly what the reason
+    // is for.
+    await openAdjust(undefined)
+
+    expect(screen.getByRole('button', { name: MOVE })).toBeInTheDocument()
+  })
+
   it('offers Fill for this slot when opened during a count', async () => {
     const user = userEvent.setup()
     const onToggleFill = vi.fn()

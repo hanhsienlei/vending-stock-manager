@@ -906,6 +906,51 @@ describe('CountScreen', () => {
   })
 })
 
+/** Design §4.2 (D9). The double-count trap is open for exactly as long as
+ * this machine's visit is, because that is the window in which the two
+ * after-counts are being written. */
+describe('CountScreen — transfer while the visit is open', () => {
+  const MOVE = 'Move to another machine or the storeroom'
+
+  async function adjustFromSlot(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'Edit slot 58' }))
+    await user.click(await screen.findByRole('button', { name: 'Adjust Coke' }))
+    await screen.findByLabelText('Units')
+  }
+
+  it('withholds transfer at a slot while the machine is being counted', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-09-04')
+
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
+    await screen.findByText('Coke')
+    await adjustFromSlot(user)
+
+    expect(screen.queryByRole('button', { name: MOVE })).not.toBeInTheDocument()
+  })
+
+  it('offers it again once the machine is finished', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-09-04')
+
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
+    await screen.findByText('Coke')
+
+    await user.click(screen.getByRole('button', { name: 'Finish machine' }))
+    await waitFor(() => expect(screen.getByText('Coke')).toBeInTheDocument())
+
+    await adjustFromSlot(user)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: MOVE })).toBeInTheDocument())
+  })
+})
+
 /** Spec §6.3, design §9 and §12.3. One line under the sticky column header,
  * only when what is left on the trolley will not reach the machines still
  * ahead — while there is still a decision to be made about it. */

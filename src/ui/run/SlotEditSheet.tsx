@@ -4,11 +4,18 @@ import { pinSlotCapacities, setSlotConfig } from '../../data/repositories/slotCo
 import { effectivePlacement } from '../../domain/placement'
 import { trayOf, trayLabel } from '../../domain/trays'
 import { AdjustmentSheet } from '../adjustments/AdjustmentSheet'
+import { OFFERED_REASONS } from '../../domain/adjustments'
 import type { Id, Item, ItemPlacement, Machine } from '../../domain/types'
+
+/** What a slot may be adjusted for while its machine's visit is open: every
+ * reason still on offer except `transfer`, which the two after-counts are
+ * already recording for the length of that window (design §4.2). Named here
+ * rather than inline so it is one array, not one per render. */
+const WITH_VISIT_OPEN = OFFERED_REASONS.filter((r) => r.reason !== 'transfer')
 
 export function SlotEditSheet({
   machine, slotNumber, items, currentItemIds, capacity, onSaved, onCancel,
-  isFilled, onToggleFill, slotInMap,
+  isFilled, onToggleFill, slotInMap, visitOpen,
 }: {
   /** The machine this slot belongs to. Was `machineId`; the whole object is
    * passed so the sheet's title bar can say `L7 · Tray 3` without a lookup.
@@ -39,6 +46,19 @@ export function SlotEditSheet({
    * omits it (none currently do) fails closed rather than showing a dead
    * button. */
   slotInMap?: boolean
+  /** Whether this machine's visit in today's run is still open — i.e. the
+   * operator is counting it right now. While it is, the slot's adjustment
+   * sheet withholds `transfer`: stock moved between machines mid-run is
+   * already recorded by the source's lower after-count and the destination's
+   * higher one, so a transfer logged as well subtracts the move twice
+   * (design §4.2, D9). The source's residual then clamps at zero, losing
+   * genuine sales, and Phase 3's demand rate learns from both ends of it.
+   *
+   * Outside that window — between visits, or once the machine is finished —
+   * `transfer` stays on offer, because that is the case it exists for.
+   * Defaults to false, which is what the machine map screen (no visit in
+   * hand) wants. */
+  visitOpen?: boolean
 }) {
   const machineId = machine.id
 
@@ -288,6 +308,7 @@ export function SlotEditSheet({
           location={{ kind: 'machine', machineId, slotNumber }}
           itemId={adjusting}
           itemName={items.find((i) => i.id === adjusting)?.name ?? ''}
+          reasons={visitOpen ? WITH_VISIT_OPEN : undefined}
           onSaved={() => {
             setAdjusting(null)
             onSaved()

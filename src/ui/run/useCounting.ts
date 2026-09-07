@@ -590,6 +590,14 @@ export function useCounting(runId: Id, machineId: Id) {
   return {
     loading: loading || mapLoading,
     map, items, before, after, filled, touched,
+    // Whether this machine's visit is still open. Read-only, and read by one
+    // consumer: the slot sheet withholds `transfer` while it is true, because
+    // that is exactly the window in which a mid-run move is already being
+    // recorded by the two after-counts (design §4.2). Derived from the visit
+    // this hook already holds — no query, and nothing here changes because of
+    // it. `finalize` re-stamps the visit as finalized, so finishing a machine
+    // closes the window on the spot.
+    visitOpen: visit?.status === 'draft',
     setBefore, setAfter, toggleFill, fillTray, finalize, ranDry, reload,
   }
 }
