@@ -8,7 +8,7 @@ import { daysBetween } from '../../domain/date'
 import { slotNeed, type SlotNeed } from '../../domain/forecast'
 import { levelKey } from '../../domain/levels'
 import { resolveMachineMap } from '../../domain/placement'
-import { demandRate, type DemandRate } from '../../domain/rate'
+import { demandRate, RATE_WINDOW, type DemandRate } from '../../domain/rate'
 import { salesForPeriod } from '../../domain/sales'
 import { slotPeriods, type SlotPeriod } from '../../domain/slotPeriods'
 import type { Adjustment, CountLine, Id, Run, Visit } from '../../domain/types'
@@ -36,10 +36,23 @@ export const RATE_SEARCH_VISITS = 12
  * §6.1's argument for a plain mean is that the operator has to be able to
  * check it: the units, the days, the periods used and the ones skipped are
  * the check. `itemIds` is the slot's `accepts` in preference order, which is
- * what `buildPickList` resolves the need against. */
+ * what `buildPickList` resolves the need against.
+ *
+ * `level` and `unmoved` are the two inputs `buildPickList` requires that a
+ * `SlotNeed` cannot carry — a need knows its machine's id, not its floor, and
+ * nothing outside this module holds the period history. **Both are supplied
+ * here rather than assembled at the screen, and neither is optional**: an
+ * omitted `unmovedSlots` reads as "nothing is quiet", which is a wrong answer
+ * wearing the clothes of a missing one. */
 export interface ForecastRow extends SlotNeed {
   rateDetail: DemandRate
   itemIds: Id[]
+  /** The machine's floor level — the walk order, for `buildPickList` and for
+   * allocation's tiebreak. */
+  level: number
+  /** The slot's total level has not moved across the rate window: design
+   * §4.4's other half, and useless without the rate of zero beside it. */
+  unmoved: boolean
 }
 
 /** Every slot in the estate, with what it is expected to want on
@@ -91,6 +104,7 @@ export async function forecastForRun(plannedDate: string): Promise<ForecastRow[]
       machine.id, history, runById, adjustmentsByMachine.get(machine.id) ?? [],
     )
     const levels = lastSlotTotals(history)
+    const still = stillSlots(history)
 
     const lastRunDate = history[0] ? runDateOf(history[0].visit, runById) : null
     // No visit at all is not "zero days ago": with no rate there is nothing
@@ -115,6 +129,8 @@ export async function forecastForRun(plannedDate: string): Promise<ForecastRow[]
         }),
         rateDetail,
         itemIds: slot.accepts,
+        level: machine.level,
+        unmoved: still.has(slot.slotNumber),
       }
     })
   }))
@@ -180,6 +196,53 @@ function ratePeriods(
   }
 
   return bySlot
+}
+
+/** Slots whose total level has not moved across the rate window (design
+ * §4.4) — the second half of the `Nothing expected` list, and meaningless
+ * without the rate of zero the pick list pairs it with.
+ *
+ * **Every reading is compared, `before` and `after`, at each of the last
+ * `RATE_WINDOW + 1` visits** — the visits that bound four periods. Comparing
+ * the periods' closing totals instead would be wrong in the case that matters
+ * most: a slot found at 3 and refilled to 10 every week closes at exactly 3
+ * every period, so its closings are identical while its level plainly moves.
+ * What §4.4 is looking for is a slot nobody has sold from AND nobody has put
+ * anything into — a dead line waiting to be pulled, or a tray being scrolled
+ * past — and that is a slot whose every reading is the same number.
+ *
+ * Fewer than `RATE_WINDOW + 1` visits, or a slot missing from any of them, is
+ * **not** unmoved. "Not yet known" keeps the slot on the pick list, which is
+ * the conservative direction: under-picking costs a trip down fifteen
+ * floors. */
+function stillSlots(history: VisitRecord[]): Set<number> {
+  const window = history.slice(0, RATE_WINDOW + 1)
+  if (window.length <= RATE_WINDOW) return new Set()
+
+  const readings = new Map<number, number[]>()
+  const visitsSeen = new Map<number, number>()
+
+  for (const { lines } of window) {
+    const before = new Map<number, number>()
+    const after = new Map<number, number>()
+    for (const line of lines) {
+      before.set(line.slotNumber, (before.get(line.slotNumber) ?? 0) + line.before)
+      after.set(line.slotNumber, (after.get(line.slotNumber) ?? 0) + line.after)
+    }
+    for (const [slotNumber, openingTotal] of before) {
+      const list = readings.get(slotNumber) ?? []
+      list.push(openingTotal, after.get(slotNumber) ?? 0)
+      readings.set(slotNumber, list)
+      visitsSeen.set(slotNumber, (visitsSeen.get(slotNumber) ?? 0) + 1)
+    }
+  }
+
+  const still = new Set<number>()
+  for (const [slotNumber, list] of readings) {
+    if (visitsSeen.get(slotNumber) !== window.length) continue
+    if (list.every((reading) => reading === list[0])) still.add(slotNumber)
+  }
+  return still
 }
 
 /** Each slot's total level at its last visit, across every item in it

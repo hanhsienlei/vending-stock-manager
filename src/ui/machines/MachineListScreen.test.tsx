@@ -5,6 +5,7 @@ import { db } from '../../data/db'
 import { saveMachine } from '../../data/repositories/machines'
 import { createRun, getRun, listRuns } from '../../data/repositories/runs'
 import { openVisit, putCountLine, finalizeVisit } from '../../data/repositories/visits'
+import { recordTrolleyLoad } from '../../data/repositories/trolley'
 import { newId, now } from '../../domain/ids'
 import { today, formatRunDate } from '../../domain/date'
 import { MachineListScreen } from './MachineListScreen'
@@ -24,7 +25,7 @@ describe('MachineListScreen', () => {
   it('offers no delete affordance for a machine', async () => {
     await saveMachine({ label: 'Lift lobby', level: 7 })
 
-    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
     await screen.findByText('L7')
 
     expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument()
@@ -38,7 +39,7 @@ describe('MachineListScreen', () => {
   it('offers no add-machine form', async () => {
     await saveMachine({ label: 'Lift lobby', level: 7 })
 
-    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
     await screen.findByText('L7')
 
     expect(screen.queryByLabelText('Level')).not.toBeInTheDocument()
@@ -65,7 +66,7 @@ describe('MachineListScreen', () => {
     })
     await finalizeVisit(visit.id)
 
-    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
     await screen.findByText('L7')
 
     expect(screen.getByTestId(`machine-row-${l7.id}`)).toHaveAttribute('data-finished', 'true')
@@ -80,7 +81,7 @@ describe('MachineListScreen', () => {
     await finalizeVisit(visit.id)
 
     const onCount = vi.fn()
-    render(<MachineListScreen onCount={onCount} onViewMap={vi.fn()} />)
+    render(<MachineListScreen onCount={onCount} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
     await screen.findByText('L7')
 
     await user.click(screen.getByRole('button', { name: /^L7/ }))
@@ -90,7 +91,7 @@ describe('MachineListScreen', () => {
   it('does not mark a machine with no visit in today\'s run', async () => {
     const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
 
-    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
     await screen.findByText('L7')
 
     expect(screen.getByTestId(`machine-row-${l7.id}`)).not.toHaveAttribute('data-finished', 'true')
@@ -104,7 +105,7 @@ describe('MachineListScreen', () => {
   it("hides a machine's label when it just restates the level", async () => {
     await saveMachine({ label: 'Level 2', level: 2 })
 
-    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
     await screen.findByText('L2')
 
     expect(screen.queryByText('Level 2')).not.toBeInTheDocument()
@@ -117,7 +118,7 @@ describe('MachineListScreen', () => {
   it("keeps showing a machine's label when it differs from the level", async () => {
     await saveMachine({ label: 'Lift lobby', level: 7 })
 
-    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+    render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
 
     expect(await screen.findByText('Lift lobby · not counted')).toBeInTheDocument()
   })
@@ -149,7 +150,7 @@ describe('MachineListScreen', () => {
       await saveMachine({ label: 'Lift lobby', level: 7 })
       const onCount = vi.fn()
 
-      render(<MachineListScreen onCount={onCount} onViewMap={vi.fn()} />)
+      render(<MachineListScreen onCount={onCount} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
       await screen.findByText('L7')
 
       await user.click(screen.getByRole('button', { name: /^L7/ }))
@@ -171,7 +172,7 @@ describe('MachineListScreen', () => {
       const visit = await openVisit(run.id, l7.id)
       await finalizeVisit(visit.id)
 
-      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
       await screen.findByText('L7')
       expect(screen.getByTestId(`machine-row-${l7.id}`)).toHaveAttribute('data-finished', 'true')
     })
@@ -186,7 +187,7 @@ describe('MachineListScreen', () => {
     it("shows NO RUN STARTED in the eyebrow when today has none", async () => {
       await saveMachine({ label: 'Lift lobby', level: 7 })
 
-      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
 
       expect(await screen.findByText('NO RUN STARTED')).toBeInTheDocument()
     })
@@ -194,7 +195,7 @@ describe('MachineListScreen', () => {
     it('offers Start run in the footer when no run exists', async () => {
       await saveMachine({ label: 'Lift lobby', level: 7 })
 
-      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
 
       expect(await screen.findByRole('button', { name: 'Start run' })).toBeInTheDocument()
     })
@@ -203,7 +204,7 @@ describe('MachineListScreen', () => {
       const user = userEvent.setup()
       await saveMachine({ label: 'Lift lobby', level: 7 })
 
-      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
       await user.click(await screen.findByRole('button', { name: 'Start run' }))
 
       // Fix round 2: wait for the screen's OWN re-render, not the DB write
@@ -235,7 +236,7 @@ describe('MachineListScreen', () => {
         await finalizeVisit(visit.id)
       }
 
-      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
 
       expect(await screen.findByText(new RegExp(`^RUN · ${formatRunDate(today()).toUpperCase()}$`)))
         .toBeInTheDocument()
@@ -251,7 +252,7 @@ describe('MachineListScreen', () => {
       const visit = await openVisit(run.id, l7.id)
       await finalizeVisit(visit.id)
 
-      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} />)
+      render(<MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
 
       expect(screen.queryByText('Finished')).not.toBeInTheDocument()
       expect(await screen.findByTestId('machine-row-m7')).toHaveAttribute('data-finished', 'true')
@@ -262,7 +263,7 @@ describe('MachineListScreen', () => {
       const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
       const onCount = vi.fn()
 
-      render(<MachineListScreen onCount={onCount} onViewMap={vi.fn()} />)
+      render(<MachineListScreen onCount={onCount} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
       await user.click(await screen.findByRole('button', { name: 'Start run' }))
       await waitFor(() => expect(screen.queryByRole('button', { name: 'Start run' })).toBeNull())
 
@@ -288,13 +289,68 @@ describe('MachineListScreen', () => {
       await openVisit(run.id, l7.id)
 
       const onCount = vi.fn()
-      render(<MachineListScreen onCount={onCount} onViewMap={vi.fn()} />)
+      render(<MachineListScreen onCount={onCount} onViewMap={vi.fn()} onTrolley={vi.fn()} />)
 
       const resume = await screen.findByRole('button', { name: 'Continue L7 →' })
       expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument()
 
       await user.click(resume)
       await waitFor(() => expect(onCount).toHaveBeenCalledWith(l7, run.id))
+    })
+
+    // Design §12.6: the footer's third state. The trolley is loaded once, at
+    // G, before the walk starts (D4) — so the moment the footer offers it is
+    // the moment a run exists and nothing has been counted yet. It is reached
+    // from here rather than from a fifth nav tab, which there is no room for
+    // on a phone (design §12.1, Phase 2 §7.2).
+    it('offers Load trolley on the machines footer before anything is counted', async () => {
+      const user = userEvent.setup()
+      await saveMachine({ label: 'Lift lobby', level: 7 })
+      const run = await createRun(today())
+      const onTrolley = vi.fn()
+
+      render(
+        <MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={onTrolley} />,
+      )
+
+      expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument()
+      await user.click(await screen.findByRole('button', { name: 'Load trolley' }))
+
+      expect(onTrolley).toHaveBeenCalledWith(run.id, 'load')
+    })
+
+    // Design §12.6 and spec §7 step 5: the last thing the run asks for. It
+    // replaces `Load trolley` once every machine that is going to be counted
+    // has been — at which point there is nothing left to load for.
+    it('offers Return leftovers once every machine has been counted', async () => {
+      const user = userEvent.setup()
+      const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+      const run = await createRun(today())
+      await finalizeVisit((await openVisit(run.id, l7.id)).id)
+      const onTrolley = vi.fn()
+
+      render(
+        <MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={onTrolley} />,
+      )
+
+      expect(screen.queryByRole('button', { name: 'Load trolley' })).not.toBeInTheDocument()
+      await user.click(await screen.findByRole('button', { name: 'Return leftovers' }))
+
+      expect(onTrolley).toHaveBeenCalledWith(run.id, 'return')
+    })
+
+    it('says in the eyebrow that the trolley is loaded, once it is', async () => {
+      await saveMachine({ label: 'Lift lobby', level: 7 })
+      const run = await createRun(today())
+      await recordTrolleyLoad({
+        runId: run.id, itemId: newId(), needed: 7, taken: 24, noneLeftInG: false,
+      })
+
+      render(
+        <MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={vi.fn()} />,
+      )
+
+      expect(await screen.findByText(/TROLLEY LOADED$/)).toBeInTheDocument()
     })
   })
 })
