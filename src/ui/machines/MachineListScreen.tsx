@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { listMachines } from '../../data/repositories/machines'
 import { getOrCreateRun, getRunForDate } from '../../data/repositories/runs'
+import { trolleyForRun } from '../../data/repositories/trolley'
 import { listVisitsForRun } from '../../data/repositories/visits'
 import { distinctLabel } from './machineLabel'
 import { today, formatRunDate } from '../../domain/date'
@@ -9,10 +10,15 @@ import { ScreenLayout } from '../components/ScreenLayout'
 import type { Id, Machine, Run } from '../../domain/types'
 
 export function MachineListScreen({
-  onCount, onViewMap,
+  onCount, onViewMap, onTrolley,
 }: {
   onCount: (machine: Machine, runId: Id) => void
   onViewMap: (machine: Machine) => void
+  /** The trolley, loaded at G before the walk and emptied back onto the shelf
+   * after it (design §12.6). Both live on the same nested screen under this
+   * one — the nav stays at four tabs, and there is no room on a phone for a
+   * fifth. */
+  onTrolley: (runId: Id, mode: 'load' | 'return') => void
 }) {
   const [machines, setMachines] = useState<Machine[]>([])
   // Today's run, or null if it has not been started. Held so the header can
@@ -35,6 +41,11 @@ export function MachineListScreen({
   // `listVisitsForRun` read as `finishedMachineIds`, so this costs no extra
   // query.
   const [inProgressMachineIds, setInProgressMachineIds] = useState<Set<Id>>(new Set())
+  // Whether this run's trolley has been loaded — one indexed read on `runId`,
+  // for the eyebrow and for nothing else. This screen is not on the
+  // latency-critical path (the count screen is), and the state it reports is
+  // now the trolley's as well as the walk's.
+  const [trolleyLoaded, setTrolleyLoaded] = useState(false)
 
   async function reload() {
     setMachines(await listMachines())
@@ -46,9 +57,11 @@ export function MachineListScreen({
     if (!run) {
       setFinishedMachineIds(new Set())
       setInProgressMachineIds(new Set())
+      setTrolleyLoaded(false)
       setLoading(false)
       return
     }
+    setTrolleyLoaded((await trolleyForRun(run.id)).length > 0)
     const visits = await listVisitsForRun(run.id)
     setFinishedMachineIds(
       new Set(visits.filter((v) => v.status === 'finalized').map((v) => v.machineId)),
@@ -81,7 +94,8 @@ export function MachineListScreen({
     <ScreenHeader
       eyebrow={
         loading ? undefined : todaysRun
-          ? `RUN · ${formatRunDate(today()).toUpperCase()}`
+          ? `RUN · ${formatRunDate(today()).toUpperCase()}${
+            trolleyLoaded ? ' · TROLLEY LOADED' : ''}`
           : 'NO RUN STARTED'
       }
       title="Machines"
@@ -102,6 +116,29 @@ export function MachineListScreen({
   // more than one is open at once (the operator hopped away mid-count) the
   // footer can only ever point at one, so the walk order breaks the tie.
   const inProgressMachine = machines.find((m) => inProgressMachineIds.has(m.id))
+
+  // Design §12.6, in the order the run happens: start it, load the trolley at
+  // G, resume whichever machine is open, and — once every machine has been
+  // counted — bring what is left back down.
+  //
+  // A machine in progress outranks `Load trolley`: the operator is upstairs
+  // mid-count, and the trolley was loaded before they left. The offer to
+  // return outranks nothing, because it only appears when there is nothing
+  // left to count.
+  const everyMachineCounted =
+    machines.length > 0 && finishedMachineIds.size === machines.length
+  const footerAction =
+    !todaysRun ? { label: 'Start run', onClick: () => void startRun() }
+    : inProgressMachine
+      ? {
+        label: `Continue L${inProgressMachine.level} →`,
+        onClick: () => void startCount(inProgressMachine),
+      }
+    : everyMachineCounted
+      ? { label: 'Return leftovers', onClick: () => onTrolley(todaysRun.id, 'return') }
+    : finishedMachineIds.size === 0
+      ? { label: 'Load trolley', onClick: () => onTrolley(todaysRun.id, 'load') }
+      : null
 
   return (
     <ScreenLayout header={header}>
@@ -176,28 +213,16 @@ export function MachineListScreen({
         })}
       </ul>
 
-      {!todaysRun ? (
+      {footerAction && (
         <div className="border-t-2 border-rule-strong">
           <button
             type="button"
-            onClick={() => void startRun()}
+            onClick={footerAction.onClick}
             className="w-full bg-accent px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] text-ground"
           >
-            Start run
+            {footerAction.label}
           </button>
         </div>
-      ) : (
-        inProgressMachine && (
-          <div className="border-t-2 border-rule-strong">
-            <button
-              type="button"
-              onClick={() => void startCount(inProgressMachine)}
-              className="w-full bg-accent px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em] text-ground"
-            >
-              {`Continue L${inProgressMachine.level} →`}
-            </button>
-          </div>
-        )
       )}
     </ScreenLayout>
   )

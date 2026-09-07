@@ -5,6 +5,7 @@ import { MachineListScreen } from './machines/MachineListScreen'
 import { MachineMapScreen } from './machines/MachineMapScreen'
 import { CountScreen } from './run/CountScreen'
 import { StoreroomScreen } from './storeroom/StoreroomScreen'
+import { TrolleyScreen } from './trolley/TrolleyScreen'
 import { HistoryScreen } from './history/HistoryScreen'
 import { NavContext, type TabName } from './components/ScreenLayout'
 import { backfillBoxSizes } from '../data/repositories/backfillBoxSizes'
@@ -16,6 +17,10 @@ type Screen =
   | { name: 'machines' }
   | { name: 'machine-map'; machine: Machine }
   | { name: 'count'; runId: Id; machine: Machine }
+  // A nested screen under Machines, reached from its footer — never a fifth
+  // nav tab (design §12.1). `mode` is which end of the run it is: the load at
+  // G on the way up, the leftovers counted on the way back down.
+  | { name: 'trolley'; runId: Id; mode: 'load' | 'return' }
   | { name: 'storeroom' }
   | { name: 'history' }
 
@@ -69,11 +74,20 @@ export default function App() {
             onDone={() => setScreen({ name: 'machines' })}
           />
         )
+      case 'trolley':
+        return (
+          <TrolleyScreen
+            runId={screen.runId}
+            mode={screen.mode}
+            onDone={() => setScreen({ name: 'machines' })}
+          />
+        )
       case 'machines':
         return (
           <MachineListScreen
             onCount={(machine, runId) => setScreen({ name: 'count', runId, machine })}
             onViewMap={(machine) => setScreen({ name: 'machine-map', machine })}
+            onTrolley={(runId, mode) => setScreen({ name: 'trolley', runId, mode })}
           />
         )
       case 'storeroom':
@@ -103,7 +117,8 @@ export default function App() {
   const wide = screen.name === 'history'
   const active: TabName =
     screen.name === 'item-edit' ? 'items'
-    : screen.name === 'machine-map' || screen.name === 'count' ? 'machines'
+    : screen.name === 'machine-map' || screen.name === 'count'
+      || screen.name === 'trolley' ? 'machines'
     : screen.name
 
   return (

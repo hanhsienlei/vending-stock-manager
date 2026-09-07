@@ -236,3 +236,66 @@ describe('forecastForRun', () => {
     expect(rows.find((r) => r.slotNumber === 59)?.ranDryLastPeriod).toBe(false)
   })
 })
+
+/** The two inputs `buildPickList` requires that a `SlotNeed` cannot carry:
+ * the machine's floor level, which orders the walk, and whether the slot's
+ * level has moved. Both are computed here because only this module holds the
+ * period history and the machine roster; neither is optional, because an
+ * omitted `unmovedSlots` would silently mean "nothing is quiet". */
+describe('forecastForRun, the pick list\'s other two inputs', () => {
+  it('carries the machine level, so the walk can be ordered without a second read', async () => {
+    const item = await coke()
+    await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(item.id, { kind: 'base' }, [58])
+
+    const [row] = await forecastForRun('2026-08-28')
+
+    expect(row.level).toBe(7)
+  })
+
+  it('marks a slot whose level never moves across the window, and only that slot', async () => {
+    const item = await coke()
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(item.id, { kind: 'base' }, [58, 59])
+
+    // Five visits bound four periods. Slot 58 reads the same number before
+    // and after at every one of them — nothing sold, nothing put in. Slot 59
+    // sells seven a week and is refilled to ten, so its closing total is
+    // identical every period while its level plainly moves; the closings
+    // alone would call it quiet, which is why the readings are compared
+    // rather than the period totals.
+    for (const date of TUESDAYS.slice(4)) {
+      await count(date, l7.id, [
+        { slotNumber: 58, itemId: item.id, before: 6, after: 6 },
+        { slotNumber: 59, itemId: item.id, before: 3, after: 10 },
+      ])
+    }
+
+    const rows = await forecastForRun('2026-08-28')
+
+    expect(rows.find((r) => r.slotNumber === 58)?.unmoved).toBe(true)
+    expect(rows.find((r) => r.slotNumber === 58)?.rate).toBe(0)
+    expect(rows.find((r) => r.slotNumber === 59)?.unmoved).toBe(false)
+  })
+
+  it('will not call a slot unmoved before four periods have been seen', async () => {
+    const item = await coke()
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(item.id, { kind: 'base' }, [58])
+
+    // Three visits, two periods: enough for a rate of zero, not enough to
+    // say a slot has been still for four. "Not yet known" is the honest
+    // answer, and it keeps the slot on the pick list rather than in the
+    // `Nothing expected` list it has not earned.
+    for (const date of TUESDAYS.slice(6)) {
+      await count(date, l7.id, [
+        { slotNumber: 58, itemId: item.id, before: 6, after: 6 },
+      ])
+    }
+
+    const [row] = await forecastForRun('2026-08-28')
+
+    expect(row.rate).toBe(0)
+    expect(row.unmoved).toBe(false)
+  })
+})
