@@ -7,6 +7,7 @@ import { saveMachine } from '../../data/repositories/machines'
 import { createRun } from '../../data/repositories/runs'
 import { openVisit, putCountLine, finalizeVisit } from '../../data/repositories/visits'
 import { setPlacement } from '../../data/repositories/placements'
+import { recordTrolleyLoad } from '../../data/repositories/trolley'
 import { newId, now } from '../../domain/ids'
 import { ReportScreen } from './ReportScreen'
 
@@ -316,5 +317,166 @@ describe('ReportScreen — §10 layout', () => {
     await screen.findByLabelText('report totals')
     expect(container.innerHTML).not.toMatch(/rounded-/)
     expect(container.innerHTML).not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
+  })
+})
+
+/** Task 17 — the `Order` column the paper sheet has left blank since Phase 2.
+ *
+ * Seeded through the screen the way every other test here is: the rate comes
+ * out of real finalized visits, because a rate assembled by hand would prove
+ * the formatting and nothing else. */
+describe('ReportScreen — the order suggestion', () => {
+  beforeEach(() => {
+    // The horizon, the safety days and D7's toggle live in `localStorage`,
+    // and one store is shared by every test in a file — a test that turns the
+    // column off would otherwise turn it off for the tests after it.
+    //
+    // Guarded because this environment's `window.localStorage` is an object
+    // with no methods on it (node's own experimental global, shadowing
+    // jsdom's), which is exactly the case `useOrderPreferences` catches: the
+    // preferences fall back to their defaults and the screen still works.
+    try {
+      window.localStorage.clear()
+    } catch { /* no storage here; the hook defaults */ }
+  })
+
+  async function countSlots(
+    date: string, machineId: string,
+    slots: { slotNumber: number; itemId: string; before: number; after: number }[],
+  ) {
+    const run = await createRun(date)
+    const visit = await openVisit(run.id, machineId)
+    for (const slot of slots) {
+      await putCountLine({
+        id: newId(), visitId: visit.id, slotNumber: slot.slotNumber,
+        itemId: slot.itemId, before: slot.before, after: slot.after,
+        touched: true, filled: false, price: 4.5, updatedAt: now(),
+      })
+    }
+    await finalizeVisit(visit.id)
+  }
+
+  /** Three weekly visits to one slot, so two clean periods — the minimum a
+   * rate exists at (`MIN_PERIODS_FOR_RATE`). 6 sold over each 7 days, so
+   * 12/14 = 0.86 a day, and over the default 10 days that is a forecast of
+   * 8.6 against an empty storeroom: 9 units, which is one carton of 24. */
+  async function seedRatedCoke(boxSize = 24) {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    await countSlots('2026-08-13', l7.id, [
+      { slotNumber: 58, itemId: coke.id, before: 0, after: 10 },
+    ])
+    await countSlots('2026-08-20', l7.id, [
+      { slotNumber: 58, itemId: coke.id, before: 4, after: 10 },
+    ])
+    await countSlots('2026-08-27', l7.id, [
+      { slotNumber: 58, itemId: coke.id, before: 4, after: 10 },
+    ])
+    return { coke, l7 }
+  }
+
+  it('fills the Order column from the suggestion', async () => {
+    await seedRatedCoke()
+
+    render(<ReportScreen />)
+
+    expect(await screen.findByLabelText('order for 58')).toHaveTextContent('1 × 24')
+    // And the working is printed beside it, not just the answer (spec §6.1).
+    expect(screen.getByLabelText('order for Coke')).toHaveTextContent(/over 10 days/)
+  })
+
+  it('still renders it blank when the operator turns the suggestion off', async () => {
+    const user = userEvent.setup()
+    await seedRatedCoke()
+
+    render(<ReportScreen />)
+    await screen.findByLabelText('order for 58')
+
+    await user.click(screen.getByRole('button', { name: /order column/i }))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('order for 58')).toBeEmptyDOMElement()
+    })
+  })
+
+  it('reads in boxes at a real carton size and in units at box size 1', async () => {
+    await seedRatedCoke(1)
+
+    render(<ReportScreen />)
+
+    // 0.86 a day over 10 days = 8.6, nothing on hand, so 9 loose units.
+    expect(await screen.findByLabelText('order for 58')).toHaveTextContent('9')
+    expect(screen.getByLabelText('order for 58')).not.toHaveTextContent('×')
+  })
+
+  it('marks an item that ran dry', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize: 24 })
+    const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    // Four visits: the last period closed at zero, which censors it — the two
+    // before it still give a rate.
+    await countSlots('2026-08-06', l7.id, [
+      { slotNumber: 58, itemId: coke.id, before: 0, after: 10 },
+    ])
+    await countSlots('2026-08-13', l7.id, [
+      { slotNumber: 58, itemId: coke.id, before: 4, after: 10 },
+    ])
+    await countSlots('2026-08-20', l7.id, [
+      { slotNumber: 58, itemId: coke.id, before: 4, after: 10 },
+    ])
+    await countSlots('2026-08-27', l7.id, [
+      { slotNumber: 58, itemId: coke.id, before: 0, after: 10 },
+    ])
+
+    render(<ReportScreen />)
+
+    const row = await screen.findByLabelText('order for Coke')
+    expect(row).toHaveTextContent(/ran dry/i)
+    expect(row.className).toContain('shadow-[inset_4px_0_0_var(--color-accent)]')
+  })
+
+  it('marks an item the shelf at G was found empty of', async () => {
+    const { coke } = await seedRatedCoke()
+    const run = await createRun('2026-08-28')
+    await recordTrolleyLoad({
+      runId: run.id, itemId: coke.id, needed: 9, taken: 4, noneLeftInG: true,
+    })
+
+    render(<ReportScreen />)
+
+    expect(await screen.findByLabelText('order for Coke'))
+      .toHaveTextContent(/none left in g/i)
+  })
+
+  // An item nothing is known about is not given a zero: the cell stays the
+  // operator's, exactly as the paper sheet leaves it.
+  it('leaves the column blank for an item with no measured rate', async () => {
+    const chips = await saveItem({ name: 'Chips', price: 3, basePar: 10, boxSize: 12 })
+    await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(chips.id, { kind: 'base' }, [61])
+
+    render(<ReportScreen />)
+
+    expect(await screen.findByLabelText('order for 61')).toBeEmptyDOMElement()
+    expect(screen.getByLabelText('order suggestion'))
+      .toHaveTextContent(/two clean periods/i)
+  })
+
+  it('re-computes when the horizon changes', async () => {
+    const user = userEvent.setup()
+    await seedRatedCoke(1)
+
+    render(<ReportScreen />)
+    expect(await screen.findByLabelText('order for 58')).toHaveTextContent('9')
+
+    await user.clear(screen.getByLabelText('Horizon'))
+    await user.type(screen.getByLabelText('Horizon'), '21')
+
+    // 0.86 a day over (21 + 3) days = 20.6 → 21 units.
+    await waitFor(() => {
+      expect(screen.getByLabelText('order for 58')).toHaveTextContent('21')
+    })
+    expect(screen.getByLabelText('order for Coke')).toHaveTextContent(/over 24 days/)
   })
 })
