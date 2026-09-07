@@ -1,13 +1,19 @@
 import { useState } from 'react'
 import { useStoreroom } from './useStoreroom'
 import { AdjustmentSheet } from '../adjustments/AdjustmentSheet'
+import { SectionBar, useCollapsedSections } from '../components/CollapsibleSections'
 import { QuantityField } from '../components/QuantityField'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { ScreenLayout } from '../components/ScreenLayout'
 import { downloadBundle, type Bundle } from '../../backup/export'
 import { importBundle, planImport, readBundleFile, type ImportPlan } from '../../backup/import'
 import { today } from '../../domain/date'
-import type { Id } from '../../domain/types'
+import { TRAYS, trayOf, trayHeading } from '../../domain/trays'
+import type { Id, Item } from '../../domain/types'
+
+/** The section holding items with no base placement, keyed so it cannot
+ * collide with a tray number. Same key and same heading as the item list's. */
+const UNPLACED = 'unplaced'
 
 /** How long ago the shelf figure was confirmed, short enough to sit beside a
  * size in a 1fr cell (§8). `Never verified` is the string the row's accent
@@ -83,9 +89,11 @@ const ACTION = 'px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase 
  * starts working the day real carton sizes are entered. Machine screens stay
  * in loose units throughout: a vending slot contains no boxes. */
 export function StoreroomScreen() {
-  const { items, units, verifiedAt, onHand, loading, setUnits, refresh } = useStoreroom()
+  const { items, units, verifiedAt, onHand, baseSlot, loading, setUnits, refresh } =
+    useStoreroom()
   const [search, setSearch] = useState('')
   const [adjusting, setAdjusting] = useState<Id | null>(null)
+  const sections = useCollapsedSections('vsm.storeroom.collapsedTrays')
 
   if (loading) {
     return (
@@ -100,12 +108,102 @@ export function StoreroomScreen() {
   // report fewer items counted than actually are.
   const countedCount = verifiedAt.size
 
-  // No tray grouping here, unlike the item list this mirrors (commit
-  // f9e90a7): trays describe a machine's physical layout, and the storeroom
-  // is shelves — its rows have no tray structure to group by. Search alone.
   const filtered = items.filter((item) =>
     item.name.toLowerCase().includes(search.trim().toLowerCase()),
   )
+
+  // The item list's view, applied here at the operator's request. This used
+  // to say that shelves have no tray structure to group by, which is true of
+  // the shelves and beside the point: the operator picks the storeroom
+  // *against the machine*, tray by tray, and a flat sixty-row list makes
+  // them find each item by name in a list ordered by name — the same
+  // complaint that got the item list ordered by slot.
+  //
+  // One section per tray, never one per slot the item occupies: unlike the
+  // item list, every row here carries an editable count, and an item shown
+  // under two trays would be the same balance with two fields to type into.
+  // The lowest base slot decides, and an item with no base placement falls
+  // into `UNPLACED` rather than disappearing.
+  const groups = TRAYS.map((tray) => ({
+    key: String(tray),
+    heading: trayHeading(tray),
+    rows: filtered
+      .filter((item) => {
+        const slot = baseSlot.get(item.id)
+        return slot !== undefined && trayOf(slot) === tray
+      })
+      .sort((a, b) => (
+        (baseSlot.get(a.id) ?? 0) - (baseSlot.get(b.id) ?? 0) || a.name.localeCompare(b.name)
+      )),
+  })).filter((group) => group.rows.length > 0)
+
+  const unplaced = filtered.filter((item) => baseSlot.get(item.id) === undefined)
+
+  function row(item: Item) {
+    const verified = verifiedAt.get(item.id)
+    const neverVerified = verified === undefined
+    const estimate = onHand.get(item.id) ?? 0
+    const slot = baseSlot.get(item.id)
+    return (
+      <li
+        key={item.id}
+        data-testid={`storeroom-row-${item.name}`}
+        className={`border-b border-rule-light bg-paper py-2.5 ${
+          neverVerified ? 'shadow-[inset_4px_0_0_var(--color-accent)]' : ''
+        }`}
+      >
+        <div className={GRID}>
+          <div className="min-w-0">
+            <div className="truncate text-[14px] font-semibold">{item.name}</div>
+            <div
+              className={`text-[11px] font-medium ${
+                neverVerified ? 'text-accent-700' : 'text-neutral-700'
+              }`}
+            >
+              {/* The slot leads the metadata line rather than taking a
+                  column of its own: the count column already spends 112px
+                  on the boxes+loose control (see `GRID`), and a fourth
+                  column at 393px is the overflow that control just cost us.
+                  It is here at all so the order the rows are in reads as an
+                  order rather than as an arbitrary shuffle. */}
+              {slot !== undefined && <>{slot} · </>}
+              {item.size && <>{item.size} · </>}
+              <span>{formatVerifiedAt(verified)}</span>
+              {' · '}
+              <button
+                type="button"
+                aria-label={`Adjust ${item.name}`}
+                onClick={() => setAdjusting(item.id)}
+                className="font-bold text-accent-700"
+              >
+                Adjust
+              </button>
+            </div>
+          </div>
+
+          <span
+            aria-label={`${item.name} on hand`}
+            className={`text-right text-[18px] font-extrabold tabular-nums ${
+              estimate === 0 && neverVerified ? 'text-neutral-500' : 'text-ink'
+            }`}
+          >
+            {estimate}
+          </span>
+
+          <QuantityField
+            item={item}
+            units={units.get(item.id) ?? 0}
+            // Same shape as useCounting's steppers: commit
+            // optimistically, persist behind it, swallow a rejected
+            // write here rather than let it surface as an unhandled
+            // rejection (no error surface is in scope for this screen
+            // either — see known-gaps.md).
+            onChange={(qty) => { void setUnits(item.id, qty).catch(() => {}) }}
+          />
+        </div>
+      </li>
+    )
+  }
 
   return (
     <ScreenLayout
@@ -136,65 +234,33 @@ export function StoreroomScreen() {
         <span className="text-right leading-tight">Your<br />count</span>
       </div>
 
-      <ul>
-        {filtered.map((item) => {
-          const verified = verifiedAt.get(item.id)
-          const neverVerified = verified === undefined
-          const estimate = onHand.get(item.id) ?? 0
-          return (
-            <li
-              key={item.id}
-              data-testid={`storeroom-row-${item.name}`}
-              className={`border-b border-rule-light bg-paper py-2.5 ${
-                neverVerified ? 'shadow-[inset_4px_0_0_var(--color-accent)]' : ''
-              }`}
-            >
-              <div className={GRID}>
-                <div className="min-w-0">
-                  <div className="truncate text-[14px] font-semibold">{item.name}</div>
-                  <div
-                    className={`text-[11px] font-medium ${
-                      neverVerified ? 'text-accent-700' : 'text-neutral-700'
-                    }`}
-                  >
-                    {item.size && <>{item.size} · </>}
-                    <span>{formatVerifiedAt(verified)}</span>
-                    {' · '}
-                    <button
-                      type="button"
-                      aria-label={`Adjust ${item.name}`}
-                      onClick={() => setAdjusting(item.id)}
-                      className="font-bold text-accent-700"
-                    >
-                      Adjust
-                    </button>
-                  </div>
-                </div>
+      {groups.map((group) => (
+        <section key={group.key}>
+          <h3>
+            <SectionBar
+              heading={group.heading}
+              open={sections.isOpen(group.key)}
+              count={group.rows.length}
+              onToggle={() => sections.toggle(group.key)}
+            />
+          </h3>
+          {sections.isOpen(group.key) && <ul>{group.rows.map(row)}</ul>}
+        </section>
+      ))}
 
-                <span
-                  aria-label={`${item.name} on hand`}
-                  className={`text-right text-[18px] font-extrabold tabular-nums ${
-                    estimate === 0 && neverVerified ? 'text-neutral-500' : 'text-ink'
-                  }`}
-                >
-                  {estimate}
-                </span>
-
-                <QuantityField
-                  item={item}
-                  units={units.get(item.id) ?? 0}
-                  // Same shape as useCounting's steppers: commit
-                  // optimistically, persist behind it, swallow a rejected
-                  // write here rather than let it surface as an unhandled
-                  // rejection (no error surface is in scope for this screen
-                  // either — see known-gaps.md).
-                  onChange={(qty) => { void setUnits(item.id, qty).catch(() => {}) }}
-                />
-              </div>
-            </li>
-          )
-        })}
-      </ul>
+      {unplaced.length > 0 && (
+        <section>
+          <h3>
+            <SectionBar
+              heading="UNPLACED"
+              open={sections.isOpen(UNPLACED)}
+              count={unplaced.length}
+              onToggle={() => sections.toggle(UNPLACED)}
+            />
+          </h3>
+          {sections.isOpen(UNPLACED) && <ul>{unplaced.map(row)}</ul>}
+        </section>
+      )}
 
       <p className="bg-surface px-4 py-3 text-[11px] font-medium text-neutral-700">
         <strong>App estimate</strong> is your last count plus every delivery and
