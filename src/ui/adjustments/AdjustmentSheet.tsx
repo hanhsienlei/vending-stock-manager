@@ -3,7 +3,7 @@ import { listMachines } from '../../data/repositories/machines'
 import {
   recordAdjustment, recordTransfer, type AdjustmentLocation,
 } from '../../data/repositories/adjustments'
-import { ADJUSTMENT_REASONS, reasonSpec, type ReasonSpec } from '../../domain/adjustments'
+import { OFFERED_REASONS, reasonSpec, type ReasonSpec } from '../../domain/adjustments'
 import { isSlotNumber } from '../../domain/trays'
 import type { AdjustmentReason, Id, Machine } from '../../domain/types'
 
@@ -17,16 +17,6 @@ function messageFor(err: unknown): string {
     : 'Could not record that. Nothing was saved.'
 }
 
-/** A slot correction is written and read by nothing: `entersResidual` already
- * excludes it from the sales residual (correctly — it is a data fix, not a
- * stock movement), it touches no `CountLine`, and no screen reads it back
- * (docs/known-gaps.md). Withheld at a machine slot by operator decision,
- * 2026-08-28 (design §7) — matching the storeroom, which withheld it first.
- * Derived with the same predicate the storeroom uses, so this is not a
- * second hard-coded list: a future row in `ADJUSTMENT_REASONS` reaches both
- * call sites without an edit here. */
-const SLOT_ADJUSTMENT_REASONS = ADJUSTMENT_REASONS.filter((r) => r.entersResidual)
-
 /** One sheet, both locations (design §7.1). Reached from `⋯` on a slot row and
  * from the storeroom screen, with the location already known from where it was
  * opened — nothing is added to the counting flow itself, which stays the
@@ -36,7 +26,7 @@ const SLOT_ADJUSTMENT_REASONS = ADJUSTMENT_REASONS.filter((r) => r.entersResidua
  * reason, so the operator never types a minus. */
 export function AdjustmentSheet({
   location, itemId, itemName,
-  reasons = location.kind === 'machine' ? SLOT_ADJUSTMENT_REASONS : ADJUSTMENT_REASONS,
+  reasons = OFFERED_REASONS,
   onSaved, onCancel,
 }: {
   location: AdjustmentLocation
@@ -49,27 +39,20 @@ export function AdjustmentSheet({
    * (known-gaps.md), so an adjustment against the wrong product is silent and
    * permanent. Both call sites already hold the item. */
   itemName: string
-  /** Which reasons to offer. Defaults to the full table at the storeroom, and
-   * to `SLOT_ADJUSTMENT_REASONS` (above) at a machine slot, where `miscount`
-   * is withheld. The storeroom screen additionally passes its own narrower
-   * list explicitly, for the same underlying reason — a `miscount` recorded
-   * there would be excluded from `ledgerBalance` (domain/storeroom.ts, fix
-   * round 1, finding 1) and so would silently do nothing; the storeroom's own
-   * correction mechanism is the manual count, which resets the ledger anchor
-   * directly. */
+  /** Which reasons to offer. Defaults to every reason the table still offers
+   * — the same list at both locations since `miscount` was retired (design
+   * §4.1), so neither call site has to know about it.
+   *
+   * A caller passes its own list only to withhold something the table cannot
+   * know is unsafe *right now*: `SlotEditSheet` withholds `transfer` while
+   * that machine's visit is open, because that is the window in which the
+   * two after-counts already record the move (design §4.2). */
   reasons?: ReasonSpec[]
   onSaved: () => void
   onCancel: () => void
 }) {
   const [quantity, setQuantity] = useState('1')
   const [reason, setReason] = useState<AdjustmentReason>('expired')
-  // Only meaningful for a reason whose `totalStock` is 'unchanged' and which
-  // is not itself a transfer — i.e. `miscount` today, without hard-coding
-  // that reason string here (see `needsDirection` below). A miscount has no
-  // inherent sign: "totalStock === 'increase'" is false for it, so treating
-  // "not increase" as "decrease" (the brief's original rule) always lowered
-  // the figure, even when the operator counted MORE than was recorded.
-  const [direction, setDirection] = useState<'more' | 'fewer'>('more')
   // Empty when the source is the storeroom: the storeroom cannot be its own
   // destination, so there is nothing valid to default to until the machine
   // list lands (see the effect below). Starting it at 'storeroom' made the
@@ -100,18 +83,6 @@ export function AdjustmentSheet({
   }, [])
 
   const destinationIsMachine = reason === 'transfer' && destination !== 'storeroom'
-  // A reason with `totalStock === 'unchanged'` has no sign of its own — the
-  // brief's original rule folded that into "not increase", i.e. always
-  // negative, which is wrong for a miscount that corrects the figure
-  // upward. `transfer` is also 'unchanged' but is excluded here: its sign
-  // comes from source/destination, not from an operator-chosen direction.
-  // `miscount` is the only reason this is true for today, and it is also the
-  // only reason `SLOT_ADJUSTMENT_REASONS` withholds — so with the default
-  // `reasons` list at a machine slot, `reason` can never settle on it and
-  // this stays false there. Left as a general predicate rather than special-
-  // cased on the reason list actually in effect, so it keeps working if a
-  // caller passes a wider list, or a future reason is added upstream.
-  const needsDirection = reasonSpec(reason).totalStock === 'unchanged' && reason !== 'transfer'
 
   // §7's RESULT cell. Plain terms, both sides, before the commit — a
   // transfer is the one place this sheet can silently do the wrong thing,
@@ -125,11 +96,13 @@ export function AdjustmentSheet({
   const there = destination === 'storeroom'
     ? 'Storeroom G'
     : `L${machineById.get(destination)?.level ?? '?'}·${destinationSlot || '—'}`
-  const sign = reason === 'transfer'
+  // Every reason still on offer has a sign of its own: a transfer leaves
+  // here, a delivery arrives, and the rest are write-offs. The
+  // correction-direction control went with `miscount` (design §4.1), which
+  // was the only reason whose sign the operator had to choose.
+  const sign = reason === 'transfer' || reasonSpec(reason).totalStock !== 'increase'
     ? 'down'
-    : needsDirection
-      ? (direction === 'more' ? 'up' : 'down')
-      : (reasonSpec(reason).totalStock === 'increase' ? 'up' : 'down')
+    : 'up'
 
   // §7: "The commit button names the reason: `Record move`, `Record
   // delivery`. Not `Record`." Derived from the table, so a new reason gets a
@@ -137,7 +110,6 @@ export function AdjustmentSheet({
   const commitLabel =
     reason === 'transfer' ? 'Record move'
       : reason === 'delivery' ? 'Record delivery'
-      : reason === 'miscount' ? 'Record correction'
       : 'Record write-off'
 
   const spanning = reasons.filter((r) => r.reason === 'transfer')
@@ -192,14 +164,8 @@ export function AdjustmentSheet({
     setError(null)
 
     // `delivery` is the only reason that adds stock (spec §5.3); everything
-    // else here removes it — except a miscount, whose sign the operator
-    // chooses explicitly via `direction`, since "totalStock === 'unchanged'"
-    // says nothing about which way the correction goes. A miscount is
-    // excluded from the residual by reason, not by sign (see
-    // `entersResidual`).
-    const signed = needsDirection
-      ? (direction === 'more' ? magnitude : -magnitude)
-      : (reasonSpec(reason).totalStock === 'increase' ? magnitude : -magnitude)
+    // else still on offer removes it.
+    const signed = reasonSpec(reason).totalStock === 'increase' ? magnitude : -magnitude
 
     try {
       await recordAdjustment({
@@ -307,23 +273,6 @@ export function AdjustmentSheet({
             </span>
           )}
         </div>
-
-        {needsDirection && (
-          <label className="col-span-2 flex flex-col gap-1 bg-paper px-4 py-3">
-            <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
-              Correction direction
-            </span>
-            <select
-              aria-label="Correction direction"
-              className="border-b-2 border-ink bg-transparent pb-1 text-[13.5px] outline-none"
-              value={direction}
-              onChange={(e) => setDirection(e.target.value as 'more' | 'fewer')}
-            >
-              <option value="more">There are more than recorded</option>
-              <option value="fewer">There are fewer than recorded</option>
-            </select>
-          </label>
-        )}
 
         {reason === 'transfer' && (
           <label className="flex flex-col gap-1 bg-paper px-4 py-3">

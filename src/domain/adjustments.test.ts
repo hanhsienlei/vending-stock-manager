@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { ADJUSTMENT_REASONS, reasonSpec, entersResidual } from './adjustments'
+import {
+  ADJUSTMENT_REASONS, OFFERED_REASONS, reasonSpec, entersResidual,
+} from './adjustments'
 import type { AdjustmentReason } from './types'
 
 describe('the adjustment reason table', () => {
@@ -18,6 +20,21 @@ describe('the adjustment reason table', () => {
     const others: AdjustmentReason[] =
       ['transfer', 'expired', 'damaged', 'missing', 'delivery']
     expect(others.filter((r) => !entersResidual(r))).toEqual([])
+  })
+
+  // Design §4.1 (D8): `miscount` is retired as an operator-facing reason.
+  // The ROW stays, because rows are on disk and must keep being read back
+  // and excluded from the residual — only the tile goes.
+  it('keeps the miscount row on the table but offers it to nobody', () => {
+    expect(reasonSpec('miscount').offered).toBe(false)
+    expect(OFFERED_REASONS.map((r) => r.reason)).toEqual([
+      'transfer', 'expired', 'damaged', 'missing', 'delivery',
+    ])
+  })
+
+  it('keeps excluding a miscount row already on disk from the residual', () => {
+    expect(reasonSpec('miscount').entersResidual).toBe(false)
+    expect(entersResidual('miscount')).toBe(false)
   })
 
   it('marks delivery as the only reason that increases total stock', () => {

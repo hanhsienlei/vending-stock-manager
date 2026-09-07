@@ -11,6 +11,9 @@ import { createRun } from '../../data/repositories/runs'
 import {
   openVisit, getCountLines, putCountLine, finalizeVisit,
 } from '../../data/repositories/visits'
+import { recordTrolleyLoad } from '../../data/repositories/trolley'
+import * as trolleyRepo from '../../data/repositories/trolley'
+import * as forecastRepo from '../../data/repositories/forecast'
 import { newId, now } from '../../domain/ids'
 import { CountScreen } from './CountScreen'
 
@@ -900,5 +903,150 @@ describe('CountScreen', () => {
     const list = row.parentElement as HTMLElement
 
     expect(list.className).not.toMatch(/\bgap-\d/)
+  })
+})
+
+/** Design §4.2 (D9). The double-count trap is open for exactly as long as
+ * this machine's visit is, because that is the window in which the two
+ * after-counts are being written. */
+describe('CountScreen — transfer while the visit is open', () => {
+  const MOVE = 'Move to another machine or the storeroom'
+
+  async function adjustFromSlot(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'Edit slot 58' }))
+    await user.click(await screen.findByRole('button', { name: 'Adjust Coke' }))
+    await screen.findByLabelText('Units')
+  }
+
+  it('withholds transfer at a slot while the machine is being counted', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-09-04')
+
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
+    await screen.findByText('Coke')
+    await adjustFromSlot(user)
+
+    expect(screen.queryByRole('button', { name: MOVE })).not.toBeInTheDocument()
+  })
+
+  it('offers it again once the machine is finished', async () => {
+    const user = userEvent.setup()
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-09-04')
+
+    render(<CountScreen runId={run.id} machine={machine} onDone={vi.fn()} />)
+    await screen.findByText('Coke')
+
+    await user.click(screen.getByRole('button', { name: 'Finish machine' }))
+    await waitFor(() => expect(screen.getByText('Coke')).toBeInTheDocument())
+
+    await adjustFromSlot(user)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: MOVE })).toBeInTheDocument())
+  })
+})
+
+/** Spec §6.3, design §9 and §12.3. One line under the sticky column header,
+ * only when what is left on the trolley will not reach the machines still
+ * ahead — while there is still a decision to be made about it. */
+describe('CountScreen — the trolley watch', () => {
+  /** Two machines, one item at slot 58 on both. Neither has ever been
+   * counted, so each slot's need is its whole capacity (8, from basePar):
+   * the run wants 16 Cokes. What went on the trolley is the variable. */
+  async function loaded(taken: number) {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const here = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await saveMachine({ label: 'Gym', level: 11 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-09-04')
+    await recordTrolleyLoad({
+      runId: run.id, itemId: coke.id, needed: 16, taken, noneLeftInG: false,
+    })
+    return { coke, here, run }
+  }
+
+  it('says nothing when there is enough for the machines ahead', async () => {
+    const { here, run } = await loaded(20)
+
+    render(<CountScreen runId={run.id} machine={here} onDone={vi.fn()} />)
+    await screen.findByText('Coke')
+
+    // The watch loads behind the first paint, so give it room to land —
+    // an assertion made too early would pass for the wrong reason.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.queryByTestId('trolley-watch')).toBeNull()
+  })
+
+  it('names the level once the projection runs short', async () => {
+    const { here, run } = await loaded(10)
+
+    render(<CountScreen runId={run.id} machine={here} onDone={vi.fn()} />)
+    await screen.findByText('Coke')
+
+    // L7 draws 8 of the 10 on the trolley; L11 wants 8 more and cannot have
+    // them, so L11 is the level it runs out at.
+    const watch = await screen.findByTestId('trolley-watch')
+    expect(watch).toHaveTextContent('Coke runs out at L11 · 10 left')
+  })
+
+  it('goes quiet again when a machine turns out fuller than projected', async () => {
+    const user = userEvent.setup()
+    const { here, run } = await loaded(10)
+
+    render(<CountScreen runId={run.id} machine={here} onDone={vi.fn()} />)
+    await screen.findByTestId('trolley-watch')
+
+    // L7 turns out full: it takes nothing off the trolley, so the 10 loaded
+    // cover L11's 8 after all.
+    const counted = screen.getByLabelText('slot 58 counted')
+    await user.clear(counted)
+    await user.type(counted, '8')
+
+    await waitFor(() => expect(screen.queryByTestId('trolley-watch')).toBeNull())
+  })
+
+  it('stays silent on a run where no trolley was loaded', async () => {
+    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+    const here = await saveMachine({ label: 'Lift lobby', level: 7 })
+    await saveMachine({ label: 'Gym', level: 11 })
+    await setPlacement(coke.id, { kind: 'base' }, [58])
+    const run = await createRun('2026-09-04')
+
+    render(<CountScreen runId={run.id} machine={here} onDone={vi.fn()} />)
+    await screen.findByText('Coke')
+
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.queryByTestId('trolley-watch')).toBeNull()
+  })
+
+  // Spec §8.1: "A run's full working set loads into memory at run start.
+  // There are no queries at all during counting." The watch reads once on
+  // entry and recomputes in memory from there.
+  it('issues no query while counting', async () => {
+    const user = userEvent.setup()
+    const { here, run } = await loaded(10)
+
+    const trolleyRead = vi.spyOn(trolleyRepo, 'trolleyForRun')
+    const forecastRead = vi.spyOn(forecastRepo, 'forecastForRun')
+
+    render(<CountScreen runId={run.id} machine={here} onDone={vi.fn()} />)
+    await screen.findByTestId('trolley-watch')
+
+    const reads = trolleyRead.mock.calls.length + forecastRead.mock.calls.length
+
+    const counted = screen.getByLabelText('slot 58 counted')
+    await user.clear(counted)
+    await user.type(counted, '5')
+    await waitFor(() => expect(screen.getByLabelText('slot 58 counted')).toHaveValue('5'))
+
+    expect(trolleyRead.mock.calls.length + forecastRead.mock.calls.length).toBe(reads)
+
+    trolleyRead.mockRestore()
+    forecastRead.mockRestore()
   })
 })

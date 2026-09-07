@@ -5,7 +5,7 @@ import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
 import { saveMachine } from '../../data/repositories/machines'
 import { listAdjustments } from '../../data/repositories/adjustments'
-import { ADJUSTMENT_REASONS } from '../../domain/adjustments'
+import { ADJUSTMENT_REASONS, OFFERED_REASONS } from '../../domain/adjustments'
 import { AdjustmentSheet } from './AdjustmentSheet'
 
 /** Lets one test force the rejection `recordTransfer` really throws, without
@@ -213,109 +213,38 @@ describe('AdjustmentSheet', () => {
     expect(await listAdjustments()).toEqual([])
   })
 
-  // Fix round 1, finding 1: `reasonSpec('miscount').totalStock` is
-  // 'unchanged', not 'decrease', so `totalStock === 'increase' ? + : -`
-  // always signed a miscount negative — an operator who counted MORE than
-  // was recorded could never say so. A miscount now asks for a direction.
+  // Design §4.1 (D8): `miscount` is retired as an operator-facing reason.
+  // It could never change anything that anything reads — the residual reads
+  // `CountLine`, and an `Adjustment` cannot alter one — and the correct fix
+  // already exists and is better: a finalized visit is editable (spec §7 as
+  // amended), so a wrong count is fixed by typing the right number, and the
+  // storeroom's manual count re-anchors the ledger.
   //
-  // Exercised at the storeroom location rather than a machine slot: since
-  // 2026-08-28 (§7) a machine slot's default reason list withholds
-  // `miscount` (see "does not offer a miscount correction at a machine
-  // slot", below), so the option is unreachable there. The storeroom's
-  // default list is still the full table — the storeroom screen narrows it
-  // itself, at the call site (StoreroomScreen.test.tsx covers that) — so it
-  // remains the place to exercise the sheet's own direction-handling logic
-  // for a reason a caller does choose to offer.
-  it('records a miscount in the "more than recorded" direction as a positive movement', async () => {
-    const user = userEvent.setup()
-    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
-
-    render(
-      <AdjustmentSheet
-        location={{ kind: 'storeroom' }}
-        itemId={coke.id} itemName="Coke"
-        onSaved={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    )
-
-    await user.click(screen.getByRole('button', { name: 'Miscount correction' }))
-    await user.selectOptions(
-      await screen.findByLabelText('Correction direction'),
-      'more',
-    )
-    await user.clear(screen.getByLabelText('Units'))
-    await user.type(screen.getByLabelText('Units'), '2')
-    await user.click(screen.getByRole('button', { name: 'Record correction' }))
-
-    await waitFor(async () => {
-      expect((await listAdjustments())[0]?.units).toBe(2)
-    })
-  })
-
-  it('records a miscount in the "fewer than recorded" direction as a negative movement', async () => {
-    const user = userEvent.setup()
-    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
-
-    render(
-      <AdjustmentSheet
-        location={{ kind: 'storeroom' }}
-        itemId={coke.id} itemName="Coke"
-        onSaved={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    )
-
-    await user.click(screen.getByRole('button', { name: 'Miscount correction' }))
-    await user.selectOptions(
-      await screen.findByLabelText('Correction direction'),
-      'fewer',
-    )
-    await user.clear(screen.getByLabelText('Units'))
-    await user.type(screen.getByLabelText('Units'), '2')
-    await user.click(screen.getByRole('button', { name: 'Record correction' }))
-
-    await waitFor(async () => {
-      expect((await listAdjustments())[0]?.units).toBe(-2)
-    })
-  })
-
-  // §7, 2026-08-28: a slot miscount is stored and read by nothing (see
-  // docs/known-gaps.md) — `entersResidual` already excludes it from the
-  // sales residual, it touches no `CountLine`, and no screen reads it back.
-  // Withheld at a machine slot to match the storeroom, via the same
-  // `entersResidual` filter rather than a special case naming `miscount`
-  // (see `SLOT_ADJUSTMENT_REASONS` in AdjustmentSheet.tsx).
-  it('does not offer a miscount correction at a machine slot', async () => {
+  // The two tests that recorded a miscount in each direction, and the one
+  // that asserted the correction-direction control stayed hidden for other
+  // reasons, went with the control: `miscount` was the only reason it ever
+  // applied to.
+  it('offers no miscount tile anywhere, and no correction direction with it', async () => {
     const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
     const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
 
-    render(
-      <AdjustmentSheet
-        location={{ kind: 'machine', machineId: l7.id, slotNumber: 31 }}
-        itemId={coke.id} itemName="Coke"
-        onSaved={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    )
+    for (const location of [
+      { kind: 'storeroom' } as const,
+      { kind: 'machine', machineId: l7.id, slotNumber: 31 } as const,
+    ]) {
+      const { unmount } = render(
+        <AdjustmentSheet
+          location={location}
+          itemId={coke.id} itemName="Coke"
+          onSaved={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      )
 
-    expect(screen.queryByText('Miscount correction')).not.toBeInTheDocument()
-  })
-
-  it('does not show a correction direction for reasons other than miscount', async () => {
-    const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
-
-    render(
-      <AdjustmentSheet
-        location={{ kind: 'storeroom' }}
-        itemId={coke.id} itemName="Coke"
-        onSaved={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    )
-
-    // Default reason is 'expired'.
-    expect(screen.queryByLabelText('Correction direction')).not.toBeInTheDocument()
+      expect(screen.queryByText('Miscount correction')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Correction direction')).not.toBeInTheDocument()
+      unmount()
+    }
   })
 
   // Fix round 1, finding 2: units are discrete packets, so a fractional
@@ -343,16 +272,11 @@ describe('AdjustmentSheet', () => {
     expect(await listAdjustments()).toEqual([])
   })
 
-  // Fix round 1, finding 2 gave the storeroom screen a narrower reason list
-  // (no miscount — see StoreroomScreen.test.tsx) via a `reasons` prop rather
-  // than a hard-coded list duplicated at the call site. The slot-row path
-  // (SlotEditSheet) still passes nothing, but since §7 (2026-08-28) its
-  // default is no longer the full table either: withholding `miscount` at a
-  // slot could not be done at the SlotEditSheet call site (out of scope for
-  // that change), so the sheet's own default now derives a narrower list for
-  // a machine location — the same `entersResidual` filter the storeroom
-  // already used, not a second hard-coded list.
-  it('narrows the default reason list at a machine slot, deriving it rather than hard-coding it', async () => {
+  // The default list is now the same at both locations — everything the
+  // table still offers (design §4.1). A caller that must withhold more than
+  // that says so through `reasons`, which is how `SlotEditSheet` withholds
+  // `transfer` while a machine's visit is open (§4.2).
+  it('offers every reason still on offer at a machine slot, deriving it rather than hard-coding it', async () => {
     const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
     const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
 
@@ -378,10 +302,9 @@ describe('AdjustmentSheet', () => {
       .not.toBeInTheDocument()
   })
 
-  // The storeroom screen passes its own narrower `reasons` explicitly, so
-  // this default only ever matters for a caller that does not — but it
-  // should still be the full table there, not the slot's narrower one.
-  it('still offers the full reason list by default at the storeroom', async () => {
+  // The storeroom's default is every offered reason — the whole table minus
+  // the retired row, not the table itself.
+  it('offers every reason still on offer by default at the storeroom', async () => {
     const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
 
     render(
@@ -393,8 +316,11 @@ describe('AdjustmentSheet', () => {
       />,
     )
 
-    for (const spec of ADJUSTMENT_REASONS) {
+    for (const spec of OFFERED_REASONS) {
       expect(screen.getByRole('button', { name: spec.label })).toBeInTheDocument()
+    }
+    for (const spec of ADJUSTMENT_REASONS.filter((r) => !r.offered)) {
+      expect(screen.queryByRole('button', { name: spec.label })).not.toBeInTheDocument()
     }
   })
 
@@ -405,14 +331,16 @@ describe('AdjustmentSheet', () => {
       <AdjustmentSheet
         location={{ kind: 'storeroom' }}
         itemId={coke.id} itemName="Coke"
-        reasons={ADJUSTMENT_REASONS.filter((r) => r.reason !== 'miscount')}
+        reasons={OFFERED_REASONS.filter((r) => r.reason !== 'transfer')}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
       />,
     )
 
-    expect(screen.queryByRole('button', { name: 'Miscount correction' }))
-      .not.toBeInTheDocument()
+    expect(screen.queryByRole('button', {
+      name: 'Move to another machine or the storeroom',
+    })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Expired' })).toBeInTheDocument()
   })
   // The storeroom screen offers `transfer`, and "Storeroom G" was the
   // To machine select's first option — so the form's initial state was
@@ -490,8 +418,8 @@ describe('AdjustmentSheet — §7 layout', () => {
     )
     expect(screen.queryByLabelText('Reason')).not.toBeInTheDocument()
 
-    // The full table at the storeroom default: six reasons, six tiles.
-    for (const spec of ADJUSTMENT_REASONS) {
+    // Every reason still on offer, one tile each.
+    for (const spec of OFFERED_REASONS) {
       expect(screen.getByRole('button', { name: spec.label })).toBeInTheDocument()
     }
 
@@ -506,7 +434,7 @@ describe('AdjustmentSheet — §7 layout', () => {
     const tileLabels = within(grid).getAllByRole('button').map((b) => b.textContent)
     expect(tileLabels).toEqual([
       'Expired', 'Damaged or broken', 'Missing or taken', 'Delivery arrived',
-      'Miscount correction', 'Move to another machine or the storeroom',
+      'Move to another machine or the storeroom',
     ])
   })
 
@@ -612,7 +540,6 @@ describe('AdjustmentSheet — §7 layout', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'storeroom' }} itemId="i1" itemName="Coke"
-        reasons={ADJUSTMENT_REASONS.filter((r) => r.entersResidual)}
         onSaved={vi.fn()} onCancel={vi.fn()}
       />,
     )
