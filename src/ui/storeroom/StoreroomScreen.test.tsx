@@ -5,6 +5,7 @@ import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
 import { setStoreroomBalance, listStoreroomBalances } from '../../data/repositories/storeroom'
 import { recordAdjustment } from '../../data/repositories/adjustments'
+import { setPlacement } from '../../data/repositories/placements'
 import { exportBundle } from '../../backup/export'
 import { StoreroomScreen } from './StoreroomScreen'
 
@@ -299,11 +300,86 @@ describe('StoreroomScreen', () => {
     })
   })
 
+  // The operator asked for the item list's view here too: the same tray
+  // sections, in the same slot order, folding the same way. The shelves have
+  // no tray structure of their own, but the *stock* does — an item belongs to
+  // the slot it fills — and the storeroom is picked against the machine.
+  describe('the tray sections', () => {
+    it('groups the shelf by tray, in slot order', async () => {
+      const mars = await saveItem({ name: 'Mars', price: 3, basePar: 5, boxSize: 1 })
+      await setPlacement(mars.id, { kind: 'base' }, [36])
+      const twix = await saveItem({ name: 'Twix', price: 3, basePar: 5, boxSize: 1 })
+      await setPlacement(twix.id, { kind: 'base' }, [30])
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 1 })
+      await setPlacement(coke.id, { kind: 'base' }, [58])
+
+      render(<StoreroomScreen />)
+      await screen.findByText('Mars')
+
+      expect(screen.getByRole('button', { name: /TRAY 3 · CHOCOLATE/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /TRAY 5 · CANS/ })).toBeInTheDocument()
+      expect(screen.getAllByRole('listitem').map((li) => li.textContent))
+        .toEqual([
+          expect.stringMatching(/^Twix/),
+          expect.stringMatching(/^Mars/),
+          expect.stringMatching(/^Coke/),
+        ])
+    })
+
+    it('names the slot the item fills, so the order it is in reads as an order', async () => {
+      const mars = await saveItem({ name: 'Mars', price: 3, basePar: 5, boxSize: 1 })
+      await setPlacement(mars.id, { kind: 'base' }, [36])
+
+      render(<StoreroomScreen />)
+
+      expect(await screen.findByTestId('storeroom-row-Mars')).toHaveTextContent('36')
+    })
+
+    it('keeps an item with no slot at all, under an unplaced section', async () => {
+      await saveItem({ name: 'Orphan Item', price: 3, basePar: 5, boxSize: 1 })
+
+      render(<StoreroomScreen />)
+
+      expect(await screen.findByText('Orphan Item')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /UNPLACED/ })).toBeInTheDocument()
+    })
+
+    it('folds a tray away and says how many rows it is holding', async () => {
+      const user = userEvent.setup()
+      const mars = await saveItem({ name: 'Mars', price: 3, basePar: 5, boxSize: 1 })
+      await setPlacement(mars.id, { kind: 'base' }, [36])
+      const twix = await saveItem({ name: 'Twix', price: 3, basePar: 5, boxSize: 1 })
+      await setPlacement(twix.id, { kind: 'base' }, [30])
+
+      render(<StoreroomScreen />)
+      await screen.findByText('Mars')
+
+      await user.click(screen.getByRole('button', { name: /TRAY 3 · CHOCOLATE/ }))
+
+      expect(screen.queryByText('Mars')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /TRAY 3 · CHOCOLATE/ }))
+        .toHaveTextContent('2 hidden')
+    })
+
+    it('leaves the backup block at the foot whatever is folded', async () => {
+      const user = userEvent.setup()
+      const mars = await saveItem({ name: 'Mars', price: 3, basePar: 5, boxSize: 1 })
+      await setPlacement(mars.id, { kind: 'base' }, [36])
+
+      render(<StoreroomScreen />)
+      await screen.findByText('Mars')
+
+      await user.click(screen.getByRole('button', { name: /TRAY 3 · CHOCOLATE/ }))
+
+      expect(screen.getByRole('button', { name: /Export a backup/ })).toBeInTheDocument()
+      expect(screen.getByText('Restore from a backup')).toBeInTheDocument()
+    })
+  })
+
   // Item 10, fix-plan 2026-08-27: 60 catalogue items in one flat list with no
-  // way to filter — the same problem the item list had (commit f9e90a7),
-  // fixed here the same way, not by grouping (this is shelves, not a
-  // machine's tray layout — spec §4.1's storeroom has no tray structure to
-  // mirror).
+  // way to filter — the same problem the item list had (commit f9e90a7).
+  // Search came first; the tray sections above joined it later, at the
+  // operator's request.
   describe('search', () => {
     it('filters the list by name', async () => {
       const user = userEvent.setup()

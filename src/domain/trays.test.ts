@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   trayOf, TRAYS, slotsInTray, allSlotsInTray, isSlotNumber, parseSlotNumbers, trayLabel,
+  trayHeading,
 } from './trays'
 
 describe('trayOf', () => {
@@ -105,5 +106,17 @@ describe('parseSlotNumbers', () => {
     expect(parseSlotNumbers('58, 99, cola')).toEqual({
       slots: [58], invalid: ['99', 'cola'],
     })
+  })
+})
+
+describe('trayHeading', () => {
+  it('names the tray and its category word', () => {
+    expect(trayHeading(10)).toBe('TRAY 1 · CHIPS')
+    expect(trayHeading(30)).toBe('TRAY 3 · CHOCOLATE')
+    expect(trayHeading(60)).toBe('TRAY 6 · ALCOHOL')
+  })
+
+  it('falls back to the bare tray label where there is no category word', () => {
+    expect(trayHeading(70)).toBe('TRAY 7')
   })
 })

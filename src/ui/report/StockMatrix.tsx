@@ -1,5 +1,25 @@
+import { trayOf, trayHeading } from '../../domain/trays'
+import { SectionBar, useCollapsedSections } from '../components/CollapsibleSections'
 import type { MatrixRow } from '../../domain/stockMatrix'
 import type { Id, Machine } from '../../domain/types'
+
+/** Rows the tray sections could not place, kept in a section of their own so
+ * that a locator this cannot read costs a heading rather than a row. */
+const UNPLACED = 'unplaced'
+
+/** The tray a row belongs to, read back out of its locator — `34`, `52-1` and
+ * `58, 59` all start with the slot the row is filed under, which is exactly
+ * how `buildStockMatrix` ordered them in the first place. Read here rather
+ * than added to `MatrixRow`: the domain already decided this row's position,
+ * and a second field carrying the same fact is a second thing to keep true.
+ *
+ * `undefined` only for a locator with no leading number at all, which the
+ * matrix builder cannot produce today — the guard is here so that a row can
+ * never be lost to a grouping, which is a display decision. */
+function trayOfRow(row: MatrixRow): number | undefined {
+  const slot = Number.parseInt(row.key, 10)
+  return Number.isNaN(slot) ? undefined : trayOf(slot)
+}
 
 /** The longest name the item column holds at its rendered width. Measured
  * rather than guessed: at 852px the column renders ~218px, and the longest
@@ -55,6 +75,46 @@ export function StockMatrix({
   machines: Machine[]
   orderByItem?: Map<Id, string>
 }) {
+  const sections = useCollapsedSections('vsm.matrix.collapsedTrays')
+
+  // One group per tray, in tray order — which is the order `rows` already
+  // arrives in, so grouping never reorders the sheet, it only cuts it. The
+  // trays come from the rows, like the receipt's: a tray nothing is placed in
+  // gets no bar, and a slot outside the six still gets a heading rather than
+  // losing its row.
+  const trays = [...new Set(rows.map(trayOfRow))]
+    .filter((tray): tray is number => tray !== undefined)
+    .sort((a, b) => a - b)
+
+  const groups = [
+    ...trays.map((tray) => ({
+      key: String(tray),
+      heading: trayHeading(tray),
+      rows: rows.filter((row) => trayOfRow(row) === tray),
+    })),
+    {
+      key: UNPLACED,
+      heading: 'UNPLACED',
+      rows: rows.filter((row) => trayOfRow(row) === undefined),
+    },
+  ].filter((group) => group.rows.length > 0)
+
+  // Slot, Item, Size, Box, then a column per machine, then GF, Total, Order.
+  // The section bar spans exactly this, so it displaces no column.
+  const columnCount = 4 + machines.length + 3
+
+  // The banding runs across the sheet rather than restarting in each section:
+  // it exists so the eye can hold a row across twenty-two columns (§11), and
+  // a stripe that resets at every heading is a stripe that stops helping.
+  // Counted over the rows actually shown, so folding a tray does not leave
+  // two identical bands meeting where it used to be.
+  const bandByRowKey = new Map<string, number>()
+  let shown = 0
+  for (const group of groups) {
+    if (!sections.isOpen(group.key)) continue
+    for (const row of group.rows) bandByRowKey.set(row.key, shown++ % 2)
+  }
+
   return (
     <div>
       {/* `overscroll-x-none` kills the horizontal rubber-band the operator hit
@@ -158,14 +218,43 @@ export function StockMatrix({
               <th scope="col" className={`${HEAD} text-right text-accent`}>Order</th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((row, i) => (
+          {/* One `<tbody>` per tray, because a `<section>` cannot live in a
+              table and a wrapper element around a run of `<tr>`s would drop
+              the rows out of the table's own layout — which is what aligns
+              the columns. The bar itself is the shared `SectionBar`, inside a
+              `<th colSpan>` spanning every column so it displaces none of
+              them. The frozen header is untouched: it is in the `<thead>`,
+              above all of these. */}
+          {groups.map((group) => (
+            <tbody key={group.key}>
+              <tr>
+                <th
+                  colSpan={columnCount}
+                  scope="colgroup"
+                  // `p-0`: the bar brings the section-bar padding with it, and
+                  // the cell's own `px-1` would inset it from the sheet's
+                  // edge and make it read as a cell rather than a heading.
+                  className="border-b border-rule-light p-0 text-left"
+                >
+                  <SectionBar
+                    heading={group.heading}
+                    open={sections.isOpen(group.key)}
+                    count={group.rows.length}
+                    onToggle={() => sections.toggle(group.key)}
+                    // The sheet's own tracking, not the list screens' — every
+                    // heading on this table is set at 0.06em because
+                    // twenty-two columns cannot afford 0.12em.
+                    className="tracking-[0.06em]"
+                  />
+                </th>
+              </tr>
+              {sections.isOpen(group.key) && group.rows.map((row) => (
               <tr
                 key={row.key}
                 aria-label={`stock row ${row.key}`}
                 // At 60 rows by 22 columns, banding is what keeps a
                 // screenshot readable (§11).
-                className={`border-b border-rule-light ${i % 2 === 0 ? 'bg-paper' : 'bg-neutral-100'}`}
+                className={`border-b border-rule-light ${bandByRowKey.get(row.key) === 0 ? 'bg-paper' : 'bg-neutral-100'}`}
               >
                 <td className={`${CELL} text-[13px] font-semibold leading-tight`}>{row.key}</td>
                 <td
@@ -214,8 +303,9 @@ export function StockMatrix({
                   {orderByItem?.get(row.itemId) ?? ''}
                 </td>
               </tr>
-            ))}
-          </tbody>
+              ))}
+            </tbody>
+          ))}
         </table>
       </div>
 

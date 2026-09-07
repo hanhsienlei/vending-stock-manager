@@ -2,27 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { listItems } from '../../data/repositories/items'
 import { listPlacements } from '../../data/repositories/placements'
 import { seedStarterCatalogue } from '../../data/repositories/seed'
-import { TRAYS, trayOf, trayLabel } from '../../domain/trays'
+import { TRAYS, trayOf, trayHeading } from '../../domain/trays'
+import { SectionBar, useCollapsedSections } from '../components/CollapsibleSections'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { ScreenLayout } from '../components/ScreenLayout'
 import type { Id, Item, ItemPlacement } from '../../domain/types'
 
-/** Tray category words, from `docs/catalogue-transcription.md`'s own tray
- * titles. A UI constant rather than a field on `Item`: the machine's trays
- * are physically categorised, the catalogue records that, and adding a
- * `category` column would be a schema change for a display word. Tray 40 is
- * "juice, energy, water" in the catalogue, which does not fit a bar, so it
- * takes the spec's own example word. */
-const TRAY_CATEGORY: Record<number, string> = {
-  10: 'CHIPS', 20: 'SUNDRIES', 30: 'CHOCOLATE',
-  40: 'DRINKS', 50: 'CANS', 60: 'ALCOHOL',
-}
-
-function trayHeading(tray: number): string {
-  const label = trayLabel(tray).toUpperCase()
-  const category = TRAY_CATEGORY[tray]
-  return category ? `${label} · ${category}` : label
-}
+/** The fold state is keyed by tray number, so the group with no tray needs a
+ * key of its own that no tray can collide with. */
+const UNPLACED = 'unplaced'
 
 /** The remark, short enough to sit beside an item name (§12). The full
  * string stays reachable — as the tag's accessible name here, and in full on
@@ -86,6 +74,7 @@ export function ItemListScreen({
   const [placements, setPlacements] = useState<ItemPlacement[]>([])
   const [busy, setBusy] = useState(false)
   const [search, setSearch] = useState('')
+  const sections = useCollapsedSections('vsm.items.collapsedTrays')
 
   async function reload() {
     const [allItems, allPlacements] = await Promise.all([listItems(), listPlacements()])
@@ -149,6 +138,12 @@ export function ItemListScreen({
     return map
   }, [placements])
 
+  // Slot order within a tray, never name order. The operator walks a machine
+  // top to bottom, so a tray that reads 34, 33, 39, 30 … is a list they have
+  // to re-sort in their head at every slot — which is what they reported.
+  // `listItems` returns the catalogue by name, so the sort has to happen
+  // here; the tie-break keeps two items in one mixed slot in a stable order,
+  // and an item with no base slot at all cannot reach a tray group anyway.
   const groups = useMemo(() => {
     const byTray = new Map<number, Item[]>(TRAYS.map((t) => [t, []]))
     const unplaced: Item[] = []
@@ -162,8 +157,14 @@ export function ItemListScreen({
         byTray.get(tray)?.push(item)
       }
     }
+    for (const trayItems of byTray.values()) {
+      trayItems.sort((a, b) => (
+        (baseSlotByItemId.get(a.id) ?? Infinity) - (baseSlotByItemId.get(b.id) ?? Infinity)
+        || a.name.localeCompare(b.name)
+      ))
+    }
     return { byTray, unplaced }
-  }, [filtered, traysByItemId])
+  }, [filtered, traysByItemId, baseSlotByItemId])
 
   return (
     <ScreenLayout
@@ -203,35 +204,52 @@ export function ItemListScreen({
       {TRAYS.map((tray) => {
         const trayItems = groups.byTray.get(tray) ?? []
         if (trayItems.length === 0) return null
+        const open = sections.isOpen(String(tray))
         return (
           <section key={tray}>
-            <h3 className="bg-surface px-4 py-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
-              {trayHeading(tray)}
+            {/* The bar stays an `h3` — it is still this section's heading,
+                and a button inside one keeps both readings. */}
+            <h3>
+              <SectionBar
+                heading={trayHeading(tray)}
+                open={open}
+                count={trayItems.length}
+                onToggle={() => sections.toggle(String(tray))}
+              />
             </h3>
-            <ul>
-              {trayItems.map((item) => (
-                <ItemRow
-                  key={item.id}
-                  item={item}
-                  baseSlot={baseSlotByItemId.get(item.id)}
-                  onSelect={onSelect}
-                />
-              ))}
-            </ul>
+            {open && (
+              <ul>
+                {trayItems.map((item) => (
+                  <ItemRow
+                    key={item.id}
+                    item={item}
+                    baseSlot={baseSlotByItemId.get(item.id)}
+                    onSelect={onSelect}
+                  />
+                ))}
+              </ul>
+            )}
           </section>
         )
       })}
 
       {groups.unplaced.length > 0 && (
         <section>
-          <h3 className="bg-surface px-4 py-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
-            Unplaced
+          <h3>
+            <SectionBar
+              heading="UNPLACED"
+              open={sections.isOpen(UNPLACED)}
+              count={groups.unplaced.length}
+              onToggle={() => sections.toggle(UNPLACED)}
+            />
           </h3>
-          <ul>
-            {groups.unplaced.map((item) => (
-              <ItemRow key={item.id} item={item} onSelect={onSelect} />
-            ))}
-          </ul>
+          {sections.isOpen(UNPLACED) && (
+            <ul>
+              {groups.unplaced.map((item) => (
+                <ItemRow key={item.id} item={item} onSelect={onSelect} />
+              ))}
+            </ul>
+          )}
         </section>
       )}
     </ScreenLayout>

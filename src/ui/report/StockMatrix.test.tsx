@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { StockMatrix } from './StockMatrix'
 import type { MatrixRow } from '../../domain/stockMatrix'
 import type { Machine } from '../../domain/types'
@@ -242,5 +243,73 @@ describe('StockMatrix — §11 restyle', () => {
 
     const cell = screen.getByLabelText(`order for ${ROWS[0].key}`)
     expect(cell.className).toContain('whitespace-nowrap')
+  })
+})
+
+// The sheet is sixty rows on one screen, and the operator asked for the same
+// tray sections the item list and the storeroom now have. A table cannot hold
+// a `<section>`, so the sections are one `<tbody>` per tray with the shared
+// `SectionBar` inside a `<th colSpan>` — which is what keeps the columns
+// aligned and the frozen header working.
+describe('StockMatrix — tray sections', () => {
+  const TRAY_ROWS: MatrixRow[] = [
+    {
+      key: '34', itemId: 'boost', itemName: 'Boost', boxSize: 30,
+      perMachine: new Map([['m2', 1], ['m7', 2]]), storeroom: 5, total: 8,
+    },
+    {
+      key: '36', itemId: 'mars', itemName: 'Mars', boxSize: 30,
+      perMachine: new Map([['m2', 1], ['m7', 2]]), storeroom: 5, total: 8,
+    },
+    {
+      key: '58, 59', itemId: 'coke', itemName: 'Coke', boxSize: 24,
+      perMachine: new Map([['m2', 3], ['m7', 4]]), storeroom: 100, total: 107,
+    },
+  ]
+
+  it('heads each tray with its own section bar', () => {
+    render(<StockMatrix rows={TRAY_ROWS} machines={MACHINES} />)
+
+    expect(screen.getByRole('button', { name: /TRAY 3 · CHOCOLATE/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /TRAY 5 · CANS/ })).toBeInTheDocument()
+  })
+
+  it('spans the whole table with the bar, so no column is displaced by it', () => {
+    const { container } = render(<StockMatrix rows={TRAY_ROWS} machines={MACHINES} />)
+
+    const columns = container.querySelectorAll('colgroup col').length
+    const bar = container.querySelector('tbody th')
+    expect(bar?.getAttribute('colspan')).toBe(String(columns))
+  })
+
+  it('folds a tray away and says how many rows it is holding', async () => {
+    const user = userEvent.setup()
+    render(<StockMatrix rows={TRAY_ROWS} machines={MACHINES} />)
+
+    await user.click(screen.getByRole('button', { name: /TRAY 3 · CHOCOLATE/ }))
+
+    expect(screen.queryByLabelText('stock row 34')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('stock row 36')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /TRAY 3 · CHOCOLATE/ }))
+      .toHaveTextContent('2 hidden')
+    expect(screen.getByLabelText('stock row 58, 59')).toBeInTheDocument()
+  })
+
+  // The header is the only thing naming twenty-two columns of bare figures.
+  // Sections must not cost it: it stays in the `<thead>`, above every
+  // `<tbody>`.
+  it('leaves the frozen header alone', () => {
+    render(<StockMatrix rows={TRAY_ROWS} machines={MACHINES} />)
+
+    const head = screen.getByRole('columnheader', { name: 'Slot' })
+    expect(head.className).toContain('sticky')
+    expect(head.closest('thead')).not.toBeNull()
+  })
+
+  it('keeps a row whose locator cannot be read as a slot', () => {
+    const odd: MatrixRow[] = [{ ...TRAY_ROWS[0], key: '', itemId: 'odd' }]
+    render(<StockMatrix rows={odd} machines={MACHINES} />)
+
+    expect(screen.getByText('Boost')).toBeInTheDocument()
   })
 })

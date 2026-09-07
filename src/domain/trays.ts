@@ -28,6 +28,31 @@ export function trayLabel(tray: number): string {
   return `Tray ${tray / 10}`
 }
 
+/** Tray category words, from `docs/catalogue-transcription.md`'s own tray
+ * titles. A UI constant rather than a field on `Item`: the machine's trays
+ * are physically categorised, the catalogue records that, and adding a
+ * `category` column would be a schema change for a display word. Tray 40 is
+ * "juice, energy, water" in the catalogue, which does not fit a bar, so it
+ * takes the spec's own example word.
+ *
+ * It moved here from `ItemListScreen`, where it was private, because four
+ * screens now group by tray — items, storeroom, the stock matrix and a run's
+ * receipt. A heading that reads `TRAY 3 · CHOCOLATE` on one screen and
+ * `Tray 3` on the next is a different tray as far as the eye is concerned. */
+const TRAY_CATEGORY: Record<number, string> = {
+  10: 'CHIPS', 20: 'SUNDRIES', 30: 'CHOCOLATE',
+  40: 'DRINKS', 50: 'CANS', 60: 'ALCOHOL',
+}
+
+/** One tray's section heading: `TRAY 3 · CHOCOLATE`, or the bare label where
+ * the catalogue has no word for it. Uppercase, as every section bar in the
+ * app is (tokens.md). */
+export function trayHeading(tray: number): string {
+  const label = trayLabel(tray).toUpperCase()
+  const category = TRAY_CATEGORY[tray]
+  return category ? `${label} · ${category}` : label
+}
+
 /** The machine's physical slot numbers: 10–14, then 20–29 … 60–69. The first
  * tray is short. */
 export function isSlotNumber(slot: number): boolean {

@@ -3,6 +3,7 @@ import { listItems } from '../../data/repositories/items'
 import { listStoreroomBalances, setStoreroomBalance } from '../../data/repositories/storeroom'
 import { storeroomAdjustments } from '../../data/repositories/adjustments'
 import { listTrolleyLines } from '../../data/repositories/trolley'
+import { listPlacements } from '../../data/repositories/placements'
 import { ledgerBalance, storeroomMovements } from '../../domain/storeroom'
 import type { Adjustment, Id, Item, StoreroomBalance, TrolleyLine } from '../../domain/types'
 
@@ -28,12 +29,14 @@ export function useStoreroom() {
   const [anchors, setAnchors] = useState<Map<Id, StoreroomBalance>>(new Map())
   const [movements, setMovements] = useState<Map<Id, Adjustment[]>>(new Map())
   const [trolley, setTrolley] = useState<Map<Id, TrolleyLine[]>>(new Map())
+  const [baseSlot, setBaseSlot] = useState<Map<Id, number>>(new Map())
   const [loading, setLoading] = useState(true)
   const mountedRef = useRef(true)
 
   const load = useCallback(async () => {
-    const [loadedItems, balances, adjustments, trolleyLines] = await Promise.all([
+    const [loadedItems, balances, adjustments, trolleyLines, placements] = await Promise.all([
       listItems(), listStoreroomBalances(), storeroomAdjustments(), listTrolleyLines(),
+      listPlacements(),
     ])
     if (!mountedRef.current) return
 
@@ -54,7 +57,20 @@ export function useStoreroom() {
       else trolleyByItem.set(line.itemId, [line])
     }
 
+    // The item's lowest *base* slot, which is what the screen groups and
+    // orders by. Base only, exactly as the item list does it (spec §4.2):
+    // the storeroom has no machine in context, so a machine-scoped override
+    // cannot apply here either. An item with no base placement has no entry
+    // and falls into the unplaced section.
+    const slotByItem = new Map<Id, number>()
+    for (const placement of placements) {
+      if (placement.scope.kind !== 'base') continue
+      const lowest = [...placement.slots].sort((a, b) => a - b)[0]
+      if (lowest !== undefined) slotByItem.set(placement.itemId, lowest)
+    }
+
     setItems(loadedItems)
+    setBaseSlot(slotByItem)
     setUnitsState(new Map(balances.map((b) => [b.itemId, b.units])))
     setVerifiedAtState(new Map(balances.map((b) => [b.itemId, b.verifiedAt])))
     setAnchors(new Map(balances.map((b) => [b.itemId, b])))
@@ -108,5 +124,5 @@ export function useStoreroom() {
     [units, verifiedAt, anchors],
   )
 
-  return { items, units, verifiedAt, onHand, loading, setUnits, refresh: load }
+  return { items, units, verifiedAt, onHand, baseSlot, loading, setUnits, refresh: load }
 }

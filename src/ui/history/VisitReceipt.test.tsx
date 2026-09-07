@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
 import { saveMachine } from '../../data/repositories/machines'
@@ -80,6 +81,67 @@ describe('VisitReceipt', () => {
 
     const message = await screen.findByText(/nothing was recorded/i)
     expect(message).toHaveTextContent('L7')
+  })
+
+  // The same tray sections as the item list, the storeroom and the stock
+  // sheet. A receipt is read against the machine it was typed at, tray by
+  // tray, so the sections are already how the operator holds it.
+  describe('tray sections', () => {
+    it('heads each tray it recorded, and only those', async () => {
+      const { visit, machine } = await seedVisit()
+
+      render(<VisitReceipt visitId={visit.id} machine={machine} />)
+
+      expect(await screen.findByRole('button', { name: /TRAY 1 · CHIPS/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /TRAY 5 · CANS/ })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /TRAY 3/ })).not.toBeInTheDocument()
+    })
+
+    it('keeps the slots in slot order across the sections', async () => {
+      const { visit, machine } = await seedVisit()
+
+      render(<VisitReceipt visitId={visit.id} machine={machine} />)
+      await screen.findByLabelText('slot 58 record')
+
+      expect(screen.getAllByLabelText(/^slot \d+ record$/)
+        .map((row) => row.getAttribute('aria-label')))
+        .toEqual(['slot 12 record', 'slot 58 record'])
+    })
+
+    // This screen exists to show exactly what was stored, so a line recorded
+    // against a slot outside the machine's six trays has to keep its row. It
+    // gets a heading of its own rather than being filed under a tray it is
+    // not in, or — the way the first cut of this had it — dropped.
+    it('keeps a line recorded outside the six trays, under a heading of its own', async () => {
+      const item = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+      const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+      const run = await createRun('2026-08-27')
+      const visit = await openVisit(run.id, machine.id)
+      await putCountLine({
+        id: newId(), visitId: visit.id, slotNumber: 99, itemId: item.id,
+        before: 1, after: 0, touched: true, filled: false, price: 0, updatedAt: now(),
+      })
+
+      render(<VisitReceipt visitId={visit.id} machine={machine} />)
+
+      expect(await screen.findByLabelText('slot 99 record')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /TRAY 9/ })).toBeInTheDocument()
+    })
+
+    it('folds a tray away and says how many slots it is holding', async () => {
+      const user = userEvent.setup()
+      const { visit, machine } = await seedVisit()
+
+      render(<VisitReceipt visitId={visit.id} machine={machine} />)
+      await screen.findByLabelText('slot 58 record')
+
+      await user.click(screen.getByRole('button', { name: /TRAY 5 · CANS/ }))
+
+      expect(screen.queryByLabelText('slot 58 record')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /TRAY 5 · CANS/ }))
+        .toHaveTextContent('1 hidden')
+      expect(screen.getByLabelText('slot 12 record')).toBeInTheDocument()
+    })
   })
 })
 
