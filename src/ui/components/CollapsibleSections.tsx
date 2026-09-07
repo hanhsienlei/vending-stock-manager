@@ -38,9 +38,14 @@ export function SectionBar({
       onClick={onToggle}
       className={`flex w-full items-center gap-2 bg-surface px-4 py-2 text-left text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700 ${className}`}
     >
-      {/* `min-w-0` + `truncate` is what keeps a long heading from pushing the
-          count and the marker off the right of a 393px screen. */}
-      <span className="min-w-0 flex-1 truncate">{heading}</span>
+      {/* Everything packs to the left, and the count and the marker sit
+          against the heading rather than out at the right edge. Two reasons,
+          both about width. A long heading with `min-w-0` + `truncate` cannot
+          push them off a 393px screen — and on the stock matrix the bar is as
+          wide as the table (722px at minimum), so a marker aligned right
+          would sit off the side of a portrait phone, and the count of what a
+          shut tray is holding would go with it. */}
+      <span className="min-w-0 truncate">{heading}</span>
       {!open && (
         <span className="shrink-0 tabular-nums">
           {count} hidden

@@ -67,6 +67,21 @@ describe('SectionBar', () => {
     expect(bar.className).toContain('w-full')
     expect(bar.querySelector('.truncate')).not.toBeNull()
   })
+
+  // The stock matrix's bar is as wide as the table — 722px at its narrowest,
+  // against a 393px phone. Anything aligned to the right of that bar is off
+  // the side of the screen, so nothing is: the heading, the count and the
+  // marker pack to the left, and the heading takes its own width rather than
+  // stretching to fill the bar.
+  it('packs the count and the marker against the heading, not the right edge', () => {
+    render(
+      <SectionBar heading="TRAY 1 · CHIPS" open={false} count={4} onToggle={vi.fn()} />,
+    )
+
+    const heading = screen.getByText('TRAY 1 · CHIPS')
+    expect(heading.className).not.toContain('flex-1')
+    expect(heading.className).not.toContain('grow')
+  })
 })
 
 function Harness({ keys }: { keys: string[] }) {
