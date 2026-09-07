@@ -570,14 +570,14 @@ describe('AdjustmentSheet — naming the item being adjusted', () => {
     render(
       <AdjustmentSheet
         location={{ kind: 'storeroom' }} itemId="i1"
-        itemName="Accor Dental Kit — Bamboo Generic"
+        itemName="Dental Kit"
         onSaved={vi.fn()} onCancel={vi.fn()}
       />,
     )
 
     const header = screen.getByTestId('adjustment-header')
     expect(header).toHaveTextContent('Adjust storeroom stock')
-    expect(header).toHaveTextContent('Accor Dental Kit — Bamboo Generic')
+    expect(header).toHaveTextContent('Dental Kit')
   })
 
   it('names the item in the header at a machine slot', async () => {

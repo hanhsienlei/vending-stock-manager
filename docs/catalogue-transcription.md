@@ -1,5 +1,30 @@
 # Catalogue transcription — for review before seeding
 
+> **Redacted before publication.** This repository is public; the site it was
+> written for is not. Two amenity products carried the hotel group's brand in
+> their names and now read as the plain `Shaving Kit` and `Dental Kit`, and
+> every figure in the Price column has been replaced with a plausible
+> substitute. The real prices are the site's own retail list — their
+> commercial information, not this project's to publish — so what remains is
+> the right shape and spread for the app to seed and for the report's totals
+> to look real, and nothing more.
+>
+> Everything else stands as transcribed. The slot numbers, the sizes, the
+> mixed slots, the questions raised and the decisions recorded below are the
+> record of the work, and a record that has been quietly rewritten is not a
+> record. This note is here so the redaction is visible rather than silent.
+> The same two renames and the same substitute prices are carried through
+> `src/data/starterCatalogue.ts` and `src/data/packageSizes.ts`, which are
+> keyed by product name and must agree with this table.
+>
+> Committed screenshots carried the same two names, and some of them carried
+> prices. `docs/screenshots/items.png` and `docs/screenshots/stock-matrix.jpg`
+> were retaken from the redacted build, so they show what the app shows now.
+> The shots under `devs/debug/` are the operator's own bug reports of screens
+> that no longer exist and cannot be retaken, so the brand names and the price
+> column are covered with a bar instead — deliberately visible, for the same
+> reason this note is.
+
 Transcribed from the operator's two paper stock sheets (names, slot numbers,
 sizes) and the machine's printed item map (prices — the stock sheets carry
 none). Those source photographs were kept out of the public repository; the
@@ -19,86 +44,86 @@ Lines marked **?** need your input.
 
 | Slot | Item | Size | Price |
 |---|---|---|---|
-| 10 | Smith's Salt & Vinegar Chips | 27g | $3.50 |
-| 11 | Red Rock Deli Chips Honey Soy Chicken | 28g | $3.50 |
-| 12 | Natural Con Snakes | 190g | $7.00 |
-| 13 | Doritos Cheese Supreme | 45g | $4.00 |
-| 14 | Peanut Pretzel Boodles | 30g | $5.00 |
+| 10 | Smith's Salt & Vinegar Chips | 27g | $3.00 |
+| 11 | Red Rock Deli Chips Honey Soy Chicken | 28g | $4.00 |
+| 12 | Natural Con Snakes | 190g | $6.50 |
+| 13 | Doritos Cheese Supreme | 45g | $4.50 |
+| 14 | Peanut Pretzel Boodles | 30g | $4.50 |
 
 ## Tray 20 — sundries
 
 | Slot | Item | Size | Price |
 |---|---|---|---|
-| 20 | Extra Gum Spearmint | ea | $4.00 |
-| 21 | Cranberry and Almond Granola Slice | ea | $5.00 |
-| 22 | Tampon | ea | $9.00 |
-| 23 | Dove | 30g | $8.00 |
-| 24 | Rexona | 30g | $8.00 |
-| 25 | Panadol Paracetamol Tablets | ea | $8.00 |
-| 26 | Ansell L-STY Condom REG | ea | $9.00 |
-| 27 | Accor Shaving Kit — Wood Midscale | ea | $3.50 |
-| 28 | Accor Dental Kit — Bamboo Generic | ea | $2.50 |
-| 29 | Lemon Slice | 25g | $3.00 |
+| 20 | Extra Gum Spearmint | ea | $4.50 |
+| 21 | Cranberry and Almond Granola Slice | ea | $4.50 |
+| 22 | Tampon | ea | $8.00 |
+| 23 | Dove | 30g | $7.50 |
+| 24 | Rexona | 30g | $9.00 |
+| 25 | Panadol Paracetamol Tablets | ea | $7.00 |
+| 26 | Ansell L-STY Condom REG | ea | $8.50 |
+| 27 | Shaving Kit | ea | $4.00 |
+| 28 | Dental Kit | ea | $3.00 |
+| 29 | Lemon Slice | 25g | $3.50 |
 
 ## Tray 30 — chocolate
 
 | Slot | Item | Size | Price |
 |---|---|---|---|
-| 30 | Go Natural Almond & Cashew | 45g | $5.00 |
-| 31 | Turkish Delight | 50g | $5.00 |
-| 32 | Mondelez Cherry Ripe | 44g | $5.00 |
-| 33 | Cadbury Dream | 50g | $5.00 |
-| 34 | Cadbury Boost | 50g | $5.00 |
-| 35 | Snickers | 53g | $5.00 |
-| 36 | Mars | 47g | $5.00 |
-| 37 | Twix | 50g | $5.00 |
-| 38 | KitKat | 48g | $5.00 |
-| 39 | Cadbury Picnic | 46g | $5.00 |
+| 30 | Go Natural Almond & Cashew | 45g | $5.50 |
+| 31 | Turkish Delight | 50g | $4.50 |
+| 32 | Mondelez Cherry Ripe | 44g | $4.50 |
+| 33 | Cadbury Dream | 50g | $4.50 |
+| 34 | Cadbury Boost | 50g | $4.50 |
+| 35 | Snickers | 53g | $4.50 |
+| 36 | Mars | 47g | $4.50 |
+| 37 | Twix | 50g | $4.50 |
+| 38 | KitKat | 48g | $4.50 |
+| 39 | Cadbury Picnic | 46g | $4.50 |
 
 ## Tray 40 — juice, energy, water
 
 | Slot | Item | Size | Price |
 |---|---|---|---|
-| 40 | Chicken Noodles Cup | 250ml | $5.00 |
-| 41 | Apple Juice | 300ml | $5.50 |
-| 42 | Orange Juice | 250ml | $5.50 |
-| 43 | Fuze Peach Lemon Tea | 250ml | $6.00 |
-| 44 | **MIXED** — Red Bull Energy Drink + Mother Energy Drink | 600ml | $5.50 |
-| 45 | **MIXED** — Red Bull No Sugar + Mother No Sugar | 500ml | $5.50 |
-| 46 | Powerade Blue | 500ml | $5.00 |
-| 47 | Nu Pure Sparkling Water | 500ml | $6.00 |
-| 48 | Nu Pure Water Bottles | 600ml | $4.00 |
-| 49 | Nu Pure Water Bottles | 600ml | $4.00 |
+| 40 | Chicken Noodles Cup | 250ml | $5.50 |
+| 41 | Apple Juice | 300ml | $5.00 |
+| 42 | Orange Juice | 250ml | $5.00 |
+| 43 | Fuze Peach Lemon Tea | 250ml | $5.50 |
+| 44 | **MIXED** — Red Bull Energy Drink + Mother Energy Drink | 600ml | $6.00 |
+| 45 | **MIXED** — Red Bull No Sugar + Mother No Sugar | 500ml | $6.00 |
+| 46 | Powerade Blue | 500ml | $5.50 |
+| 47 | Nu Pure Sparkling Water | 500ml | $5.00 |
+| 48 | Nu Pure Water Bottles | 600ml | $3.50 |
+| 49 | Nu Pure Water Bottles | 600ml | $3.50 |
 
 ## Tray 50 — cans
 
 | Slot | Item | Size | Price |
 |---|---|---|---|
-| 50 | Coopers Pale Ale | 330ml | $8.00 |
-| 51 | **MIXED** — Coopers XPA + Prancing Pony XPA | 330ml | $10.00 |
-| 52 | **MIXED** — Sunkist + Fanta | 375ml | $4.50 |
-| 53 | **MIXED** — Pepsi + Kirks Ginger Beer | 375ml | $4.50 |
-| 54 | Pepsi Max | 375ml | $4.50 |
-| 55 | Sprite | 375ml | $4.50 |
-| 56 | Coke No Sugar | 375ml | $4.50 |
-| 57 | Coke No Sugar | 375ml | $4.50 |
-| 58 | Coke | 375ml | $4.50 |
-| 59 | Coke | 375ml | $4.50 |
+| 50 | Coopers Pale Ale | 330ml | $9.00 |
+| 51 | **MIXED** — Coopers XPA + Prancing Pony XPA | 330ml | $9.50 |
+| 52 | **MIXED** — Sunkist + Fanta | 375ml | $4.00 |
+| 53 | **MIXED** — Pepsi + Kirks Ginger Beer | 375ml | $4.00 |
+| 54 | Pepsi Max | 375ml | $4.00 |
+| 55 | Sprite | 375ml | $4.00 |
+| 56 | Coke No Sugar | 375ml | $4.00 |
+| 57 | Coke No Sugar | 375ml | $4.00 |
+| 58 | Coke | 375ml | $4.00 |
+| 59 | Coke | 375ml | $4.00 |
 
 ## Tray 60 — alcohol
 
 | Slot | Item | Size | Price |
 |---|---|---|---|
-| 60 | Hahn Super Dry | 375ml | $10.00 |
-| 61 | Spiked Iced Tea Peach RTD | 375ml | $12.00 |
-| 62 | **MIXED** — Sour Puss Grape RTD + Matso's Ginger Beer | 375ml | $12.00 |
-| 63 | **MIXED** — Vodka Cruiser Zero Sugar Mixed Berry + Vodka Cruiser Lime + Tequila | 275ml | $12.00 |
-| 64 | Smirnoff Lime Seltzer | 375ml | $12.00 |
-| 65 | Gordon's London Dry Gin & Tonic 4.5% | 375ml | $12.00 |
-| 66 | Johnnie Walker Blended Scotch Whisky & Cola (Cube) | 375ml | $12.00 |
-| 67 | Canadian Club Canadian Whiskey & Cola 4.8% | 375ml | $12.00 |
-| 68 | Bundaberg Rum & Cola UP 4.6% (Cube) | 375ml | $12.00 |
-| 69 | Jim Beam White Label Bourbon Whiskey & Cola 4.8% (Cube) | 375ml | $12.00 |
+| 60 | Hahn Super Dry | 375ml | $9.00 |
+| 61 | Spiked Iced Tea Peach RTD | 375ml | $11.00 |
+| 62 | **MIXED** — Sour Puss Grape RTD + Matso's Ginger Beer | 375ml | $11.00 |
+| 63 | **MIXED** — Vodka Cruiser Zero Sugar Mixed Berry + Vodka Cruiser Lime + Tequila | 275ml | $11.00 |
+| 64 | Smirnoff Lime Seltzer | 375ml | $11.50 |
+| 65 | Gordon's London Dry Gin & Tonic 4.5% | 375ml | $12.50 |
+| 66 | Johnnie Walker Blended Scotch Whisky & Cola (Cube) | 375ml | $12.50 |
+| 67 | Canadian Club Canadian Whiskey & Cola 4.8% | 375ml | $12.50 |
+| 68 | Bundaberg Rum & Cola UP 4.6% (Cube) | 375ml | $12.50 |
+| 69 | Jim Beam White Label Bourbon Whiskey & Cola 4.8% (Cube) | 375ml | $12.50 |
 
 ---
 
@@ -136,4 +161,7 @@ their base placement; per-machine differences get recorded as you find them.
    `remark` recording that the size is unverified.
 
 4. **Prices follow the laminated map**, which the manager maintains. That is the
-   authority; these sheets carry no prices.
+   authority; these sheets carry no prices. What the map said is not in this
+   document any more — see the redaction note at the top. The figures in the
+   Price column are substitutes, and the sentence above is now a record of
+   where the real ones came from rather than a pointer to them.
