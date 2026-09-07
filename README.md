@@ -16,11 +16,11 @@ Built for one operator, in use on real runs, and shaped by their feedback betwee
 
 - **Counting at the machine.** Per-slot before and after counts on a phone-width screen, grouped by tray, with a "fill tray to par" shortcut.
 - **Per-machine maps.** Fifteen machines each with their own slot map, because floors drift from the master map as products change over or go out of stock.
-- **Sales without a till.** Units sold in a period are derived as a residual between two consecutive finalised visits, net of recorded stock movements. A period that cannot be trusted (no prior visit, slot left with stock, visit never finalised) is labelled censored, so a missing figure never reads as a zero sale.
-- **Demand forecast.** Units per day per slot, projected forward by the days since that machine's own last visit rather than since the last run, because a machine skipped last week has been drawing down for twice as long as its neighbours.
-- **Trolley allocation.** When the trolley cannot cover every slot, lines are ranked by proven unmet demand first (slots that ran dry), then by demand rate, with a visible cut line marking where the stock runs out.
+- **Sales without a till.** Vending machines report nothing, so sales are worked out by comparing the count at one visit against the count at the next, adjusted for any stock moved by hand in between. When a period cannot be trusted (no earlier visit to compare against, a visit left unfinished) it is flagged as such, so a figure that is genuinely unknown never gets reported as zero sales.
+- **Demand forecast.** Estimates how empty each slot will be by the time the run reaches it, from that slot's own sales rate and the days since the machine was last counted. Machines skipped on a previous run are forecast on the real gap, so the emptiest machines don't get under-loaded.
+- **Trolley allocation.** When there is not enough on the trolley to fill everything, it ranks the slots: ones that actually ran dry last period come first, then the fastest sellers. A cut line on screen marks where the stock runs out, so it is clear before setting off which slots will go short.
 - **Storeroom ledger.** A running balance per item, with a manual count that resets the estimate to truth.
-- **Reorder suggestion.** Demand forecast over a 7 day horizon plus 3 days of safety, converted into whole supplier cartons.
+- **Reorder suggestion.** Projects a week of demand plus three days of slack, subtracts what is already in the storeroom, and rounds the shortfall up to whole supplier cartons.
 - **Stock matrix.** Every item against every machine, plus storeroom and total, with a deliberately blank Order column to fill in by hand.
 - **Backup and restore.** Full JSON export and import, stamped with the schema version that wrote it.
 - **Installable and offline.** Service worker, app icons, and no network dependency at run time.
