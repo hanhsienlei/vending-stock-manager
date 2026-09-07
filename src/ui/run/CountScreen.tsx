@@ -5,7 +5,6 @@ import { SlotEditSheet } from './SlotEditSheet'
 import { parseSlotNumbers, trayOf } from '../../domain/trays'
 import { levelKey } from '../../domain/levels'
 import { useCounting } from './useCounting'
-import { useTrolleyWatch } from './useTrolleyWatch'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { ScreenLayout } from '../components/ScreenLayout'
 import { distinctLabel } from '../machines/machineLabel'
@@ -27,16 +26,6 @@ export function CountScreen({
 }) {
   const machineId = machine.id
   const counting = useCounting(runId, machineId)
-  // Spec §6.3, design §12.3. Reads once on entry and recomputes in memory on
-  // every keystroke — nothing else on the counting path changes.
-  const runOuts = useTrolleyWatch({
-    runId,
-    machineId,
-    level: machine.level,
-    map: counting.map,
-    before: counting.before,
-    after: counting.after,
-  })
   const [tray, setTray] = useState<number | null>(null)
   const [editingSlot, setEditingSlot] = useState<number | null>(null)
   const [newSlot, setNewSlot] = useState('')
@@ -120,22 +109,17 @@ export function CountScreen({
         <span className="text-center leading-tight">Refilled<br />to</span>
         <span />
       </div>
-      {/* §12.3: one line, `surface` fill, `accent-700` text — deliberately
-          not an accent fill. The count screen's colour budget is spent on
-          `Finish machine`, and a red band above a 54-row table is the noise
-          the interface refinement removed once already (its §3.5). */}
-      {runOuts.length > 0 && (
-        <div
-          data-testid="trolley-watch"
-          className="bg-surface px-3.5 py-1.5 text-[11px] font-medium text-accent-700"
-        >
-          {runOuts.map((runOut) => (
-            <p key={runOut.itemId} className="truncate">
-              {`${counting.items.get(runOut.itemId)?.name ?? 'That item'} runs out at L${runOut.level} · ${Math.max(0, runOut.remaining)} left`}
-            </p>
-          ))}
-        </div>
-      )}
+      {/* The trolley watch (spec §6.3) was here and was removed on 2026-09-07,
+          by operator decision, after one photograph of it in use. Design §12.3
+          specified ONE line — the level an item runs out at, while there is
+          still a decision to make. The code looped a line per short item
+          instead, and on a trolley loaded with nothing every item is short:
+          twenty-eight red lines covering the count table the operator was
+          standing in front of. `runsOutAt` and `trolleyRemaining` are kept in
+          `src/domain/trolley.ts`, pure and tested, so a version that honours
+          the one-line rule can be built without starting over. Do not restore
+          this without a cap and without deciding what a trolley that was never
+          loaded should say. */}
     </>
   )
 

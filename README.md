@@ -54,7 +54,7 @@ npm install
 npm run dev
 ```
 
-To see it with data, open **Items** and tap **Seed starter catalogue**. That loads a 60 item catalogue across 15 machines. The button only appears while the catalogue is empty, which is the guard against overwriting real data.
+To see it with data, open **Items** and tap **Load starter catalogue**. That loads a 60 item catalogue across 15 machines. The button only appears while the catalogue is empty, which is the guard against overwriting real data.
 
 ## Testing
 
@@ -76,7 +76,17 @@ HTTPS is a hard requirement. ID generation uses `crypto.randomUUID()`, which onl
 
 ## Screenshots
 
-_To add._
+| Counting a machine | Run progress |
+|---|---|
+| ![Counting screen showing counted and refilled-to columns for tray 1 of machine L2](docs/screenshots/counting.png) | ![Machines list showing one machine counted out of fifteen](docs/screenshots/machines.png) |
+
+Counting is two columns: what you found in the slot, and what you left behind. The second opens the next visit, which is what makes sales derivable without a till.
+
+![Item catalogue grouped into collapsible tray sections, each item showing slot, size, carton size, price and par](docs/screenshots/items.png)
+
+The stock matrix puts every item against every machine, with a deliberately blank Order column to fill in by hand. It is the one screen built for landscape.
+
+![Stock matrix: every item as a row, every machine as a column, plus storeroom, total and a blank order column](docs/screenshots/stock-matrix.jpg)
 
 ## Project docs
 
