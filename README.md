@@ -8,7 +8,7 @@ An offline-first PWA for restocking vending machines, built to replace the paper
 
 Servicing a floor of vending machines means counting what is left in every slot, working out what to bring up from the storeroom, and knowing what to reorder from the supplier. That was being done on paper twice a week, with the arithmetic redone by hand each run.
 
-This app records the count at the machine on a phone, derives demand from the history, and turns it into a trolley load, a storeroom balance, and a supplier order. It works offline because lift lobbies and service corridors have no reliable signal, and everything stays on the device in IndexedDB.
+This app records the count at the machine on a phone, derives demand from the history, and turns it into a trolley load, a storeroom balance, and a supplier order. There is no backend: the data lives in IndexedDB on the operator's own phone, and the app keeps working with no network.
 
 Built for one operator, in use on real runs, and shaped by their feedback between shifts.
 
@@ -21,7 +21,7 @@ Built for one operator, in use on real runs, and shaped by their feedback betwee
 - **Trolley allocation.** When there is not enough on the trolley to fill everything, it ranks the slots: ones that actually ran dry last period come first, then the fastest sellers. A cut line on screen marks where the stock runs out, so it is clear before setting off which slots will go short.
 - **Storeroom ledger.** A running balance per item, with a manual count that resets the estimate to truth.
 - **Reorder suggestion.** Projects a week of demand plus three days of slack, subtracts what is already in the storeroom, and rounds the shortfall up to whole supplier cartons.
-- **Stock matrix.** Every item against every machine, plus storeroom and total, with a deliberately blank Order column to fill in by hand.
+- **Stock matrix.** Every item against every machine, plus storeroom, total, and the order suggestion. A cell stays blank where there is no demand rate yet, which is how the table says "no data" instead of guessing.
 - **Backup and restore.** Full JSON export and import, stamped with the schema version that wrote it.
 - **Installable and offline.** Service worker, app icons, and no network dependency at run time.
 
@@ -29,9 +29,9 @@ Built for one operator, in use on real runs, and shaped by their feedback betwee
 
 | | |
 |---|---|
-| UI | React 19, TypeScript 5.7, Tailwind CSS 4 |
+| UI | React 19, TypeScript, Tailwind CSS 4 |
 | Build | Vite 6, vite-plugin-pwa (Workbox) |
-| Storage | Dexie 4 over IndexedDB, 4 versioned schema migrations |
+| Storage | Dexie 4 over IndexedDB, schema at version 4 with three upgrades |
 | Tests | Vitest, Testing Library, fake-indexeddb |
 | Hosting | Cloudflare Pages |
 
@@ -41,7 +41,7 @@ Built for one operator, in use on real runs, and shaped by their feedback betwee
 
 **`src/data/`** wraps Dexie behind typed repositories, and owns the schema, its migrations, and the starter catalogue.
 
-**`src/ui/`** is one folder per screen, each owning its own hook and tests.
+**`src/ui/`** is one folder per screen, each with its own tests, plus a shared `components/` folder. The screens with non-trivial loading and editing state (run, report, storeroom, trolley) keep it in a hook of their own.
 
 ## Getting started
 
@@ -63,7 +63,7 @@ npm test           # single run
 npm run test:watch
 ```
 
-825 tests across 53 files, covering domain arithmetic, repositories exercised against a real IndexedDB fake, and screen-level user flows.
+820 tests across 53 files, covering domain arithmetic, repositories exercised against a real IndexedDB fake, and screen-level user flows.
 
 ## Deployment
 
@@ -84,9 +84,9 @@ Counting is two columns: what you found in the slot, and what you left behind. T
 
 ![Item catalogue grouped into collapsible tray sections, each item showing slot, size, carton size, price and par](docs/screenshots/items.png)
 
-The stock matrix puts every item against every machine, with a deliberately blank Order column to fill in by hand. It is the one screen built for landscape.
+The stock matrix puts every item against every machine, with the order suggestion in the last column. It is the one screen built for landscape.
 
-![Stock matrix: every item as a row, every machine as a column, plus storeroom, total and a blank order column](docs/screenshots/stock-matrix.jpg)
+![Stock matrix: every item as a row, every machine as a column, plus storeroom, total and order columns. Shown on a fresh install, so the order cells are still empty](docs/screenshots/stock-matrix.jpg)
 
 ## Project docs
 
