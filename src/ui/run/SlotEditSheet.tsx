@@ -138,6 +138,30 @@ export function SlotEditSheet({
     onSaved()
   }
 
+  /** Move one item to the front of `accepts`, leaving the rest in the order
+   * they were already in (D10, design §3.8).
+   *
+   * `accepts[0]` is not a label: `fillToCapacity` tops it up, and the order
+   * suggestion attributes the whole slot's demand to it — the alternative,
+   * spec §6.4's "Σ over slots accepting this item", double-counts every mixed
+   * slot. So through a Coke → Coke + Fanta → Fanta changeover the outgoing
+   * item is forecast demand it will never take and the incoming one gets
+   * none, and until now the only way to change the order was to remove an
+   * item and add it back. This is the same root cause as known-gaps.md's
+   * "Fill fights a product changeover": one control, two costs.
+   *
+   * Pins the slot's capacity first, exactly as `add` and `remove` do —
+   * `setSlotConfig` refuses to create a config without one, and resolving
+   * capacity from the first accepted item's basePar is what the pin exists to
+   * stop moving underneath an edit. */
+  async function makeFirst(itemId: Id) {
+    await pinSlot()
+    await setSlotConfig(machineId, slotNumber, {
+      accepts: [itemId, ...currentItemIds.filter((id) => id !== itemId)],
+    })
+    onSaved()
+  }
+
   async function remove(itemId: Id) {
     const slots = await slotsFor(itemId)
     await pinSlot()
@@ -149,7 +173,12 @@ export function SlotEditSheet({
     onSaved()
   }
 
-  const present = items.filter((i) => currentItemIds.includes(i.id))
+  // In preference order, not catalogue order: `currentItemIds` IS the order,
+  // and a list that showed it any other way would make `MAKE FIRST` read as a
+  // no-op on a row that already looked first.
+  const present = currentItemIds
+    .map((id) => items.find((i) => i.id === id))
+    .filter((i): i is Item => i !== undefined)
   const absent = items
     .filter((i) => !currentItemIds.includes(i.id))
     .filter((i) => i.name.toLowerCase().includes(addSearch.trim().toLowerCase()))
@@ -223,7 +252,7 @@ export function SlotEditSheet({
           <p className="px-4 py-2.5 text-[13px] text-neutral-500">Not stocked.</p>
         ) : (
           <ul>
-            {present.map((item) => (
+            {present.map((item, index) => (
               <li
                 key={item.id}
                 className="flex items-center gap-3 border-b border-rule-light px-4 py-2.5"
@@ -231,13 +260,27 @@ export function SlotEditSheet({
                 <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">
                   {item.name}
                 </span>
+                {/* D10. Only on the rows that are not already first — on the
+                    first row it would be a control that visibly does nothing.
+                    Neutral, not accent: reordering is housekeeping, and the
+                    accent on this row belongs to REMOVE. */}
+                {index > 0 && (
+                  <button
+                    type="button"
+                    aria-label={`Make ${item.name} first`}
+                    onClick={() => void makeFirst(item.id)}
+                    className="shrink-0 text-[10.5px] font-bold uppercase tracking-[0.12em] text-neutral-700"
+                  >
+                    MAKE FIRST
+                  </button>
+                )}
                 {/* §6: the row is the subject, the button is the verb. The
                     full string stays as the accessible name. */}
                 <button
                   type="button"
                   aria-label={`Adjust ${item.name}`}
                   onClick={() => setAdjusting(item.id)}
-                  className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-neutral-700"
+                  className="shrink-0 text-[10.5px] font-bold uppercase tracking-[0.12em] text-neutral-700"
                 >
                   ADJUST
                 </button>
@@ -245,7 +288,7 @@ export function SlotEditSheet({
                   type="button"
                   aria-label={`Remove ${item.name}`}
                   onClick={() => void remove(item.id)}
-                  className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-accent-700"
+                  className="shrink-0 text-[10.5px] font-bold uppercase tracking-[0.12em] text-accent-700"
                 >
                   REMOVE
                 </button>
@@ -255,9 +298,9 @@ export function SlotEditSheet({
         )}
         {present.length > 1 && (
           <p className="bg-accent-200 px-4 py-2 text-[11px] font-medium text-accent-800">
-            Two items means a changeover. Fill tops up whichever sorts first
-            alphabetically, so step the outgoing line down by hand until it is
-            gone.
+            Two items means a changeover. Fill tops up whichever is first, and
+            the order suggestion counts this slot towards it. Make the incoming
+            line first.
           </p>
         )}
       </div>

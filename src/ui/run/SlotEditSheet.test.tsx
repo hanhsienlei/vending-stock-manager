@@ -6,7 +6,9 @@ import { saveItem, listItems } from '../../data/repositories/items'
 import { saveMachine } from '../../data/repositories/machines'
 import { setPlacement, listPlacements } from '../../data/repositories/placements'
 import { listSlotConfigs } from '../../data/repositories/slotConfigs'
+import { forecastForRun } from '../../data/repositories/forecast'
 import { effectivePlacement, resolveMachineMap } from '../../domain/placement'
+import { fillToCapacity } from '../../domain/fill'
 import { SlotEditSheet } from './SlotEditSheet'
 import type { Id, Machine } from '../../domain/types'
 
@@ -437,6 +439,113 @@ describe('SlotEditSheet — §6 layout', () => {
 
     renderSheet({ items, currentItemIds: [coke.id, fanta.id] })
     expect(screen.getByText(/Two items means a changeover/)).toBeInTheDocument()
+    // D10: the line now names the control that fixes it, instead of telling
+    // the operator to step the outgoing line down by hand.
+    expect(screen.getByText(/Make the incoming line first/)).toBeInTheDocument()
+  })
+
+  /** D10, design §3.8. `SlotConfig.accepts` is the preference order, and it
+   * decides two things at once: which item `Fill` tops up, and which item the
+   * order suggestion attributes the whole slot's demand to. Until now it could
+   * only be changed by removing an item and adding it back, so through a
+   * Coke → Coke + Fanta → Fanta changeover the outgoing item was forecast
+   * demand it would never take and the incoming one got none. */
+  describe('preference order', () => {
+    async function changeover() {
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 5, boxSize: 24 })
+      const fanta = await saveItem({ name: 'Fanta', price: 4.5, basePar: 5, boxSize: 24 })
+      const machine = await saveMachine({ label: 'Lift lobby', level: 7 })
+      await setPlacement(coke.id, { kind: 'base' }, [52])
+      await setPlacement(fanta.id, { kind: 'base' }, [52])
+
+      // With no SlotConfig the order is alphabetical, so Coke — the outgoing
+      // line — is first, which is exactly the wrong way round.
+      const slot = await resolvedSlot(machine.id, 52)
+      expect(slot?.accepts).toEqual([coke.id, fanta.id])
+
+      return { coke, fanta, machine, slot }
+    }
+
+    it('makes an item first, and keeps the rest in order behind it', async () => {
+      const user = userEvent.setup()
+      const { coke, fanta, machine, slot } = await changeover()
+
+      const onSaved = renderSheet({
+        machine,
+        slotNumber: 52,
+        items: await listItems(),
+        currentItemIds: slot?.accepts ?? [],
+        capacity: slot?.capacity ?? 0,
+      })
+
+      await user.click(screen.getByRole('button', { name: 'Make Fanta first' }))
+      await waitFor(() => expect(onSaved).toHaveBeenCalled())
+
+      const reordered = await resolvedSlot(machine.id, 52)
+      expect(reordered?.accepts).toEqual([fanta.id, coke.id])
+      // The capacity it resolved to is pinned, not moved by the reorder.
+      expect(reordered?.capacity).toBe(slot?.capacity)
+    })
+
+    it('does not offer to make first the item that already is', async () => {
+      const { coke, machine, slot } = await changeover()
+
+      renderSheet({
+        machine,
+        slotNumber: 52,
+        items: await listItems(),
+        currentItemIds: slot?.accepts ?? [],
+        capacity: slot?.capacity ?? 0,
+      })
+
+      expect(screen.queryByRole('button', { name: 'Make Coke first' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Make Fanta first' })).toBeInTheDocument()
+      expect(coke.name).toBe('Coke')
+    })
+
+    it('sends Fill to the item that is now first', async () => {
+      const user = userEvent.setup()
+      const { coke, fanta, machine, slot } = await changeover()
+
+      const onSaved = renderSheet({
+        machine,
+        slotNumber: 52,
+        items: await listItems(),
+        currentItemIds: slot?.accepts ?? [],
+        capacity: slot?.capacity ?? 0,
+      })
+      await user.click(screen.getByRole('button', { name: 'Make Fanta first' }))
+      await waitFor(() => expect(onSaved).toHaveBeenCalled())
+
+      const reordered = await resolvedSlot(machine.id, 52)
+      const filled = fillToCapacity(reordered!, [
+        { itemId: coke.id, qty: 1 },
+        { itemId: fanta.id, qty: 0 },
+      ])
+      expect(filled.find((e) => e.itemId === fanta.id)?.qty).toBe(4)
+      expect(filled.find((e) => e.itemId === coke.id)?.qty).toBe(1)
+    })
+
+    it('sends the order forecast to the item that is now first', async () => {
+      const user = userEvent.setup()
+      const { fanta, machine, slot } = await changeover()
+
+      const onSaved = renderSheet({
+        machine,
+        slotNumber: 52,
+        items: await listItems(),
+        currentItemIds: slot?.accepts ?? [],
+        capacity: slot?.capacity ?? 0,
+      })
+      await user.click(screen.getByRole('button', { name: 'Make Fanta first' }))
+      await waitFor(() => expect(onSaved).toHaveBeenCalled())
+
+      // The suggestion attributes the whole slot to `accepts[0]` (design
+      // §3.8), so this is the operator's only way to correct an attribution.
+      const rows = await forecastForRun('2026-09-08')
+      const row = rows.find((r) => r.machineId === machine.id && r.slotNumber === 52)
+      expect(row?.itemIds[0]).toBe(fanta.id)
+    })
   })
 
   // §6: "the usual slot is the fastest way to catch that you are about to
