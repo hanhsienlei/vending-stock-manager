@@ -1,3 +1,4 @@
+import { AllocationSection } from './AllocationSection'
 import { useTrolley, type TrolleyRow } from './useTrolley'
 import { QuantityField } from '../components/QuantityField'
 import { ScreenHeader } from '../components/ScreenHeader'
@@ -71,7 +72,7 @@ export function TrolleyScreen({
   onDone: () => void
 }) {
   const {
-    loading, rows, quiet, setTaken, toggleNoneLeft, save,
+    loading, rows, quiet, needsBySlot, levelOf, setTaken, toggleNoneLeft, save,
   } = useTrolley(runId, mode)
 
   const header = (
@@ -188,6 +189,10 @@ export function TrolleyScreen({
           </ul>
         </section>
       )}
+
+      {/* Above the footer, so the trade-off is the last thing read before
+          the trolley goes up (design §12.2). */}
+      <AllocationSection rows={rows} needsBySlot={needsBySlot} levelOf={levelOf} />
 
       <div className="flex border-t-2 border-rule-strong">
         <button

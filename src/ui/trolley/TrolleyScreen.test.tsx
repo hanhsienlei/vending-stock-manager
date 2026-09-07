@@ -153,6 +153,28 @@ describe('TrolleyScreen, loading', () => {
     expect(screen.queryByLabelText('Ginger Beer need')).not.toBeInTheDocument()
   })
 
+  // Design §12.2 and D5: allocation is part of this screen, revealed only
+  // when something is short. The screen-level half of it — the trade-off
+  // appearing the moment the operator types a figure that will not cover the
+  // need, with no reload and no second screen.
+  it('reveals who goes short the moment the taken figure will not cover it', async () => {
+    const user = userEvent.setup()
+    await oneSellingSlot({ boxSize: 1 })
+    const run = await getOrCreateRun(today())
+
+    render(<TrolleyScreen runId={run.id} mode="load" onDone={vi.fn()} />)
+    const taken = await screen.findByLabelText('Coke units')
+
+    expect(screen.queryByText(/goes without/)).not.toBeInTheDocument()
+
+    await user.clear(taken)
+    await user.type(taken, '3')
+
+    expect(screen.getByText(/1 item short — 1 slot goes without/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /see who/i }))
+    expect(screen.getByTestId('allocation-slot-7-58')).toHaveTextContent('3')
+  })
+
   // The phone is 393px wide. A previous round shipped a control that ran off
   // the side of a real one and only a photograph caught it, so the fixed
   // columns are asserted rather than eyeballed: the taken cell holds the
