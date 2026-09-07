@@ -1,8 +1,12 @@
+import { useState } from 'react'
 import { AllocationSection } from './AllocationSection'
 import { useTrolley, type TrolleyRow } from './useTrolley'
+import { AdjustmentSheet } from '../adjustments/AdjustmentSheet'
 import { QuantityField } from '../components/QuantityField'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { ScreenLayout } from '../components/ScreenLayout'
+import { ADJUSTMENT_REASONS } from '../../domain/adjustments'
+import { formatRunDate } from '../../domain/date'
 import { toBoxesAndLoose } from '../../domain/packs'
 import type { Id } from '../../domain/types'
 
@@ -22,6 +26,19 @@ const GRID = 'grid grid-cols-[1fr_40px_112px_44px] items-center gap-2 px-4'
 
 /** A footer action, flush left at `15px 16px` (tokens.md). */
 const ACTION = 'px-4 py-[15px] text-left text-[12.5px] font-extrabold uppercase tracking-[0.04em]'
+
+/** `1fr 56px 112px` — ITEM, TROLLEY SAYS, YOU FOUND (spec §7 step 5).
+ *
+ * The same 112px the taken cell gets, for the same reason: the count is typed
+ * in boxes and loose, off the same shelf, in the same control. */
+const RETURN_GRID = 'grid grid-cols-[1fr_56px_112px] items-center gap-2 px-4'
+
+/** The same reasons the storeroom offers — the residual-entering ones. A
+ * `miscount` is excluded there because it would be excluded from
+ * `ledgerBalance` and so would silently do nothing, and this sheet writes to
+ * the same ledger from the same place. Derived from `entersResidual` rather
+ * than named, so it cannot drift from the rule it respects. */
+const STOREROOM_ADJUSTMENT_REASONS = ADJUSTMENT_REASONS.filter((r) => r.entersResidual)
 
 /** `5 boxes + 17`, or `17 loose` where there is no carton. The same split the
  * quantity field below the figure uses, so the workings line and the control
@@ -72,21 +89,161 @@ export function TrolleyScreen({
   onDone: () => void
 }) {
   const {
-    loading, rows, quiet, needsBySlot, levelOf, setTaken, toggleNoneLeft, save,
+    loading, runDate, rows, quiet, needsBySlot, levelOf, returnRows, found,
+    setTaken, toggleNoneLeft, setFound, save, saveReturn,
   } = useTrolley(runId, mode)
+  const [adjusting, setAdjusting] = useState<{ itemId: Id; name: string } | null>(null)
 
+  const returning = mode === 'return'
+
+  // `state` rather than `eyebrow`: `ScreenHeader` takes a back affordance or
+  // an eyebrow and never both, and a nested screen the operator cannot leave
+  // is worse than one whose context line sits on the right.
   const header = (
     <ScreenHeader
       back={{ label: '← Machines', onClick: onDone }}
-      title="Load trolley"
-      figure={loading ? undefined : `${rows.filter((r) => r.taken > 0).length} / ${rows.length}`}
+      state={returning ? `RETURNING · ${formatRunDate(runDate).toUpperCase()}` : undefined}
+      title={returning ? 'Leftovers' : 'Load trolley'}
+      figure={loading || returning
+        ? undefined
+        : `${rows.filter((r) => r.taken > 0).length} / ${rows.length}`}
     />
   )
 
   if (loading) {
     return (
       <ScreenLayout header={header}>
-        <div className="p-4">Working out what to take…</div>
+        <div className="p-4">
+          {returning ? 'Working out what should be left…' : 'Working out what to take…'}
+        </div>
+      </ScreenLayout>
+    )
+  }
+
+  // The adjustment sheet, floating and anchored to the bottom — the storeroom
+  // learned this the hard way (94cf425): a sheet rendered in document order
+  // after a long list opens below the button that was tapped, which from
+  // where the operator is standing is a button that does nothing.
+  const sheet = adjusting !== null && (
+    <div
+      className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 p-2"
+      onClick={() => setAdjusting(null)}
+      aria-label="Close adjustment sheet"
+      role="presentation"
+    >
+      <div
+        className="max-h-[80vh] w-full max-w-lg overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <AdjustmentSheet
+          location={{ kind: 'storeroom' }}
+          itemId={adjusting.itemId}
+          itemName={adjusting.name}
+          reasons={STOREROOM_ADJUSTMENT_REASONS}
+          onSaved={() => setAdjusting(null)}
+          onCancel={() => setAdjusting(null)}
+        />
+      </div>
+    </div>
+  )
+
+  if (returning) {
+    return (
+      <ScreenLayout
+        header={header}
+        stickyExtra={
+          <div
+            data-testid="return-column-header"
+            className={`${RETURN_GRID} bg-ink py-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-ground`}
+          >
+            <span>Item</span>
+            <span className="text-right leading-tight">Trolley<br />says</span>
+            <span className="text-right leading-tight">You<br />found</span>
+          </div>
+        }
+      >
+        {returnRows.length === 0 && (
+          <p className="bg-paper px-4 py-3 text-[12.5px] font-medium text-neutral-700">
+            Nothing went up on the trolley this run, so there is nothing to
+            bring back down.
+          </p>
+        )}
+
+        <ul>
+          {returnRows.map((row) => {
+            const counted = found.get(row.line.itemId) ?? Math.max(0, row.predicted)
+            const difference = counted - row.predicted
+
+            return (
+              <li
+                key={row.line.id}
+                data-testid={`return-row-${row.item.name}`}
+                className={`border-b border-rule-light bg-paper py-2.5 ${
+                  difference === 0 ? '' : 'shadow-[inset_4px_0_0_var(--color-accent)]'
+                }`}
+              >
+                <div className={RETURN_GRID}>
+                  <div className="min-w-0">
+                    <div className="truncate text-[13.5px] font-semibold">{row.item.name}</div>
+                    <div className="truncate text-[11px] font-medium text-neutral-700">
+                      {`Took ${row.line.taken} · ${row.line.taken - row.predicted} into machines`}
+                    </div>
+                  </div>
+
+                  <span
+                    aria-label={`${row.item.name} on the trolley`}
+                    className="text-right text-[19px] font-extrabold tabular-nums"
+                  >
+                    {row.predicted}
+                  </span>
+
+                  <QuantityField
+                    item={row.item}
+                    units={counted}
+                    onChange={(units) => setFound(row.line.itemId, units)}
+                  />
+                </div>
+
+                {/* One action, never taken automatically (design §11, D6).
+                    The app writes the return; the difference is the
+                    operator's to explain, through the ordinary sheet. */}
+                {difference !== 0 && (
+                  <p className="px-4 pt-1 text-[11px] font-semibold text-accent-700">
+                    {difference < 0
+                      ? `${-difference} fewer than the trolley says · `
+                      : `${difference} more than the trolley says · `}
+                    <button
+                      type="button"
+                      onClick={() => setAdjusting({ itemId: row.line.itemId, name: row.item.name })}
+                      className="font-extrabold underline"
+                    >
+                      Log the difference
+                    </button>
+                  </p>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+
+        <div className="flex border-t-2 border-rule-strong">
+          <button
+            type="button"
+            onClick={() => { void saveReturn().then(onDone).catch(() => {}) }}
+            className={`bg-accent ${ACTION} text-ground`}
+          >
+            Put the leftovers back
+          </button>
+          <button
+            type="button"
+            onClick={onDone}
+            className={`bg-ground ${ACTION} text-neutral-700`}
+          >
+            Back
+          </button>
+        </div>
+
+        {sheet}
       </ScreenLayout>
     )
   }

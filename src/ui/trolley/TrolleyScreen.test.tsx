@@ -7,10 +7,12 @@ import { saveMachine } from '../../data/repositories/machines'
 import { setPlacement } from '../../data/repositories/placements'
 import { getOrCreateRun } from '../../data/repositories/runs'
 import { setStoreroomBalance } from '../../data/repositories/storeroom'
+import { recordTrolleyLoad } from '../../data/repositories/trolley'
 import { openVisit, putCountLines, finalizeVisit } from '../../data/repositories/visits'
 import { newId, now } from '../../domain/ids'
 import { today } from '../../domain/date'
 import type { Id } from '../../domain/types'
+import { StoreroomScreen } from '../storeroom/StoreroomScreen'
 import { TrolleyScreen } from './TrolleyScreen'
 
 beforeEach(async () => {
@@ -197,5 +199,95 @@ describe('TrolleyScreen, loading', () => {
     // left is the item name, which must not be squeezed below a readable
     // width.
     expect(32 + gaps + fixed).toBeLessThanOrEqual(393 - 130)
+  })
+})
+
+/** A trolley loaded with 24 and one machine counted out of it: slot 58 went
+ * from 3 to 10, so seven units came off the trolley and seventeen should be
+ * on it. The shelf anchor is stamped a day back so the load's own withdrawal
+ * is unambiguously after it — `ledgerBalance` excludes a movement at exactly
+ * `verifiedAt`, and `now()` is `Date.now()`, which two writes in the same
+ * millisecond would tie. */
+async function loadedTrolley({ taken = 24, boxSize = 1 } = {}) {
+  const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 10, boxSize })
+  const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+  await setPlacement(coke.id, { kind: 'base' }, [58])
+
+  const yesterday = Date.now() - 86_400_000
+  await db.storeroomBalances.put({
+    id: newId(), itemId: coke.id, units: 200,
+    updatedAt: yesterday, verifiedAt: yesterday,
+  })
+
+  const run = await getOrCreateRun(today())
+  await recordTrolleyLoad({
+    runId: run.id, itemId: coke.id, needed: 7, taken, noneLeftInG: false,
+  })
+  await count(today(), l7.id, [
+    { slotNumber: 58, itemId: coke.id, before: 3, after: 10 },
+  ])
+
+  return { coke, l7, run }
+}
+
+describe('TrolleyScreen, returning', () => {
+  it('predicts what should be left from taken minus what went into machines', async () => {
+    const { run } = await loadedTrolley()
+
+    render(<TrolleyScreen runId={run.id} mode="return" onDone={vi.fn()} />)
+
+    // Derived, never decremented in a stored field (design §9): 24 taken,
+    // `after − before` of 7 into L7's slot 58, so seventeen should still be
+    // on the trolley. The count field opens on that figure — the operator is
+    // confirming or correcting it, not typing it from nothing.
+    expect(await screen.findByLabelText('Coke on the trolley')).toHaveTextContent('17')
+    expect(screen.getByLabelText('Coke units')).toHaveValue(17)
+  })
+
+  it('puts the returned units back on the storeroom balance', async () => {
+    const user = userEvent.setup()
+    const { run } = await loadedTrolley()
+
+    const { unmount } = render(
+      <TrolleyScreen runId={run.id} mode="return" onDone={vi.fn()} />,
+    )
+    await screen.findByLabelText('Coke on the trolley')
+    await user.click(screen.getByRole('button', { name: /put the leftovers back/i }))
+
+    await waitFor(async () => {
+      expect((await db.trolleyLines.toArray())[0].returned).toBe(17)
+    })
+    unmount()
+
+    // Spec §6.5, design §11: 200 on the shelf, 24 onto the trolley, 17 back.
+    // The estimate is the ledger's, and the trolley is now one of its
+    // movement sources.
+    render(<StoreroomScreen />)
+    expect(await screen.findByLabelText('Coke on hand')).toHaveTextContent('193')
+  })
+
+  it('shows a difference and offers to log it, but never logs it on its own', async () => {
+    const user = userEvent.setup()
+    const { run } = await loadedTrolley()
+
+    render(<TrolleyScreen runId={run.id} mode="return" onDone={vi.fn()} />)
+    const found = await screen.findByLabelText('Coke units')
+
+    await user.clear(found)
+    await user.type(found, '15')
+
+    // Two units short of what the arithmetic says. An unexplained difference
+    // is information — hiding it inside a balance is how a ledger stops being
+    // trusted — so it is named, and logging it is a separate, deliberate act
+    // through the ordinary adjustment sheet.
+    expect(screen.getByText(/2 fewer than the trolley says/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /log the difference/i }))
+    expect(screen.getByLabelText('Close adjustment sheet')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /put the leftovers back/i }))
+    await waitFor(async () => {
+      expect((await db.trolleyLines.toArray())[0].returned).toBe(15)
+    })
+    expect(await db.adjustments.count()).toBe(0)
   })
 })

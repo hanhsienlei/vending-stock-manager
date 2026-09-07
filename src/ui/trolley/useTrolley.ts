@@ -5,7 +5,7 @@ import { listItems } from '../../data/repositories/items'
 import { getRun } from '../../data/repositories/runs'
 import { listStoreroomBalances } from '../../data/repositories/storeroom'
 import {
-  listTrolleyLines, recordTrolleyLoad, trolleyForRun,
+  listTrolleyLines, recordTrolleyLoad, recordTrolleyReturn, trolleyForRun,
 } from '../../data/repositories/trolley'
 import { getCountLines, listVisitsForRun } from '../../data/repositories/visits'
 import { today } from '../../domain/date'
@@ -75,6 +75,10 @@ export function useTrolley(runId: Id, mode: 'load' | 'return') {
   const [taken, setTakenState] = useState<Map<Id, number>>(new Map())
   const [noneLeft, setNoneLeftState] = useState<Set<Id>>(new Set())
   const [found, setFoundState] = useState<Map<Id, number>>(new Map())
+  // The run's own date, for the header. Not `today()`: a run started
+  // yesterday and returned this morning is still yesterday's run, and a
+  // header that names the wrong day is a header the operator stops reading.
+  const [runDate, setRunDate] = useState(today())
   const [loading, setLoading] = useState(true)
   const mountedRef = useRef(true)
 
@@ -100,6 +104,7 @@ export function useTrolley(runId: Id, mode: 'load' | 'return') {
 
     if (!mountedRef.current) return
 
+    setRunDate(plannedDate)
     setItems(loadedItems)
     setForecast(rows)
     setSaved(lines)
@@ -265,11 +270,29 @@ export function useTrolley(runId: Id, mode: 'load' | 'return') {
     }
   }, [rows, runId])
 
+  /** What came back down. One row per line the run loaded, written against
+   * that line — the return is a reconciliation of a load that happened, not a
+   * movement of its own, and `recordTrolleyReturn` refuses a return with no
+   * load rather than inventing a phantom one.
+   *
+   * The difference between this and what the trolley predicted is displayed
+   * and never written (design §11): an unexplained difference is information,
+   * and hiding it inside a balance is how a ledger stops being trusted. */
+  const saveReturn = useCallback(async () => {
+    for (const row of returnRows) {
+      await recordTrolleyReturn(
+        runId,
+        row.line.itemId,
+        found.get(row.line.itemId) ?? Math.max(0, row.predicted),
+      )
+    }
+  }, [returnRows, found, runId])
+
   return {
-    loading, rows, quiet, unfulfillable: pick.unfulfillable,
+    loading, runDate, rows, quiet, unfulfillable: pick.unfulfillable,
     needsBySlot, levelOf, itemsById,
     remaining, returnRows, found,
-    setTaken, toggleNoneLeft, setFound, save, refresh: load,
+    setTaken, toggleNoneLeft, setFound, save, saveReturn, refresh: load,
   }
 }
 

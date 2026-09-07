@@ -319,6 +319,26 @@ describe('MachineListScreen', () => {
       expect(onTrolley).toHaveBeenCalledWith(run.id, 'load')
     })
 
+    // Design §12.6 and spec §7 step 5: the last thing the run asks for. It
+    // replaces `Load trolley` once every machine that is going to be counted
+    // has been — at which point there is nothing left to load for.
+    it('offers Return leftovers once every machine has been counted', async () => {
+      const user = userEvent.setup()
+      const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
+      const run = await createRun(today())
+      await finalizeVisit((await openVisit(run.id, l7.id)).id)
+      const onTrolley = vi.fn()
+
+      render(
+        <MachineListScreen onCount={vi.fn()} onViewMap={vi.fn()} onTrolley={onTrolley} />,
+      )
+
+      expect(screen.queryByRole('button', { name: 'Load trolley' })).not.toBeInTheDocument()
+      await user.click(await screen.findByRole('button', { name: 'Return leftovers' }))
+
+      expect(onTrolley).toHaveBeenCalledWith(run.id, 'return')
+    })
+
     it('says in the eyebrow that the trolley is loaded, once it is', async () => {
       await saveMachine({ label: 'Lift lobby', level: 7 })
       const run = await createRun(today())
