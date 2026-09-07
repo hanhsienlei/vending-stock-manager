@@ -3,9 +3,14 @@ import { listItems } from '../../data/repositories/items'
 import { listPlacements } from '../../data/repositories/placements'
 import { seedStarterCatalogue } from '../../data/repositories/seed'
 import { TRAYS, trayOf, trayHeading } from '../../domain/trays'
+import { SectionBar, useCollapsedSections } from '../components/CollapsibleSections'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { ScreenLayout } from '../components/ScreenLayout'
 import type { Id, Item, ItemPlacement } from '../../domain/types'
+
+/** The fold state is keyed by tray number, so the group with no tray needs a
+ * key of its own that no tray can collide with. */
+const UNPLACED = 'unplaced'
 
 /** The remark, short enough to sit beside an item name (§12). The full
  * string stays reachable — as the tag's accessible name here, and in full on
@@ -69,6 +74,7 @@ export function ItemListScreen({
   const [placements, setPlacements] = useState<ItemPlacement[]>([])
   const [busy, setBusy] = useState(false)
   const [search, setSearch] = useState('')
+  const sections = useCollapsedSections('vsm.items.collapsedTrays')
 
   async function reload() {
     const [allItems, allPlacements] = await Promise.all([listItems(), listPlacements()])
@@ -198,35 +204,52 @@ export function ItemListScreen({
       {TRAYS.map((tray) => {
         const trayItems = groups.byTray.get(tray) ?? []
         if (trayItems.length === 0) return null
+        const open = sections.isOpen(String(tray))
         return (
           <section key={tray}>
-            <h3 className="bg-surface px-4 py-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
-              {trayHeading(tray)}
+            {/* The bar stays an `h3` — it is still this section's heading,
+                and a button inside one keeps both readings. */}
+            <h3>
+              <SectionBar
+                heading={trayHeading(tray)}
+                open={open}
+                count={trayItems.length}
+                onToggle={() => sections.toggle(String(tray))}
+              />
             </h3>
-            <ul>
-              {trayItems.map((item) => (
-                <ItemRow
-                  key={item.id}
-                  item={item}
-                  baseSlot={baseSlotByItemId.get(item.id)}
-                  onSelect={onSelect}
-                />
-              ))}
-            </ul>
+            {open && (
+              <ul>
+                {trayItems.map((item) => (
+                  <ItemRow
+                    key={item.id}
+                    item={item}
+                    baseSlot={baseSlotByItemId.get(item.id)}
+                    onSelect={onSelect}
+                  />
+                ))}
+              </ul>
+            )}
           </section>
         )
       })}
 
       {groups.unplaced.length > 0 && (
         <section>
-          <h3 className="bg-surface px-4 py-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-neutral-700">
-            Unplaced
+          <h3>
+            <SectionBar
+              heading="UNPLACED"
+              open={sections.isOpen(UNPLACED)}
+              count={groups.unplaced.length}
+              onToggle={() => sections.toggle(UNPLACED)}
+            />
           </h3>
-          <ul>
-            {groups.unplaced.map((item) => (
-              <ItemRow key={item.id} item={item} onSelect={onSelect} />
-            ))}
-          </ul>
+          {sections.isOpen(UNPLACED) && (
+            <ul>
+              {groups.unplaced.map((item) => (
+                <ItemRow key={item.id} item={item} onSelect={onSelect} />
+              ))}
+            </ul>
+          )}
         </section>
       )}
     </ScreenLayout>

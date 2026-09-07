@@ -209,6 +209,50 @@ describe('ItemListScreen', () => {
     })
   })
 
+  describe('collapsible tray sections', () => {
+    it('opens expanded, folds a tray on tap, and says how many it is holding', async () => {
+      const user = userEvent.setup()
+      const twix = await saveItem({ name: 'Twix', price: 3, basePar: 5, boxSize: 1 })
+      await setPlacement(twix.id, { kind: 'base' }, [30])
+      const mars = await saveItem({ name: 'Mars', price: 3, basePar: 5, boxSize: 1 })
+      await setPlacement(mars.id, { kind: 'base' }, [31])
+      const coke = await saveItem({ name: 'Coke', price: 4.5, basePar: 8, boxSize: 24 })
+      await setPlacement(coke.id, { kind: 'base' }, [58])
+
+      render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+      await screen.findByText('Twix')
+
+      const chocolate = screen.getByRole('button', { name: /TRAY 3 · CHOCOLATE/ })
+      expect(chocolate).toHaveAttribute('aria-expanded', 'true')
+
+      await user.click(chocolate)
+
+      expect(screen.queryByText('Twix')).not.toBeInTheDocument()
+      expect(screen.queryByText('Mars')).not.toBeInTheDocument()
+      // A shut tray still names itself and says what is inside it — an empty
+      // tray and a folded one must not look the same.
+      expect(screen.getByRole('button', { name: /TRAY 3 · CHOCOLATE/ }))
+        .toHaveTextContent('2 hidden')
+      expect(screen.getByText('Coke')).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: /TRAY 3 · CHOCOLATE/ }))
+      expect(screen.getByText('Twix')).toBeInTheDocument()
+    })
+
+    it('folds the unplaced group too', async () => {
+      const user = userEvent.setup()
+      await saveItem({ name: 'Orphan Item', price: 3, basePar: 5, boxSize: 1 })
+
+      render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+      await screen.findByText('Orphan Item')
+
+      await user.click(screen.getByRole('button', { name: /UNPLACED/ }))
+
+      expect(screen.queryByText('Orphan Item')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /UNPLACED/ })).toHaveTextContent('1 hidden')
+    })
+  })
+
   describe('search', () => {
     it('filters the list by name', async () => {
       const user = userEvent.setup()
