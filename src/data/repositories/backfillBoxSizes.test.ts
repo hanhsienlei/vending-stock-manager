@@ -14,8 +14,8 @@ beforeEach(async () => {
  * had a real carton size to work with and the report's Box column would read
  * `1` sixty times.
  *
- * The real sizes exist only on the operator's paper stocktake sheets
- * (`docs/user-context/stocktake-sheet-*.heic`). This backfill carries them
+ * The real sizes exist only on the operator's paper stocktake sheets.
+ * This backfill carries them
  * into a catalogue that already exists on the operator's phone, where
  * re-seeding is not an option: the seed refuses to run once any item is
  * present, by design.

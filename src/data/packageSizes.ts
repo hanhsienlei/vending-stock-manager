@@ -1,6 +1,6 @@
-/** Supplier package sizes, transcribed from the operator's paper stocktake
- * sheets (`docs/user-context/stocktake-sheet-1.heic`, `-2.heic`) — the
- * `Package` column, which reads `Box 21`, `Case 24`, `Box 200`. Units per
+/** Supplier package sizes, transcribed from the operator's two paper
+ * stocktake sheets — the `Package` column, which reads `Box 21`,
+ * `Case 24`, `Box 200`. Units per
  * carton; the box/case wording is the supplier's, and only the number is
  * stock-keeping information.
  *

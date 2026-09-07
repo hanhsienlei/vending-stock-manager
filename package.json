@@ -3,6 +3,17 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "description": "Offline-first PWA for restocking vending machines: counting, demand forecasting, trolley allocation and supplier ordering, all on-device.",
+  "license": "MIT",
+  "author": "Han-Hsien Lei",
+  "homepage": "https://vending-stock-manager.pages.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hanhsienlei/vending-stock-manager.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

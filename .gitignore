@@ -5,3 +5,8 @@ dist/
 dev-dist/
 .claude/
 .worktrees/
+
+# Source photographs and video kept out of the public repo (purged 2026-09-07)
+*.HEIC
+*.heic
+*.MOV

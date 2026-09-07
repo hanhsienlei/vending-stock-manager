@@ -16,8 +16,8 @@ the decisions the spec carries forward. The no-server decision below is not
 withdrawn; it simply does not apply until the export is picked up.
 
 **Date:** 2026-08-27
-**Reference:** `docs/user-context/stock-sheet-1.heic`, `stock-sheet-2.heic` — the
-paper sheets this report reproduces.
+**Reference:** the operator's two paper stock sheets, which this report
+reproduces. The source photographs were kept out of the public repository.
 
 ---
 

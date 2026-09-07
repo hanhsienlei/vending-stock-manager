@@ -1,8 +1,9 @@
 # Catalogue transcription — for review before seeding
 
-Transcribed from `docs/user-context/stock-sheet-1.heic` and `stock-sheet-2.heic`
-(names, slot numbers, sizes) and `docs/user-context/vending-machine-map.HEIC`
-(prices — the stock sheets carry none).
+Transcribed from the operator's two paper stock sheets (names, slot numbers,
+sizes) and the machine's printed item map (prices — the stock sheets carry
+none). Those source photographs were kept out of the public repository; the
+transcription below is the record.
 
 **Nothing has been built from this yet.** Correct anything wrong, then it gets
 seeded into the app.

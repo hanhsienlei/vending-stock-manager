@@ -1,3 +1,7 @@
+> The operator's original brief, kept verbatim. It refers to photographs of the
+> machines, the item map and the paper stock sheets; those were kept out of the
+> public repository, so the file references below do not resolve here.
+
 ## Background
 I am managing 15 vending machines in a hotel. I need to refill the products every Tuesday and Friday. I need an app to help me log stock level in each machine so I can estimate what I should grab from the storeroom before going to these machines floor by floor. 
 
