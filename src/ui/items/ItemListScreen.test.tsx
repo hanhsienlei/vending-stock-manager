@@ -169,6 +169,46 @@ describe('ItemListScreen', () => {
     })
   })
 
+  // The operator's report: TRAY 3 · CHOCOLATE read 34, 33, 39, 30, 38, 36,
+  // 32, 35, 31, 37 — which is the names in alphabetical order, and useless
+  // for walking a machine top to bottom.
+  describe('order within a tray', () => {
+    it('lists a tray by slot number, not alphabetically by name', async () => {
+      const mars = await saveItem({ name: 'Mars', price: 3, basePar: 5, boxSize: 1 })
+      await setPlacement(mars.id, { kind: 'base' }, [36])
+      const boost = await saveItem({ name: 'Boost', price: 3, basePar: 5, boxSize: 1 })
+      await setPlacement(boost.id, { kind: 'base' }, [34])
+      const twix = await saveItem({ name: 'Twix', price: 3, basePar: 5, boxSize: 1 })
+      await setPlacement(twix.id, { kind: 'base' }, [30])
+
+      render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+      await screen.findByText('Mars')
+
+      expect(screen.getAllByRole('listitem').map((li) => li.textContent))
+        .toEqual([
+          expect.stringMatching(/^30Twix/),
+          expect.stringMatching(/^34Boost/),
+          expect.stringMatching(/^36Mars/),
+        ])
+    })
+
+    it('sorts an item spanning several slots by its lowest', async () => {
+      const wide = await saveItem({ name: 'Zebra', price: 3, basePar: 5, boxSize: 1 })
+      await setPlacement(wide.id, { kind: 'base' }, [39, 31])
+      const other = await saveItem({ name: 'Apple', price: 3, basePar: 5, boxSize: 1 })
+      await setPlacement(other.id, { kind: 'base' }, [35])
+
+      render(<ItemListScreen onSelect={vi.fn()} onNew={vi.fn()} />)
+      await screen.findByText('Zebra')
+
+      expect(screen.getAllByRole('listitem').map((li) => li.textContent))
+        .toEqual([
+          expect.stringMatching(/^31Zebra/),
+          expect.stringMatching(/^35Apple/),
+        ])
+    })
+  })
+
   describe('search', () => {
     it('filters the list by name', async () => {
       const user = userEvent.setup()
