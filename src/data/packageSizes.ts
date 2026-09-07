@@ -15,7 +15,9 @@
  * `Bundaberg Rum & Cola UP 4.6% (Cube)`, `KitKat`. Every key below is the
  * CATALOGUE name, matched by hand against the sheet. A test asserts that
  * every key names an item that actually exists, because a typo here would
- * silently do nothing rather than fail.
+ * silently do nothing rather than fail. Two of the amenity keys were renamed
+ * before this repository was published — see `starterCatalogue.ts` — and had
+ * to be renamed here in the same breath, for exactly that reason.
  *
  * ## Deliberately absent
  *
@@ -49,8 +51,8 @@ export const PACKAGE_SIZES: Record<string, number> = {
   // Sundries — sheet 1
   'Extra Gum Spearmint': 24,
   'Cranberry and Almond Granola Slice': 100,
-  'Accor Shaving Kit — Wood Midscale': 200,
-  'Accor Dental Kit — Bamboo Generic': 200,
+  'Shaving Kit': 200,
+  'Dental Kit': 200,
   'Lemon Slice': 200,
 
   // Chocolate — sheet 1

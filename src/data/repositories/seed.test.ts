@@ -34,7 +34,7 @@ describe('seedStarterCatalogue', () => {
     const byName = new Map(items.map((i) => [i.name, i]))
     expect(byName.get('Coke')?.boxSize).toBe(24)
     expect(byName.get("Smith's Salt & Vinegar Chips")?.boxSize).toBe(21)
-    expect(byName.get('Accor Shaving Kit — Wood Midscale')?.boxSize).toBe(200)
+    expect(byName.get('Shaving Kit')?.boxSize).toBe(200)
   })
 
   // The sheets leave the Package column blank for the sundries, and guessing

@@ -97,7 +97,7 @@ describe('PACKAGE_SIZES', () => {
   it('carries the sizes read off the stocktake sheets', () => {
     expect(PACKAGE_SIZES["Smith's Salt & Vinegar Chips"]).toBe(21)
     expect(PACKAGE_SIZES['Cranberry and Almond Granola Slice']).toBe(100)
-    expect(PACKAGE_SIZES['Accor Shaving Kit — Wood Midscale']).toBe(200)
+    expect(PACKAGE_SIZES['Shaving Kit']).toBe(200)
     expect(PACKAGE_SIZES['Sunkist']).toBe(30)
     expect(PACKAGE_SIZES['Coke']).toBe(24)
   })
