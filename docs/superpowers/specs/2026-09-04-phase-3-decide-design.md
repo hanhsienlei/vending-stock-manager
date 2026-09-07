@@ -1077,12 +1077,26 @@ Because the migration touches no existing row, a database that has been through
 v4 holds exactly the rows a v3 build wrote, plus one new table a v3 build does
 not know about. Nothing is lost, and nothing is reinterpreted.
 
-**But a v3 build cannot open a v4 database.** IndexedDB refuses to open a
-database at a version higher than the one requested, and Dexie surfaces that as
-a `VersionError` at `db.open()`. So once the operator loads a Phase 3 bundle
-even once, **reverting to the previous bundle leaves the app unable to open
-their data at all** — not corrupted, not lost, simply unreachable until a v4-
-aware bundle is loaded again.
+**But reverting the bundle is not safe, and this section first said why
+incorrectly. Corrected 2026-09-07, against the installed source.**
+
+The original claim was that a v3 build "cannot open a v4 database at all,"
+because IndexedDB refuses to open a database stored above the requested
+version and Dexie surfaces that as a `VersionError`. The first half is true of
+raw IndexedDB. The second half is false: **Dexie does not surface it.** It
+catches the `VersionError`, retries with no version at all, finds the installed
+schema is not the one it declares, and patches its missing tables and indexes
+into the newer database in place (`node_modules/dexie/dist/dexie.js:4599`,
+Dexie 4.4.5).
+
+So reverting does not fail loudly. The old build comes up **looking healthy,
+running on the newer build's stores**, with nothing announcing it — which is
+worse than a refusal, because a refusal is legible and this is not. It is also
+why `src/backup/import.ts` deletes the database rather than clearing its
+tables: clearing would run through that patched hybrid connection and restore
+into it, leaving the newer stores underneath. Pinned by a test —
+`src/backup/import.test.ts`, "is needed because reopening the newer database
+silently patches it instead".
 
 This is not new to Phase 3 — it was equally true of v2 and v3 — but it has
 never been stated, and the 2026-08-31 handover's "rollback is safe" was true

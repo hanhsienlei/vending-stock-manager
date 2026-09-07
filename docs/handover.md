@@ -1,170 +1,152 @@
-# Handover — 2026-08-31
+# Handover — 2026-09-07
 
-Supersedes the handover of 2026-08-28. That one covered the run screen, the
-machines list and the machine map. This round did the eight screens that one
-deliberately left alone: the slot editor, the adjustment sheet, the storeroom,
-history and its receipt, the report, the stock matrix, and the two item
-screens.
+Supersedes the handover of 2026-08-31. That one covered eight screens of
+interface work. This round built **Phase 3 — Decide**: the demand rate, the
+pick list, the trolley, allocation and the order suggestion. It also moved the
+schema for the first time since Phase 2.
 
-**On `main`, merged.** 528 tests passing, `tsc` clean, `vite build` clean with
-zero warnings, schema unchanged at version 3.
-
----
-
-## 1. Before you use it
-
-**Open the app and refresh once.** That is the only thing you have to do. The
-service worker otherwise keeps serving the old bundle until it updates on its
-own.
-
-**Do NOT clear the app's data.** Same as last time, and for the same reason:
-the schema did not move. Zero files under `src/data` or `src/domain` changed in
-this entire round — that is verified, not assumed. Clearing would throw away
-your history, your machine map corrections and the catalogue for nothing.
+**On `main`, merged and deployed.** 825 tests passing at the close of the
+round, `tsc` clean, `vite build` clean.
 
 ---
 
-## 2. What did NOT change
+## 1. Correcting what the last two handovers told you
 
-**The run screen is exactly as you left it.** Counting, typing, Fill, the tray
-tabs, the ran-dry edge — none of it was touched. If the typed count cells or
-Fill's new location in the `⋯` sheet felt wrong on the 29th, that is still
-open and still the thing worth telling me about.
+Both said **rollback is safe**. That was true of those rounds, because they did
+not move the schema. It is not a general property, and the reason it fails is
+not the one I first gave you.
 
-**The over-eager red edge is still there.** The 2026-08-28 handover said it was
-"the first thing being fixed after this run" — it has not been fixed, because
-you chose this round's work instead, and that was a reasonable trade. To
-restate it: after `Fill tray to par`, saving anything from a slot's `⋯` sheet
-can put the red ran-dry edge on slots that are simply empty and were never
-counted. **No count is wrong.** It is a display flag being too eager.
+Here is what actually happens. Your data is never lost or rewritten — a v4
+database holds exactly the rows a v3 build wrote, plus one table it does not
+know about. But if you ever go **back** to an older build, it does not refuse
+to open your database and it does not warn you. It opens it, quietly adds the
+tables it expects, and carries on **looking completely normal while running on
+the newer build's data**. Nothing tells you. That is worse than an error
+message, because an error you would notice.
 
----
+So the rule is now:
 
-## 3. What changed, screen by screen
+> **Export a backup before you install a new build.** One tap at the foot of
+> the storeroom screen. If a build ever goes wrong, `Confirm restore` on that
+> same screen puts your data back — it wipes and rebuilds the database rather
+> than writing on top of it, which is the only way a restore is really a
+> restore.
 
-**The slot editor** (the sheet behind `⋯` on a slot). It now says which machine
-and tray you are in at the top — `Slot 31 · L7 · Tray 3`. The buttons on each
-item used to read `Adjust Red Rock Deli Chips Honey Soy Chicken`, four buttons
-all starting with the same forty characters; now the item name is the row and
-the button just says `ADJUST` or `REMOVE`. Adding an item has a search box, and
-each item shows the slot it normally lives in — `· usually 34` — which is the
-fastest way to catch that you are about to put something in the wrong channel.
-A two-item slot now warns you about the changeover problem where you will meet
-it.
-
-**The adjustment sheet.** The reason was a dropdown, and that was the defect:
-the reason decides which fields appear below it, so the destination and
-direction controls sat underneath a control you had already scrolled past.
-Reason is now tiles at the top. There is a new **Result** cell that states both
-sides in plain terms before you commit — `L7·31 down 3` / `L9·31 up 3` — because
-a transfer writes both sides at once and is the one place this sheet can
-silently do the wrong thing. The commit button names the reason now: `Record
-move`, `Record delivery`. Both warnings from the known-gaps list are on screen
-at the point of the mistake.
-
-**The storeroom.** The two numbers on the right of each row are now named as
-columns — `APP ESTIMATE` and `YOUR COUNT` — because nothing said which was
-which. The "verified" line is relative now (`Verified 3 days ago`) instead of a
-full timestamp. A never-verified row carries the red edge.
-
-**History.** A run row says `Complete` or `In progress · 3 of 15 counted`, with
-`3 / 15` on the right, and an in-progress run carries the red edge. **The
-receipt now reads as the same table you typed into** — same four columns, same
-`COUNTED` / `REFILLED TO` heads as the counting screen — with `READ ONLY` in
-the header where counting says `COUNTING`. The `FILLED` pill is gone: two named
-columns already say it.
-
-One consequence worth knowing: a slot that was topped up while already at
-capacity — where counted and refilled-to are the same number — no longer shows
-any mark. That is the cost of dropping the pill, and it is deliberate.
-
-**The report.** The period's sold total is now the poster it should be: a
-full-bleed red field with the units figure large. The "lines not counted"
-warning has moved out of the totals card onto its own band directly beneath,
-because it is the one thing on that screen that must not read as decoration —
-a censored line has no figure, so the totals quietly count it as zero, and a
-range covering a machine's first visit reads "0 units · $0.00" exactly like a
-period that genuinely sold nothing. Sales lines are a proper table now.
-
-**The stock matrix.** Restyled only — same rows, same columns, same order. The
-machine toggles are black when shown and struck through when hidden. **The
-`Order` column now has a red header and a pink tint**, because it is the only
-column that is yours rather than the app's and it has to be obviously blank in
-a screenshot. Rows alternate shading so a 60-row screenshot stays readable.
-
-**The item screens.** The list shows the base slot, and price and par as
-separate figures instead of one grey caption. Tray headings name the category —
-`TRAY 1 · CHIPS`. A remark is a short tag now instead of three lines of italic
-amber outweighing the item name; the full text is still on the edit screen.
-On the edit screen the name is edited in place as the title, the four value
-fields are a 2×2 grid with par marked red as the only required one, and **the
-slot picker is a full-width ten-column grid** — one row per tray, so the whole
-machine reads as a shape. That last one was a real bug: the old picker
-overflowed the screen on your phone.
+You did this on 5 September before the schema moved: 3,194 count lines, 53
+visits, 6 runs. Keep that file. Take a new one before the next build.
 
 ---
 
-## 4. The report page — fixed after the first draft of this handover
+## 2. Getting a new build is not as simple as refreshing
 
-**The master table was unreachable, and I first wrote this up as a data
-limitation rather than the bug it was.**
+The app keeps serving its cached copy. On 7 September a change I had deployed
+did not appear after a normal refresh, and I nearly reported a working feature
+as broken — the file was on the server the whole time.
 
-The table of every item against every machine — `Slot | Item | Size | L2…L16 |
-Storeroom | Total | Order` — was built correctly all along, but it sat inside
-a branch that only rendered once a **sales period** had closed, which needs a
-machine finished for a *second* time. Until then the whole Report page said
-"Nothing to report yet" and the table could not be reached at all. It never
-depended on sales: it reads current levels, storeroom balances and the item
-map, all of which exist from day one. So the one thing you wanted before a run
-— what to pull from the storeroom — was hidden until after two runs.
-
-It now leads the page, with no gate:
-
-1. The master table, with the landscape hint above it.
-2. **In machines / Storeroom / On hand now** — moved up here, because they
-   total the table, and they were sitting under date pickers that never
-   governed them.
-3. **Sales** below, under its own heading. That half still needs a closed
-   period and still says so when it has none.
-
-Two column names changed: `GF` is now **Storeroom** (the shorthand was never
-explained anywhere), and `Qty` — which showed a pack size like `27g`, never a
-quantity — is now **Size**.
-
-**One thing to expect:** with nothing counted yet, every machine cell reads a
-red `0`. That is the design working (a red figure means a machine at zero), but
-on an empty estate it is a wall of red that will settle once you have counted a
-run.
-
-**Still not checked in a browser:** the **counting screen** at phone width — it
-needs a run in progress. Everything else was, including the report table above:
-no screen runs off the side, and the ten-column slot picker measures 361px
-inside a 393px screen.
-
-The matrix itself is 1167px wide with all fifteen machines shown, so it scrolls
-sideways even in landscape (852px). That is what the machine toggles at the top
-are for — switch off the floors you are not doing and it narrows to fit.
+**If something I said I fixed is not there, this is the likely reason, not a
+failed deploy.** Close the app or the tab completely and reopen it, rather than
+pulling to refresh. This is worth fixing properly — the app could simply tell
+you when a new build is waiting — and it is not built yet.
 
 ---
 
-## 5. Rollback is safe
+## 3. What is new
 
-Nothing in the schema changed, so this build and your data are interchangeable
-in either direction. If any of this reads worse in your hand than what it
-replaced, reverting costs nothing and loses nothing.
+**Load the trolley.** The machines screen's bottom button now follows the run:
+`Start run`, then `Load trolley`, then `Continue L7` while a machine is open,
+then `Return leftovers` at the end. The load screen lists what each item needs,
+with `Taken` defaulting to whole boxes where a carton size is known, and a
+`None left in G` toggle for an empty shelf. If what you took will not cover
+everything, a band appears naming which machines go short and where the line
+falls. It writes nothing until you commit it.
+
+**The `Order` column fills itself.** It has been blank since Phase 2, waiting
+for this. `1 × 21` means one box of twenty-one. A toggle blanks it again for a
+run where you would rather write. Where it comes from:
+
+1. Each slot's rate — units a day, averaged over the last 4 periods, throwing
+   out any period where the slot hit zero (sales while empty understate demand).
+2. Added up per item, counting each slot only for the item it is set to first.
+3. Multiplied by 10 days (7 to cover, 3 spare — both editable on the report).
+4. Minus what the storeroom ledger says is on the shelf.
+5. Divided by the carton size, rounded up.
+
+**Machine stock is deliberately not subtracted.** A slot showing 73 units still
+asks for a box, because the machines drain over those ten days and are refilled
+*from the storeroom* — the storeroom has to cover the whole period regardless.
+
+**Expect it to look thin for a run or two.** A slot needs two clean periods
+before it has a rate, and six runs across fifteen machines is not many. An item
+with no rate shows **blank, not zero** — zero would read as "order none", which
+is the wrong instruction for a slot that simply lacks history.
+
+**`MAKE FIRST`.** On a slot's `⋯`, you can now set which item that slot prefers.
+This matters more than it looks: the order forecast credits a slot's whole
+demand to its first item, so during a changeover the outgoing product gets
+ordered and the incoming one does not, until you change it. It also fixes Fill
+loading the line you are trying to drain.
+
+**Lists sort by slot number**, and tray sections fold away — on Items, the
+storeroom, the report and a run's receipt. A folded tray says how many rows are
+hidden, so it never reads as empty.
+
+**Two reasons changed.** `Miscount correction` is gone from the adjustment
+sheet: it wrote a row nothing ever read. A wrong count is fixed by re-opening
+the machine and typing the right number, and a wrong shelf figure by a manual
+count. And `Transfer` is no longer offered at a slot while you are counting
+that machine today — moving stock during a run is already recorded by the two
+counts, and logging it as well subtracted it twice.
 
 ---
 
-## 6. What to do next
+## 4. What to watch on the next run
 
-Same as last time, and it worked: **write problems down as they hit you, with a
-screenshot.** Thirteen annotated screenshots became a fix plan last round, and
-two of those bugs were invisible to every test — only looking at a real screen
-caught them.
+Nothing here has met a machine. Everything was checked by tests and in a
+browser, and the two faults you found this week — the clipped `Order` header
+and the wall of red — were both invisible to 800-odd tests and obvious in a
+photograph.
 
-The two things most worth your judgement this time: whether the **adjustment
-sheet's reason tiles** are faster than the dropdown was, and whether the
-**receipt reading as the count table** actually helps you check a machine.
+Most worth your judgement:
+
+- **The load screen**, against how you actually load. It assumes one load
+  covering all fifteen machines. If you routinely go back down to G, that
+  assumption is wrong and the allocation matters much less than the watch would
+  have.
+- **Whether `Return leftovers` earns its keep.** Counting what comes back turns
+  the return into a free check on the machine counts. If it is a nuisance, the
+  alternative is one button that trusts the derived figure.
+- **Whether the order figures are believable** on items you know well.
+
+Write problems down with a screenshot, as before. It has worked every time.
+
+---
+
+## 5. One thing that was built and taken out again
+
+The trolley watch — a line telling you which level an item runs out at — was
+built, shipped, and removed on 7 September after you photographed it. It was
+supposed to be one line; it printed one per short item, and because your
+trolley had nothing on it, every item qualified. Twenty-eight lines covering
+the count table.
+
+The arithmetic behind it is kept and still tested. It needs two decisions
+before it comes back: how many lines it may ever show, and what it should say
+when the trolley was never loaded. Say if you want it.
+
+---
+
+## 6. Known limits worth carrying
+
+- **`touched` is unreliable on visits finalized on or before 4 September** — a
+  bug fixed that day recorded "counted" for slots nobody counted. No figure was
+  affected; the forecast deliberately reads this flag nowhere.
+- **The order suggestion does not know what you have already ordered.** Two
+  reports before a delivery will ask for the same cartons twice.
+- **The pick list is empty while the storeroom ledger is.** It only offers
+  items the storeroom is recorded as holding, so a shelf figure of zero reads
+  as "nothing to take".
+
+The full list, with reasoning, is `docs/known-gaps.md`.
 
 ---
 
@@ -172,25 +154,20 @@ sheet's reason tiles** are faster than the dropdown was, and whether the
 
 | What | Where |
 |---|---|
-| This round's plan | `docs/superpowers/plans/2026-08-31-interface-refinement-steps-4-12.md` |
-| Interface refinement spec (§6–§12 are this round) | `docs/design/2026-08-28-interface-refinement.md` |
-| Design tokens | `docs/design/tokens.md` |
+| This round's report | `docs/phase-3-report.md` |
+| Phase 3 design (13 decisions in §0, spec defects in §16) | `docs/superpowers/specs/2026-09-04-phase-3-decide-design.md` |
+| Phase 3 plan | `docs/superpowers/plans/2026-09-04-phase-3-decide.md` |
 | Design spec (original authority) | `docs/superpowers/specs/2026-08-26-vending-stock-manager-design.md` |
+| Design tokens | `docs/design/tokens.md` |
 | Known gaps | `docs/known-gaps.md` |
 | Decisions and reasoning | `docs/decisions.md` |
-| Last round's execution log | `docs/interface-refinement-execution-log.md` |
 
 ## For whoever picks this up next
 
-Three things were deliberately left, and are not oversights:
-
-1. **The over-eager ran-dry edge** (`useCounting.ts`, the mid-count re-seed
-   marks tray-filled slots `touched`). Still the top follow-up.
-2. **`src/ui/components/Stepper.tsx` is unused and still in the old palette.**
-   Kept on purpose — the spec's "stacked ledger" fallback keeps the ± steppers,
-   and it is the named fallback if typed cells fail in the field. The file now
-   carries a comment saying so.
-3. **`tokens.md` says "Every figure carries `tabular-nums`."** Taken literally
-   that would mean every numeral in every sentence, including dates and
-   `box of 24`. What it means, and what the code does, is every figure in a
-   column that has to align. Worth one line of clarification in that file.
+1. **Nothing in Phase 3 has been used on a real run.** That is the top item.
+2. **The app cannot tell the operator a new build is waiting.** Until it can,
+   "refresh once" is unreliable advice and a shipped fix can look like it never
+   landed.
+3. **jsdom does not lay out.** Both defects the operator found this week were
+   width and volume problems that every test passed. Anything that changes what
+   a column holds needs looking at, not just asserting.
