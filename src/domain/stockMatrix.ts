@@ -19,6 +19,16 @@ export interface MatrixRow {
   perMachine: Map<Id, number>
   storeroom: number
   total: number
+  /** What this item's slots hold when every one of them is full: the item's
+   * par, times the slots it occupies, times the machines. Par rather than a
+   * pinned `SlotConfig` capacity, because this is the operator's own "what
+   * should be out there" figure and par is the number they set. An item in
+   * two slots is full at twice the par in each machine, which is what keeps
+   * it comparable with `total` — that sums the slots too. */
+  full: number
+  /** `total − full`. Negative is the useful direction: the estate is short by
+   * that many units, storeroom included. */
+  balance: number
 }
 
 export interface StockMatrixInput {
@@ -95,6 +105,8 @@ export function buildStockMatrix(input: StockMatrixInput): MatrixRow[] {
     }
 
     const storeroom = storeroomOnHand.get(item.id) ?? 0
+    const total = inMachines + storeroom
+    const full = item.basePar * slots.length * machineIds.length
 
     return {
       key: (locatorsByItem.get(item.id) ?? []).join(', '),
@@ -104,7 +116,9 @@ export function buildStockMatrix(input: StockMatrixInput): MatrixRow[] {
       boxSize: item.boxSize,
       perMachine,
       storeroom,
-      total: inMachines + storeroom,
+      total,
+      full,
+      balance: total - full,
     }
   })
 }

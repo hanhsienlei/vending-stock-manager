@@ -101,7 +101,7 @@ export function StockMatrix({
 
   // Slot, Item, Size, Box, then a column per machine, then GF, Total, Order.
   // The section bar spans exactly this, so it displaces no column.
-  const columnCount = 4 + machines.length + 3
+  const columnCount = 4 + machines.length + 5
 
   // The banding runs across the sheet rather than restarting in each section:
   // it exists so the eye can hold a row across twenty-two columns (§11), and
@@ -179,6 +179,13 @@ export function StockMatrix({
                 it no longer can, so these two stand on their own. */}
             <col style={{ width: '38px' }} />
             <col style={{ width: '42px' }} />
+            {/* Full and Balance. Sized against their own headings, which are
+                wider than their figures: `BALANCE` is seven characters of
+                9.5px/700 at 0.12em tracking. The Order column was sized
+                against its content once and clipped its own heading, which
+                reads as a broken table — see the note below. */}
+            <col style={{ width: '44px' }} />
+            <col style={{ width: '62px' }} />
             {/* Sized for the widest FILLED figure, not for the header. 38px
                 was right while the column was blank — room for a pen stroke —
                 and became wrong the moment task 17 started printing into it:
@@ -215,6 +222,10 @@ export function StockMatrix({
                 GF
               </th>
               <th scope="col" className={`${HEAD} text-right`}>Total</th>
+              {/* What the estate holds with every slot at par, and the gap to
+                  it. Beside Total because they are read against it. */}
+              <th scope="col" className={`${HEAD} text-right`}>Full</th>
+              <th scope="col" className={`${HEAD} text-right`}>Balance</th>
               <th scope="col" className={`${HEAD} text-right text-accent`}>Order</th>
             </tr>
           </thead>
@@ -293,6 +304,22 @@ export function StockMatrix({
                   {row.storeroom}
                 </td>
                 <td className={`${CELL} text-right`}>{row.total}</td>
+                <td
+                  aria-label={`full for ${row.key}`}
+                  className={`${CELL} text-right text-neutral-700`}
+                >
+                  {row.full}
+                </td>
+                {/* Short is the direction that costs money, so it is the one
+                    that takes the accent; a surplus is just a number. Text,
+                    never a fill — the screen's one accent element is the
+                    Order column's header (tokens.md, colour budget). */}
+                <td
+                  aria-label={`balance for ${row.key}`}
+                  className={`${CELL} text-right ${row.balance < 0 ? 'text-accent-700' : ''}`}
+                >
+                  {row.balance}
+                </td>
                 {/* Filled from the suggestion when there is one, and blank
                     for the pen when there is not — the tint says whose
                     column it is in both states. */}

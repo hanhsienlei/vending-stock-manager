@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { StockMatrix } from './StockMatrix'
 import type { MatrixRow } from '../../domain/stockMatrix'
@@ -13,7 +13,7 @@ const MACHINES: Machine[] = [
 const ROWS: MatrixRow[] = [{
   key: '58', itemId: 'coke', itemName: 'Coke', size: '375ml', boxSize: 24,
   perMachine: new Map([['m2', 3], ['m7', 4]]),
-  storeroom: 100, total: 107,
+  storeroom: 100, total: 107, full: 75, balance: 32,
 }]
 
 describe('StockMatrix', () => {
@@ -256,14 +256,17 @@ describe('StockMatrix — tray sections', () => {
     {
       key: '34', itemId: 'boost', itemName: 'Boost', boxSize: 30,
       perMachine: new Map([['m2', 1], ['m7', 2]]), storeroom: 5, total: 8,
+      full: 10, balance: -2,
     },
     {
       key: '36', itemId: 'mars', itemName: 'Mars', boxSize: 30,
       perMachine: new Map([['m2', 1], ['m7', 2]]), storeroom: 5, total: 8,
+      full: 10, balance: -2,
     },
     {
       key: '58, 59', itemId: 'coke', itemName: 'Coke', boxSize: 24,
       perMachine: new Map([['m2', 3], ['m7', 4]]), storeroom: 100, total: 107,
+      full: 20, balance: 87,
     },
   ]
 
@@ -311,5 +314,37 @@ describe('StockMatrix — tray sections', () => {
     render(<StockMatrix rows={odd} machines={MACHINES} />)
 
     expect(screen.getByText('Boost')).toBeInTheDocument()
+  })
+})
+
+// The operator's own pair, added 2026-09-23. `Full` is what the estate holds
+// with every slot at par; `Balance` is the gap to it. They sit between Total
+// and Order because they are read together with Total and they are what the
+// order is argued from.
+describe('StockMatrix — full and balance', () => {
+  it('heads and fills both columns, between Total and Order', () => {
+    render(<StockMatrix rows={ROWS} machines={MACHINES} />)
+
+    expect(screen.getByRole('columnheader', { name: 'Full' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Balance' })).toBeInTheDocument()
+    expect(screen.getByLabelText('full for 58')).toHaveTextContent('75')
+    expect(screen.getByLabelText('balance for 58')).toHaveTextContent('32')
+
+    // Scoped to the header row: each tray's fold bar is a `<th colSpan>` and
+    // therefore also a columnheader, so an unscoped query picks those up too.
+    const headRow = screen.getAllByRole('row')[0]
+    const heads = within(headRow).getAllByRole('columnheader').map((h) => h.textContent)
+    expect(heads.slice(-3)).toEqual(['Full', 'Balance', 'Order'])
+  })
+
+  // Short is the direction that costs money, so it is the one that gets the
+  // accent. A surplus is just a number.
+  it('marks a negative balance, and leaves a positive one plain', () => {
+    const short = [{ ...ROWS[0], key: '12', total: 58, full: 75, balance: -17 }]
+    const { rerender } = render(<StockMatrix rows={short} machines={MACHINES} />)
+    expect(screen.getByLabelText('balance for 12').className).toContain('text-accent-700')
+
+    rerender(<StockMatrix rows={ROWS} machines={MACHINES} />)
+    expect(screen.getByLabelText('balance for 58').className).not.toContain('text-accent-700')
   })
 })

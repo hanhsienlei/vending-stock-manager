@@ -131,4 +131,46 @@ describe('buildStockMatrix', () => {
       storeroomOnHand: new Map(),
     })).toEqual([])
   })
+
+  // The operator's two columns. `full` is what the estate holds when nothing
+  // has sold — par × the slots the item occupies × the machines — and
+  // `balance` is the gap between that and what is actually there, storeroom
+  // included, because Total includes it. Negative means short.
+  it('reports what a full estate holds, and the gap to it', () => {
+    const [row] = buildStockMatrix({
+      items: [item('coke', 'Coke')],           // basePar 5
+      machineIds: ['L2', 'L3', 'L4'],          // three machines
+      levelsByMachine: new Map([
+        ['L2', new Map([['58:coke', 4]])],
+        ['L3', new Map([['58:coke', 2]])],
+        ['L4', new Map([['58:coke', 0]])],
+      ]),
+      slotsByItem: new Map([['coke', [58]]]),
+      storeroomOnHand: new Map([['coke', 1]]),
+    })
+
+    expect(row.full).toBe(15)      // 5 par × 1 slot × 3 machines
+    expect(row.total).toBe(7)      // 4 + 2 + 0 in machines, plus 1 at G
+    expect(row.balance).toBe(-8)   // 7 − 15
+  })
+
+  // An item in two slots is full at twice the par per machine, and its Total
+  // already sums both slots — so counting the slots is what keeps `balance`
+  // honest for Coke 58/59 and Nu Pure Water 48/49.
+  it('counts every slot an item occupies when it is full in each of them', () => {
+    const [row] = buildStockMatrix({
+      items: [item('coke', 'Coke')],
+      machineIds: ['L2', 'L3'],
+      levelsByMachine: new Map([
+        ['L2', new Map([['58:coke', 5], ['59:coke', 5]])],
+        ['L3', new Map([['58:coke', 5], ['59:coke', 5]])],
+      ]),
+      slotsByItem: new Map([['coke', [58, 59]]]),
+      storeroomOnHand: new Map(),
+    })
+
+    expect(row.full).toBe(20)     // 5 par × 2 slots × 2 machines
+    expect(row.total).toBe(20)
+    expect(row.balance).toBe(0)   // every slot full, nothing at G
+  })
 })
