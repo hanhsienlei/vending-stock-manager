@@ -68,6 +68,38 @@ const CELL = 'px-1 py-1.5 text-[13px] font-medium tabular-nums'
  * matrix and the order section below it cannot drift apart. **An item absent
  * from the map keeps its blank cell** — that is how "no rate yet" reads here,
  * because a zero would claim the app had worked out that nothing is needed. */
+/** Every column's width in one place, because the table's minimum width has
+ * to equal their sum and a second hard-coded number goes stale silently. It
+ * did, twice: `min-w-[722px]` survived Order growing 38px → 72px and Full and
+ * Balance adding 106px, after which the table declared a floor 146px narrower
+ * than its own columns and `table-fixed` squashed every figure to fit. */
+const COL = {
+  /** Wide enough for a mixed slot's locator (`44-1`) on one line. */
+  slot: 40,
+  item: 178,
+  size: 32,
+  box: 30,
+  machine: 22,
+  /** GF and Total carry the sheet's widest figures — a storeroom holding ten
+   * cartons of 100 is four digits, and a clipped `4375` reading as `437` is a
+   * wrong figure, not a cosmetic problem. Measured against four digits. */
+  gf: 38,
+  total: 42,
+  /** Full and Balance are sized against their own HEADINGS, which are wider
+   * than their figures: `BALANCE` is seven characters at 9.5px/700 with
+   * 0.12em tracking. Order was sized against its content instead and clipped
+   * its own heading, which the operator reported as a broken table. */
+  full: 44,
+  balance: 62,
+  /** `orderCell` emits `<boxes> × <carton>`, worst case three digits
+   * against three. */
+  order: 72,
+} as const
+
+const FIXED_WIDTH =
+  COL.slot + COL.item + COL.size + COL.box
+  + COL.gf + COL.total + COL.full + COL.balance + COL.order
+
 export function StockMatrix({
   rows, machines, orderByItem,
 }: {
@@ -102,6 +134,9 @@ export function StockMatrix({
   // Slot, Item, Size, Box, then a column per machine, then GF, Total, Order.
   // The section bar spans exactly this, so it displaces no column.
   const columnCount = 4 + machines.length + 5
+  // The floor, derived rather than declared. Below it the container scrolls
+  // sideways; above it `w-full` lets the sheet fill the screen.
+  const minWidth = FIXED_WIDTH + machines.length * COL.machine
 
   // The banding runs across the sheet rather than restarting in each section:
   // it exists so the eye can hold a row across twenty-two columns (§11), and
@@ -140,6 +175,16 @@ export function StockMatrix({
         // how a device rounds. Portrait keeps `overflow-x-auto`, because there
         // the sheet genuinely is wider than the screen.
         //
+        // Landscape USED TO hide the horizontal overflow, on the reasoning
+        // that the sheet fitted exactly and there was nothing to scroll. That
+        // held at 722px against an 852px landscape phone and stopped holding
+        // the moment the sheet reached 868px — and `hidden` does not shrink
+        // what overflows, it CLIPS it, so the Order column was cut off the
+        // right-hand edge with nothing to drag it back. Landscape scrolls
+        // sideways too now, on the devices that need it; `w-full` still fills
+        // a screen wide enough to take the whole sheet, which is most of
+        // them.
+        //
         // That is what makes the frozen header work. `position: sticky` sticks
         // within the nearest scrolling ancestor, and this element's
         // `overflow-x` ALREADY made it that ancestor — so with the page doing
@@ -148,7 +193,7 @@ export function StockMatrix({
         // it. Measured, not assumed: the header sat at -900px after a 900px
         // scroll. Giving this element the vertical scroll too puts the sticky
         // header and the scrolling in the same container, where sticky works.
-        className="overflow-x-auto overscroll-x-none landscape:h-[100dvh] landscape:overflow-x-hidden landscape:overflow-y-auto"
+        className="overflow-x-auto overscroll-x-none landscape:h-[100dvh] landscape:overflow-y-auto"
         style={{
           paddingLeft: 'env(safe-area-inset-left)',
           paddingRight: 'env(safe-area-inset-right)',
@@ -160,39 +205,39 @@ export function StockMatrix({
               (393px) would squash twenty-two columns into a phone's width and
               make every figure unreadable. Under the floor the container
               scrolls sideways, which is the portrait behaviour and always was. */}
-          <table className="w-full min-w-[722px] table-fixed">
+          <table className="w-full table-fixed" style={{ minWidth }}>
           <colgroup>
             {/* Wide enough for a mixed slot's locator (`44-1`) on one line.
                 An item in two slots (`48, 49`) still wraps — three items in
                 the catalogue do that, and a second line on three rows is
                 cheaper than 10px off every other column. */}
-            <col style={{ width: '40px' }} />
-            <col style={{ width: '178px' }} />
-            <col style={{ width: '32px' }} />
-            <col style={{ width: '30px' }} />
-            {machines.map((m) => <col key={m.id} style={{ width: '22px' }} />)}
+            <col style={{ width: COL.slot }} />
+            <col style={{ width: COL.item }} />
+            <col style={{ width: COL.size }} />
+            <col style={{ width: COL.box }} />
+            {machines.map((m) => <col key={m.id} style={{ width: COL.machine }} />)}
             {/* GF and Total carry the widest figures on the sheet — a
                 storeroom holding ten cartons of 100 is a four-digit number,
                 and a clipped `4375` reading as `437` is a wrong figure, not a
                 cosmetic problem. Both are sized against four digits, measured.
                 The width used to come from Order, back when Order was blank;
                 it no longer can, so these two stand on their own. */}
-            <col style={{ width: '38px' }} />
-            <col style={{ width: '42px' }} />
+            <col style={{ width: COL.gf }} />
+            <col style={{ width: COL.total }} />
             {/* Full and Balance. Sized against their own headings, which are
                 wider than their figures: `BALANCE` is seven characters of
                 9.5px/700 at 0.12em tracking. The Order column was sized
                 against its content once and clipped its own heading, which
                 reads as a broken table — see the note below. */}
-            <col style={{ width: '44px' }} />
-            <col style={{ width: '62px' }} />
+            <col style={{ width: COL.full }} />
+            <col style={{ width: COL.balance }} />
             {/* Sized for the widest FILLED figure, not for the header. 38px
                 was right while the column was blank — room for a pen stroke —
                 and became wrong the moment task 17 started printing into it:
                 `1 × 21` wrapped onto two lines and the heading clipped, which
                 reads as a broken table. `orderCell` emits `<boxes> × <carton>`,
                 so the worst case is three digits against three. */}
-            <col style={{ width: '72px' }} />
+            <col style={{ width: COL.order }} />
           </colgroup>
           <thead>
             <tr className="text-left">

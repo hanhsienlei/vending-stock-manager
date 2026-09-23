@@ -348,3 +348,40 @@ describe('StockMatrix — full and balance', () => {
     expect(screen.getByLabelText('balance for 58').className).not.toContain('text-accent-700')
   })
 })
+
+// The floor was written as a literal `min-w-[722px]` with a comment claiming
+// it was "the sum of the column widths below". It stopped being that twice
+// without anyone noticing — once when Order went 38px → 72px, again when Full
+// and Balance added 106px — and the table then rendered narrower than its own
+// columns, which `table-fixed` resolves by squashing every figure. This pins
+// the invariant instead of the number.
+describe('StockMatrix — the width floor tracks the columns', () => {
+  it('sets a minimum width equal to the sum of its column widths', () => {
+    const { container } = render(<StockMatrix rows={ROWS} machines={MACHINES} />)
+
+    const cols = [...container.querySelectorAll('colgroup col')] as HTMLElement[]
+    const declared = cols.reduce((sum, col) => sum + parseInt(col.style.width, 10), 0)
+
+    const table = container.querySelector('table') as HTMLElement
+    expect(parseInt(table.style.minWidth, 10)).toBe(declared)
+  })
+
+  // Every machine adds a column, so the floor cannot be a constant either.
+  it('grows the floor with the machine count', () => {
+    const two = render(<StockMatrix rows={ROWS} machines={MACHINES} />)
+    const narrow = parseInt(
+      (two.container.querySelector('table') as HTMLElement).style.minWidth, 10)
+    two.unmount()
+
+    const many = render(
+      <StockMatrix
+        rows={ROWS}
+        machines={[...MACHINES, { id: 'm9', label: 'L9', level: 9, updatedAt: 1 }]}
+      />,
+    )
+    const wide = parseInt(
+      (many.container.querySelector('table') as HTMLElement).style.minWidth, 10)
+
+    expect(wide).toBeGreaterThan(narrow)
+  })
+})
