@@ -236,6 +236,26 @@ succeeded, leaving the visit a draft. No data is lost — the batch is atomic an
   they want." That is correct and it names both causes, but the two are far
   apart in likelihood, and a first-time user will hit the second while reading
   it as the first.
+- **An order override never expires except when horizon or safety changes.**
+  `useOrderOverrides` clears the whole set the moment either day count is
+  edited (`ReportScreen`'s `changeHorizon`/`changeSafety`), because that
+  recomputes every suggestion and an old override would be answering a
+  question that no longer exists — but nothing else ever clears one. An
+  override typed in yesterday, or last week, and never revisited is still
+  there today, and it prints looking exactly like a current suggestion:
+  nothing on the sheet — no date, no mark — distinguishes an operator's
+  figure from the app's own arithmetic. The `Yours` / `app said …` framing
+  only appears back on the report screen that typed it; the printed sheet
+  just shows the figure.
+- **The print flow depends on iOS actually handing `?print=1` to Safari**,
+  rather than keeping it inside the installed app's own webview. `ReportScreen`
+  opens the sheet with `window.open('?print=1', '_blank')` specifically to
+  escape the installed PWA's standalone mode, where `window.print()` is
+  unreliable — but whether that hand-off happens is iOS's call, not this
+  app's, and it is a platform behaviour, not a setting this codebase can flip.
+  If it does not hand off, the operator is on a nav-less, chrome-less screen
+  (`PrintSheet.tsx` renders no `NavContext`, no tab bar) with a `Close` link
+  as the only planned way out.
 
 ---
 

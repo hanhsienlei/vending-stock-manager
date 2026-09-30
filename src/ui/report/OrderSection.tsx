@@ -78,6 +78,33 @@ export function orderCell(row: OrderRow, override?: number): string | null {
   return `${row.units}`
 }
 
+/** The `StockMatrix`'s `orderByItem` map, built once so `ReportScreen` and
+ * `PrintSheet` cannot drift on what fills it.
+ *
+ * They already had: `ReportScreen` gated the map on `filled` (D7 — the
+ * operator's "Order column blank" toggle) and `PrintSheet` did not, so a
+ * sheet printed with the toggle off came out pre-filled anyway — exactly the
+ * figure the operator turned the toggle off to avoid writing over by hand.
+ * `filled` is checked here, once, so neither call site can forget it again.
+ *
+ * `undefined`, not an empty map, when `filled` is false: `StockMatrix` reads
+ * the presence of the map itself to choose its legend line ("stays blank for
+ * your pen" vs "is the suggestion below"), and an empty map would print the
+ * wrong one. */
+export function buildOrderByItem(
+  rows: OrderRow[],
+  overrides: Record<string, number>,
+  filled: boolean,
+): Map<string, string> | undefined {
+  if (!filled) return undefined
+  return new Map(
+    rows.flatMap((row) => {
+      const cell = orderCell(row, overrides[row.itemId])
+      return cell === null ? [] : [[row.itemId, cell] as const]
+    }),
+  )
+}
+
 /** Round for reading, not for arithmetic: the forecast is printed unrounded
  * except for the tail a mean of integers over integers produces. */
 const trim = (n: number) => Number(n.toFixed(1)).toString()

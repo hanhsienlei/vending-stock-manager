@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useReport, latestRunDate } from './useReport'
 import { StockMatrix } from './StockMatrix'
 import {
-  OrderSection, buildOrderRows, orderCell, useOrderPreferences, useOrderOverrides,
+  OrderSection, buildOrderRows, buildOrderByItem, useOrderPreferences, useOrderOverrides,
 } from './OrderSection'
 import { formatRunDate } from '../../domain/date'
 import type { CensoredReason } from '../../domain/sales'
@@ -93,16 +93,12 @@ export function ReportScreen() {
       b.flags.length - a.flags.length ||
       a.itemName.localeCompare(b.itemName))
 
-  // One formatter for both places the figure appears (`orderCell`), and only
-  // for items there is a figure for — an item with no rate keeps a blank cell
-  // rather than a zero. The operator's override (Task 3) is passed through so
-  // the matrix and the order section can never disagree.
-  const orderByItem = new Map(
-    orderRows.flatMap((row) => {
-      const cell = orderCell(row, overrides[row.itemId])
-      return cell === null ? [] : [[row.itemId, cell] as const]
-    }),
-  )
+  // One builder for both places the figure appears (`buildOrderByItem`), and
+  // only for items there is a figure for — an item with no rate keeps a blank
+  // cell rather than a zero. The operator's override (Task 3) and the D7
+  // "Order column blank" toggle are both passed through, so the matrix and
+  // the order section — and the printable sheet — can never disagree.
+  const orderByItem = buildOrderByItem(orderRows, overrides, filled)
 
   return (
     <div>
@@ -122,18 +118,24 @@ export function ReportScreen() {
         <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-neutral-700">
           Stock on hand — {matrixRows.length} items × {machines.length} machines
         </span>
-        <div className="flex items-baseline gap-3">
+        <div className="flex items-center gap-3">
           {/* Opened in its own tab rather than pushed onto `App`'s screen
               union: the sheet has to leave the installed app's standalone
               mode to reach a working `window.print()` on iOS, and a new tab
               is what does that (see `PrintSheet.tsx`). It reads the
               operator's overrides back out of `localStorage`, not out of
               this screen's React state, which is why nothing is passed to
-              it here. */}
+              it here.
+              Bordered like the fill toggle below (`border-2 border-ink`), so
+              it reads as a control rather than as more of the "Turn phone"
+              hint sitting beside it — the two used to be styled identically,
+              and only one of them does anything when tapped. Not moved: spec
+              §4 puts it here because the decision to print is made in
+              portrait, before the phone is ever turned. */}
           <button
             type="button"
             onClick={() => window.open('?print=1', '_blank')}
-            className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-accent-700"
+            className="shrink-0 border-2 border-ink px-2 py-1 text-[10.5px] font-bold uppercase tracking-[0.1em] text-accent-700"
           >
             Print sheet
           </button>
@@ -144,11 +146,11 @@ export function ReportScreen() {
       </div>
       {/* D7: filled from the suggestion, with the toggle in the section below
           handing the column back to the pen for a run where the operator
-          would rather write. */}
+          would rather write. `buildOrderByItem` already reads `filled`. */}
       <StockMatrix
         rows={matrixRows}
         machines={machines}
-        orderByItem={filled ? orderByItem : undefined}
+        orderByItem={orderByItem}
       />
 
       {/* Everything below the sheet is portrait-only. In landscape the

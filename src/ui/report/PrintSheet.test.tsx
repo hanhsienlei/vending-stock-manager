@@ -112,4 +112,33 @@ describe('PrintSheet', () => {
 
     vi.unstubAllGlobals()
   })
+
+  // Final review fix wave, Fix 1: `ReportScreen` gated its `orderByItem` map
+  // on D7's "Order column blank" toggle and this component did not, so the
+  // one thing the toggle exists for — a column the operator can write the
+  // order onto by hand — silently stopped being true the moment it was
+  // printed. `buildOrderByItem` is now the one place `filled` is read for
+  // both call sites; this proves the printed sheet actually honours it,
+  // not just that the shared function has the right shape.
+  it('leaves the Order column blank when the operator has it set to blank', async () => {
+    await seedRatedMars()
+
+    const store: Record<string, string> = { 'vsm.order.filled': 'false' }
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, value: string) => { store[key] = value },
+      removeItem: (key: string) => { delete store[key] },
+      clear: () => { for (const key of Object.keys(store)) delete store[key] },
+      key: () => null,
+      length: 0,
+    })
+
+    render(<PrintSheet />)
+
+    expect(await screen.findByLabelText('order for 36')).toBeEmptyDOMElement()
+    // And the legend agrees: this is the pen's column, not the app's.
+    expect(screen.getByText(/stays blank for your pen/i)).toBeInTheDocument()
+
+    vi.unstubAllGlobals()
+  })
 })

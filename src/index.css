@@ -71,7 +71,22 @@ input[type="number"] {
 @page { size: A4 landscape; margin: 8mm; }
 
 @media print {
-  [data-print-sheet] { background: #fff; }
+  [data-print-sheet] {
+    background: #fff;
+    /* The column-header row (`StockMatrix.tsx`'s `HEAD`) is `bg-ink
+       text-ground` — white text on a solid black fill, which depends on the
+       browser actually painting that fill. Chrome ships "background
+       graphics" off by default in its print dialog, and it is a setting the
+       operator can vary on iOS too; unset, background colours print as
+       nothing and the entire heading row comes out white text on white
+       paper. Every column heading gone, and — because print CSS runs
+       nowhere a test can see it — nothing in the suite would ever catch it.
+       `print-color-adjust: exact` tells the browser to paint the fill
+       regardless of that setting. Set on the sheet's root so it inherits
+       (the property does) to every fill inside it, not just the header. */
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
 
   /* A real <table> gets a repeating header from the browser for free — one of
      the reasons the matrix is a table and not a grid. `position: sticky` is a
@@ -85,6 +100,22 @@ input[type="number"] {
   [data-print-sheet] thead { display: table-header-group; }
   [data-print-sheet] thead th { position: static; }
   [data-print-sheet] tr { break-inside: avoid; }
+
+  /* Spec §4 asks each tray section to stay whole "where a page allows" — a
+     hint, not a guarantee, which is exactly what `break-inside: avoid` is: a
+     tray that cannot fit on one page still splits rather than vanishing off
+     it. One `<tbody>` per tray (`StockMatrix.tsx`), so this is the element
+     that carries the ask. */
+  [data-print-sheet] tbody { break-inside: avoid; }
+
+  /* Fold controls are explicitly out of scope for the printed sheet (spec
+     §4) — there is no pointer on paper to tap one with — but the glyph
+     itself (`CollapsibleSections.tsx`'s `SectionBar`, a bare `aria-hidden`
+     `−`/`+` span) still rendered into every tray bar, because nothing had
+     told it not to. Selected structurally rather than by adding a class to
+     the shared component every other collapsible section on screen also
+     uses, and scoped to the sheet so nothing on screen is affected. */
+  [data-print-sheet] button[aria-expanded] span[aria-hidden] { display: none; }
 
   /* StockMatrix's scroll container carries `overflow-x-auto` AND
      `landscape:h-[100dvh] landscape:overflow-y-auto` — correct on screen,
