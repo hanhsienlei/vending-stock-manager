@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
@@ -38,7 +38,7 @@ async function countSlots(
  * exists at (`MIN_PERIODS_FOR_RATE`), so the item is rated and the override
  * below has a real row to land on (`buildOrderInputs` drops anything with
  * neither a rate nor a flag). The id is literally `mars`, matching the
- * override key the test writes to `localStorage`. */
+ * override key the test stubs into `localStorage`. */
 async function seedRatedMars() {
   const mars = await saveItem({ id: 'mars', name: 'Mars', price: 2, basePar: 10, boxSize: 50 })
   const l7 = await saveMachine({ label: 'Lift lobby', level: 7 })
@@ -77,12 +77,33 @@ describe('PrintSheet', () => {
     expect(line).toHaveTextContent('7 + 3 days')
   })
 
+  // Node 25's `window.localStorage` is a bare object with no `setItem` to
+  // seed the override through (`TypeError: window.localStorage.setItem is
+  // not a function`) — the same gap `OrderSection.test.tsx`'s "survives
+  // storage that is absent or throws" documents. `vi.stubGlobal` replaces
+  // the whole global with a working in-memory store, which proves the same
+  // thing — the override reaching the printed cell — on both Node 25 here
+  // and Node 20 (CI), where the real store already works. Shape borrowed
+  // from that same test rather than invented fresh.
   it('prints the operator override in the Order column', async () => {
     await seedRatedMars()
-    window.localStorage.setItem('vsm.order.overrides', JSON.stringify({ mars: 2 }))
+
+    const store: Record<string, string> = {
+      'vsm.order.overrides': JSON.stringify({ mars: 2 }),
+    }
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, value: string) => { store[key] = value },
+      removeItem: (key: string) => { delete store[key] },
+      clear: () => { for (const key of Object.keys(store)) delete store[key] },
+      key: () => null,
+      length: 0,
+    })
 
     render(<PrintSheet />)
 
     expect(await screen.findByLabelText('order for 36')).toHaveTextContent('2 × 50')
+
+    vi.unstubAllGlobals()
   })
 })
