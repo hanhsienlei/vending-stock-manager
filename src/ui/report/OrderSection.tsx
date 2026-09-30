@@ -76,7 +76,7 @@ export function orderCell(row: OrderRow): string | null {
 const trim = (n: number) => Number(n.toFixed(1)).toString()
 
 const HEAD = 'text-[9.5px] font-bold uppercase tracking-[0.12em]'
-const GRID = 'grid grid-cols-[1fr_44px_44px_54px] items-baseline gap-2 px-3.5'
+const GRID = 'grid grid-cols-[1fr_40px_40px_64px] items-baseline gap-2 px-3.5'
 
 /** The order suggestion, spec §6.4 and design §12.4.
  *
@@ -89,6 +89,7 @@ const GRID = 'grid grid-cols-[1fr_44px_44px_54px] items-baseline gap-2 px-3.5'
 export function OrderSection({
   rows, horizon, safety, filled,
   onHorizonChange, onSafetyChange, onFilledChange,
+  overrides, onOverride, onClearOverride,
 }: {
   rows: OrderRow[]
   horizon: number
@@ -98,6 +99,10 @@ export function OrderSection({
   onHorizonChange: (days: number) => void
   onSafetyChange: (days: number) => void
   onFilledChange: (filled: boolean) => void
+  /** The operator's corrections, by item id — `useOrderOverrides`. */
+  overrides: Record<string, number>
+  onOverride: (itemId: string, boxes: number) => void
+  onClearOverride: (itemId: string) => void
 }) {
   const days = horizon + safety
   const rated = rows.filter((r) => r.ratedSlots > 0).length
@@ -152,11 +157,17 @@ export function OrderSection({
           <ul>
             {rows.map((row) => {
               const cell = orderCell(row)
+              // Whether the operator has corrected this row. Undefined, not
+              // absent-or-zero: a typed `0` is a real override meaning
+              // "order none", and must read exactly like any other override.
+              const overridden = overrides[row.itemId] !== undefined
               return (
                 <li
                   key={row.itemId}
                   aria-label={`order for ${row.itemName}`}
-                  className={`border-b border-rule-light bg-paper py-2 ${
+                  className={`border-b border-rule-light py-2 ${
+                    overridden ? 'bg-accent-100' : 'bg-paper'
+                  } ${
                     row.flags.length > 0
                       ? 'shadow-[inset_4px_0_0_var(--color-accent)]'
                       : ''
@@ -180,10 +191,56 @@ export function OrderSection({
                     <span className="text-right text-[15px] font-extrabold tabular-nums">
                       {row.onHand}
                     </span>
-                    <span className="text-right text-[15px] font-extrabold tabular-nums text-accent-700">
-                      {cell ?? '—'}
+                    {/* The count is the operator's to correct; the carton
+                        size beside it is a property of the product, not a
+                        per-order decision, so it is printed, not typed. */}
+                    <span className="flex items-center justify-end gap-1">
+                      <input
+                        type="number"
+                        min={0}
+                        inputMode="numeric"
+                        aria-label={`order boxes for ${row.itemId}`}
+                        value={overrides[row.itemId] ?? (row.ratedSlots === 0 ? '' : row.boxes)}
+                        onChange={(e) => {
+                          // An emptied field is not an order of zero — it is
+                          // no override at all, and must hand the row back
+                          // to the app's own suggestion rather than store a
+                          // zero the operator never typed.
+                          if (e.target.value === '') {
+                            onClearOverride(row.itemId)
+                          } else {
+                            onOverride(row.itemId, Number(e.target.value))
+                          }
+                        }}
+                        className={`w-9 border-2 bg-paper px-1 py-0.5 text-right text-[14px] font-extrabold tabular-nums ${
+                          overridden ? 'border-accent text-accent-700' : 'border-ink'
+                        }`}
+                      />
+                      {row.boxSize > 1 && (
+                        <span className="text-[10px] font-bold text-neutral-700 tabular-nums">
+                          × {row.boxSize}
+                        </span>
+                      )}
                     </span>
                   </div>
+
+                  {overridden && (
+                    <div className="mt-1 flex items-baseline gap-3 px-3.5 text-[11px]">
+                      <span className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-accent-700">
+                        Yours
+                      </span>
+                      <span className="text-neutral-500 tabular-nums">
+                        app said {cell ?? '—'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onClearOverride(row.itemId)}
+                        className="ml-auto text-[11px] font-bold text-accent-700"
+                      >
+                        Undo
+                      </button>
+                    </div>
+                  )}
 
                   {/* The working, so the row can be checked by hand. */}
                   <p className="px-3.5 pt-0.5 text-[10.5px] font-medium tabular-nums text-neutral-700">

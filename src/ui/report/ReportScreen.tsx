@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useReport, latestRunDate } from './useReport'
 import { StockMatrix } from './StockMatrix'
-import { OrderSection, buildOrderRows, orderCell, useOrderPreferences } from './OrderSection'
+import {
+  OrderSection, buildOrderRows, orderCell, useOrderPreferences, useOrderOverrides,
+} from './OrderSection'
 import { formatRunDate } from '../../domain/date'
 import type { CensoredReason } from '../../domain/sales'
 
@@ -34,6 +36,14 @@ export function ReportScreen() {
   const [ready, setReady] = useState(false)
   const { horizon, safety, filled, setHorizon, setSafety, setFilled } =
     useOrderPreferences()
+  const { overrides, setOverride, clearOverride, clearAll } = useOrderOverrides()
+
+  // Changing the horizon or the safety buffer recomputes every suggestion, so
+  // an override made against the old figures answers a question that no
+  // longer exists. Leaving it would put a stale number on the sheet looking
+  // exactly like a current one (design §3).
+  const changeHorizon = (days: number) => { clearAll(); setHorizon(days) }
+  const changeSafety = (days: number) => { clearAll(); setSafety(days) }
 
   useEffect(() => {
     void (async () => {
@@ -287,9 +297,12 @@ export function ReportScreen() {
         horizon={horizon}
         safety={safety}
         filled={filled}
-        onHorizonChange={setHorizon}
-        onSafetyChange={setSafety}
+        onHorizonChange={changeHorizon}
+        onSafetyChange={changeSafety}
         onFilledChange={setFilled}
+        overrides={overrides}
+        onOverride={setOverride}
+        onClearOverride={clearOverride}
       />
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { act, render, renderHook, screen } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { OrderSection, useOrderOverrides, type OrderRow } from './OrderSection'
 
@@ -12,6 +12,12 @@ function row(over: Partial<OrderRow> = {}): OrderRow {
   }
 }
 
+const ROW = row({
+  itemId: 'mars', itemName: 'Mars', boxSize: 50, ratedSlots: 3, slotCount: 3,
+  ratePerDay: 1, forecast: 10, onHand: 0, suggested: 10, boxes: 1, units: 50,
+  flags: [], sellsPerWeek: 7, underFull: 17,
+})
+
 function renderSection(over: Partial<Parameters<typeof OrderSection>[0]> = {}) {
   return render(
     <OrderSection
@@ -22,16 +28,23 @@ function renderSection(over: Partial<Parameters<typeof OrderSection>[0]> = {}) {
       onHorizonChange={() => {}}
       onSafetyChange={() => {}}
       onFilledChange={() => {}}
+      overrides={{}}
+      onOverride={() => {}}
+      onClearOverride={() => {}}
       {...over}
     />,
   )
 }
 
 describe('OrderSection', () => {
+  // The figure is an editable input carrying only the count; the carton size
+  // beside it is a property of the product, not a per-order decision, so it
+  // is printed rather than typed (Task 3).
   it('states the order in whole boxes where the carton size is known', () => {
     renderSection()
 
-    expect(screen.getByLabelText('order for Coke')).toHaveTextContent('1 × 24')
+    expect(screen.getByLabelText('order boxes for coke')).toHaveValue(1)
+    expect(screen.getByLabelText('order for Coke')).toHaveTextContent('× 24')
   })
 
   it('states it in plain units at box size 1', () => {
@@ -170,6 +183,70 @@ describe('OrderSection', () => {
     expect(container.innerHTML).not.toMatch(/rounded-/)
     expect(container.innerHTML)
       .not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
+  })
+})
+
+// Task 3: correcting the app's suggestion in place. The original figure must
+// stay visible (spec §6.1) — a number nobody can trace back is exactly what
+// that section refuses.
+describe('OrderSection — editing the order figure', () => {
+  it('replaces the suggestion with the operator figure, keeping the original in view', () => {
+    const onOverride = vi.fn()
+    render(<OrderSection rows={[ROW]} horizon={7} safety={3} filled
+      onHorizonChange={() => {}} onSafetyChange={() => {}} onFilledChange={() => {}}
+      overrides={{ mars: 2 }} onOverride={onOverride} onClearOverride={() => {}} />)
+
+    const input = screen.getByLabelText('order boxes for mars')
+    expect(input).toHaveValue(2)
+    expect(screen.getByText(/app said/i)).toHaveTextContent('1 × 50')
+
+    // `input` is bound to the static `overrides` prop above and nothing in
+    // this test updates it, so React restores the DOM to that prop's value
+    // after every keystroke a real `user.type` would fire (there is no state
+    // update here to keep the interim edit on screen, unlike the real hook).
+    // One `change` event exercises the same handler with the value a typed
+    // "3" would ultimately produce.
+    fireEvent.change(input, { target: { value: '3' } })
+    expect(onOverride).toHaveBeenLastCalledWith('mars', 3)
+  })
+
+  // The operator can order something the app cannot forecast.
+  it('is editable on a row with no rate', () => {
+    const noRate = { ...ROW, ratedSlots: 0, sellsPerWeek: 0 }
+    render(<OrderSection rows={[noRate]} horizon={7} safety={3} filled
+      onHorizonChange={() => {}} onSafetyChange={() => {}} onFilledChange={() => {}}
+      overrides={{}} onOverride={() => {}} onClearOverride={() => {}} />)
+
+    expect(screen.getByLabelText('order boxes for mars')).toBeInTheDocument()
+  })
+
+  it('undoes an override', async () => {
+    const user = userEvent.setup()
+    const onClear = vi.fn()
+    render(<OrderSection rows={[ROW]} horizon={7} safety={3} filled
+      onHorizonChange={() => {}} onSafetyChange={() => {}} onFilledChange={() => {}}
+      overrides={{ mars: 2 }} onOverride={() => {}} onClearOverride={onClear} />)
+
+    await user.click(screen.getByRole('button', { name: /undo/i }))
+    expect(onClear).toHaveBeenCalledWith('mars')
+  })
+
+  // The defect the brief's own wiring would have had: `Number('')` is `0`,
+  // which is a real order of nothing, not "no override". Clearing the field
+  // must hand the row back to the app's suggestion instead of storing a zero
+  // the operator never typed.
+  it('restores the app suggestion and drops the override when the field is emptied', async () => {
+    const user = userEvent.setup()
+    const onClear = vi.fn()
+    const onOverride = vi.fn()
+    render(<OrderSection rows={[ROW]} horizon={7} safety={3} filled
+      onHorizonChange={() => {}} onSafetyChange={() => {}} onFilledChange={() => {}}
+      overrides={{ mars: 2 }} onOverride={onOverride} onClearOverride={onClear} />)
+
+    await user.clear(screen.getByLabelText('order boxes for mars'))
+
+    expect(onClear).toHaveBeenCalledWith('mars')
+    expect(onOverride).not.toHaveBeenCalledWith('mars', 0)
   })
 })
 
