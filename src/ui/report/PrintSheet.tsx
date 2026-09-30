@@ -35,7 +35,7 @@ export function PrintSheet() {
   )
 
   return (
-    <main className="bg-paper">
+    <main data-print-sheet className="bg-paper">
       <p
         aria-label="sheet provenance"
         className="px-4 py-2 text-[11px] font-medium text-neutral-700"

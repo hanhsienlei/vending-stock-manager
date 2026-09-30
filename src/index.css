@@ -63,3 +63,40 @@ input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+/* The printable stock sheet (design §4). A4 landscape is 1123px at 96dpi and
+   the matrix's columns sum to 868px, so it prints at natural size — the
+   figures stay the size they were designed at, which is the whole reason the
+   sheet is not scaled to fit. */
+@page { size: A4 landscape; margin: 8mm; }
+
+@media print {
+  [data-print-sheet] { background: #fff; }
+
+  /* A real <table> gets a repeating header from the browser for free — one of
+     the reasons the matrix is a table and not a grid. `position: sticky` is a
+     screen-only affordance: it sticks within a scrolling ancestor, and paper
+     has no scrollport. Turned off explicitly rather than left to just do
+     nothing, because a header that is still `position: sticky` when its
+     container later gains real print height (below) is a header trying to
+     stick to a container that no longer scrolls — undefined enough to be
+     worth not finding out. `table-header-group` is what actually repeats the
+     header on each page; `position: static` just gets out of its way. */
+  [data-print-sheet] thead { display: table-header-group; }
+  [data-print-sheet] thead th { position: static; }
+  [data-print-sheet] tr { break-inside: avoid; }
+
+  /* StockMatrix's scroll container carries `overflow-x-auto` AND
+     `landscape:h-[100dvh] landscape:overflow-y-auto` — correct on screen,
+     where the fixed height is what makes the sticky header work, but a
+     hazard on paper: `@page { size: … landscape }` renders through a
+     landscape viewport, so `(orientation: landscape)` still matches during
+     print and the container would clip to one screen height, silently
+     dropping every row past it. All three are neutralised together here so
+     the container reverts to its natural height and the browser paginates
+     the whole table instead of clipping it. */
+  [data-print-sheet] .overflow-x-auto {
+    overflow: visible !important;
+    height: auto !important;
+  }
+}

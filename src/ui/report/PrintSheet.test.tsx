@@ -65,6 +65,12 @@ describe('PrintSheet', () => {
     expect(screen.queryByRole('navigation')).toBeNull()
   })
 
+  it('marks the sheet as the printable region', async () => {
+    const { container } = render(<PrintSheet />)
+    await screen.findByRole('table')
+    expect(container.querySelector('[data-print-sheet]')).not.toBeNull()
+  })
+
   it('states when it was true, and on what horizon', async () => {
     for (let i = 0; i < 15; i++) {
       await saveMachine({ label: `Level ${i + 1}`, level: i + 1 })
