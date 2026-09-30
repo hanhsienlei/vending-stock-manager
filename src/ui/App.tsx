@@ -7,9 +7,17 @@ import { CountScreen } from './run/CountScreen'
 import { StoreroomScreen } from './storeroom/StoreroomScreen'
 import { TrolleyScreen } from './trolley/TrolleyScreen'
 import { HistoryScreen } from './history/HistoryScreen'
+import { PrintSheet } from './report/PrintSheet'
 import { NavContext, type TabName } from './components/ScreenLayout'
 import { backfillBoxSizes } from '../data/repositories/backfillBoxSizes'
 import type { Id, Machine } from '../domain/types'
+
+// `?print=1` is the printable sheet, opened in its own tab from the report
+// (`ReportScreen`'s "Print sheet" action). Read once at module scope, before
+// any nav state exists: this is an entry point, not a screen the nav can
+// reach, and it must stay that way even if `App`'s state is ever
+// restructured around it.
+const isPrint = new URLSearchParams(window.location.search).get('print') === '1'
 
 type Screen =
   | { name: 'items' }
@@ -42,6 +50,17 @@ export default function App() {
   useEffect(() => {
     void backfillBoxSizes().catch(() => {})
   }, [])
+
+  // Checked after every hook above has already run, so this early return
+  // never makes a hook conditional (`react-hooks/rules-of-hooks`) — it only
+  // ever skips the plain JS below it. `isPrint` itself is fixed for this
+  // tab's whole lifetime (read once at module scope, above the component),
+  // so which branch runs never varies across this instance's renders. The
+  // print tab pays for a `screen` state slot and a harmless backfill call it
+  // never uses; what it does NOT get is any of `App`'s own furniture — no
+  // `NavContext.Provider`, no width wrapper, nothing — because that is built
+  // below this line, and the print tab never reaches it.
+  if (isPrint) return <PrintSheet />
 
   const body = (() => {
     switch (screen.name) {

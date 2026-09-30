@@ -1,15 +1,43 @@
+import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, renderHook, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { OrderSection, type OrderRow } from './OrderSection'
+import { OrderSection, orderCell, useOrderOverrides, type OrderRow } from './OrderSection'
 
 function row(over: Partial<OrderRow> = {}): OrderRow {
   return {
     itemId: 'coke', itemName: 'Coke', boxSize: 24,
     ratePerDay: 3, forecast: 30, onHand: 6, suggested: 24, boxes: 1, units: 24,
-    flags: [], ratedSlots: 2, slotCount: 2,
+    flags: [], ratedSlots: 2, slotCount: 2, sellsPerWeek: 21, underFull: 0,
     ...over,
   }
+}
+
+const ROW = row({
+  itemId: 'mars', itemName: 'Mars', boxSize: 50, ratedSlots: 3, slotCount: 3,
+  ratePerDay: 1, forecast: 10, onHand: 0, suggested: 10, boxes: 1, units: 50,
+  flags: [], sellsPerWeek: 7, underFull: 17,
+})
+
+/** A thin, real state wrapper around `OrderSection` — for the one test that
+ * has to exercise the field through actual `overrides` state rather than
+ * bare mocks. A bare `vi.fn()` for `onOverride` never round-trips into the
+ * `overrides` prop, so it cannot tell an input that correctly reads its own
+ * live edits apart from one that is silently drifting from them. */
+function StatefulOrderSection(props: Omit<Parameters<typeof OrderSection>[0], 'overrides' | 'onOverride' | 'onClearOverride'>) {
+  const [overrides, setOverrides] = useState<Record<string, number>>({})
+  return (
+    <OrderSection
+      {...props}
+      overrides={overrides}
+      onOverride={(itemId, boxes) => setOverrides((prev) => ({ ...prev, [itemId]: boxes }))}
+      onClearOverride={(itemId) => setOverrides((prev) => {
+        const next = { ...prev }
+        delete next[itemId]
+        return next
+      })}
+    />
+  )
 }
 
 function renderSection(over: Partial<Parameters<typeof OrderSection>[0]> = {}) {
@@ -22,16 +50,23 @@ function renderSection(over: Partial<Parameters<typeof OrderSection>[0]> = {}) {
       onHorizonChange={() => {}}
       onSafetyChange={() => {}}
       onFilledChange={() => {}}
+      overrides={{}}
+      onOverride={() => {}}
+      onClearOverride={() => {}}
       {...over}
     />,
   )
 }
 
 describe('OrderSection', () => {
+  // The figure is an editable input carrying only the count; the carton size
+  // beside it is a property of the product, not a per-order decision, so it
+  // is printed rather than typed (Task 3).
   it('states the order in whole boxes where the carton size is known', () => {
     renderSection()
 
-    expect(screen.getByLabelText('order for Coke')).toHaveTextContent('1 × 24')
+    expect(screen.getByLabelText('order boxes for coke')).toHaveValue(1)
+    expect(screen.getByLabelText('order for Coke')).toHaveTextContent('× 24')
   })
 
   it('states it in plain units at box size 1', () => {
@@ -39,9 +74,11 @@ describe('OrderSection', () => {
       rows: [row({ boxSize: 1, suggested: 24, boxes: 24, units: 24 })],
     })
 
-    const line = screen.getByLabelText('order for Coke')
-    expect(line).toHaveTextContent('24')
-    expect(line).not.toHaveTextContent('×')
+    // Asserted on the field itself: the working line below also says "24"
+    // (24 short), so a check against the row's text content would pass
+    // whether or not the figure actually reached the input.
+    expect(screen.getByLabelText('order boxes for coke')).toHaveValue(24)
+    expect(screen.getByLabelText('order for Coke')).not.toHaveTextContent('×')
   })
 
   // Spec §6.1: "an explainable forecast that is slightly worse beats an opaque
@@ -151,11 +188,149 @@ describe('OrderSection', () => {
       .toHaveTextContent(/two clean periods/i)
   })
 
+  it('shows what it sells a week and how far under full it is', () => {
+    renderSection({
+      rows: [row({
+        itemId: 'mars', itemName: 'Mars', boxSize: 50, ratedSlots: 3, slotCount: 3,
+        ratePerDay: 1, forecast: 10, onHand: 0, suggested: 10, boxes: 1, units: 50,
+        flags: [], sellsPerWeek: 7, underFull: 17,
+      })],
+    })
+
+    expect(screen.getByText(/sells/i)).toHaveTextContent('7')
+    expect(screen.getByLabelText('under full for mars')).toHaveTextContent('17')
+  })
+
   it('carries no rounded corner and no legacy palette class', () => {
     const { container } = renderSection()
 
     expect(container.innerHTML).not.toMatch(/rounded-/)
     expect(container.innerHTML)
       .not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
+  })
+})
+
+// Task 3: correcting the app's suggestion in place. The original figure must
+// stay visible (spec §6.1) — a number nobody can trace back is exactly what
+// that section refuses.
+describe('OrderSection — editing the order figure', () => {
+  // Exercised through real `overrides` state (`StatefulOrderSection`), not a
+  // bare mock: a controlled value with nowhere to sit empty snaps straight
+  // back to the old figure the instant the field is cleared, so typing "4"
+  // after clearing a row that suggests "1" used to land on top of it ("14")
+  // instead of replacing it — a defect a mock-backed `onOverride` cannot
+  // surface, because nothing ever feeds its calls back into the input's own
+  // `value`.
+  it('replaces the suggestion with the operator figure, keeping the original in view', async () => {
+    const user = userEvent.setup()
+    render(<StatefulOrderSection rows={[ROW]} horizon={7} safety={3} filled
+      onHorizonChange={() => {}} onSafetyChange={() => {}} onFilledChange={() => {}} />)
+
+    const input = screen.getByLabelText('order boxes for mars')
+    expect(input).toHaveValue(1)
+
+    await user.clear(input)
+    await user.type(input, '4')
+
+    expect(input).toHaveValue(4)
+    expect(screen.getByText(/app said/i)).toHaveTextContent('1 × 50')
+  })
+
+  // The operator can order something the app cannot forecast.
+  it('is editable on a row with no rate', () => {
+    const noRate = { ...ROW, ratedSlots: 0, sellsPerWeek: 0 }
+    render(<OrderSection rows={[noRate]} horizon={7} safety={3} filled
+      onHorizonChange={() => {}} onSafetyChange={() => {}} onFilledChange={() => {}}
+      overrides={{}} onOverride={() => {}} onClearOverride={() => {}} />)
+
+    expect(screen.getByLabelText('order boxes for mars')).toBeInTheDocument()
+  })
+
+  it('undoes an override', async () => {
+    const user = userEvent.setup()
+    const onClear = vi.fn()
+    render(<OrderSection rows={[ROW]} horizon={7} safety={3} filled
+      onHorizonChange={() => {}} onSafetyChange={() => {}} onFilledChange={() => {}}
+      overrides={{ mars: 2 }} onOverride={() => {}} onClearOverride={onClear} />)
+
+    await user.click(screen.getByRole('button', { name: /undo/i }))
+    expect(onClear).toHaveBeenCalledWith('mars')
+  })
+
+  // The defect the brief's own wiring would have had: `Number('')` is `0`,
+  // which is a real order of nothing, not "no override". Clearing the field
+  // must hand the row back to the app's suggestion instead of storing a zero
+  // the operator never typed.
+  it('restores the app suggestion and drops the override when the field is emptied', async () => {
+    const user = userEvent.setup()
+    const onClear = vi.fn()
+    const onOverride = vi.fn()
+    render(<OrderSection rows={[ROW]} horizon={7} safety={3} filled
+      onHorizonChange={() => {}} onSafetyChange={() => {}} onFilledChange={() => {}}
+      overrides={{ mars: 2 }} onOverride={onOverride} onClearOverride={onClear} />)
+
+    await user.clear(screen.getByLabelText('order boxes for mars'))
+
+    expect(onClear).toHaveBeenCalledWith('mars')
+    expect(onOverride).not.toHaveBeenCalledWith('mars', 0)
+  })
+})
+
+// Task 4: the stock matrix's Order column is built from `orderCell`, the
+// same formatter this section uses for its own figure — so the two can never
+// print different answers for the same item.
+describe('orderCell — the Order column', () => {
+  it('prints the operator figure in the matrix Order column, not the suggestion', () => {
+    expect(orderCell(ROW)).toBe('1 × 50')
+    expect(orderCell(ROW, 2)).toBe('2 × 50')
+  })
+
+  // A row the app cannot forecast returns null — but an override on it is a
+  // real instruction and must print.
+  it('prints an override even where there is no rate', () => {
+    const noRate = { ...ROW, ratedSlots: 0 }
+    expect(orderCell(noRate)).toBeNull()
+    expect(orderCell(noRate, 3)).toBe('3 × 50')
+  })
+})
+
+describe('useOrderOverrides', () => {
+  it('records, clears one, and clears all', () => {
+    const { result } = renderHook(() => useOrderOverrides())
+
+    act(() => { result.current.setOverride('mars', 2) })
+    expect(result.current.overrides.mars).toBe(2)
+
+    act(() => { result.current.setOverride('coke', 4) })
+    act(() => { result.current.clearOverride('mars') })
+    expect(result.current.overrides.mars).toBeUndefined()
+    expect(result.current.overrides.coke).toBe(4)
+
+    act(() => { result.current.clearAll() })
+    expect(result.current.overrides).toEqual({})
+  })
+
+  // The storage shim on Node 25 has no getItem/setItem at all, and private
+  // Safari throws outright. Neither may take the report down.
+  //
+  // `vi.spyOn(window.localStorage, 'setItem')` cannot attach here: on
+  // Node 25 `window.localStorage` is a bare object with no `setItem` to
+  // spy on in the first place (that absence is exactly what this test
+  // means to cover). `vi.stubGlobal` replaces the whole object instead,
+  // which proves the same thing — a `setItem` that throws — on both
+  // Node 25 and Node 20 (CI), where the real store's `setItem` works.
+  it('survives storage that is absent or throws', () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => { throw new Error('denied') },
+      removeItem: () => {},
+      clear: () => {},
+      key: () => null,
+      length: 0,
+    })
+    const { result } = renderHook(() => useOrderOverrides())
+    act(() => { result.current.setOverride('mars', 2) })
+    expect(result.current.overrides.mars).toBe(2)   // in memory regardless
+    vi.unstubAllGlobals()
   })
 })

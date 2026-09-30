@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '../../data/db'
 import { saveItem } from '../../data/repositories/items'
@@ -386,6 +386,25 @@ describe('ReportScreen — the order suggestion', () => {
     expect(screen.getByLabelText('order for Coke')).toHaveTextContent(/over 10 days/)
   })
 
+  // Task 4: `orderCell` is shared between the order section and the matrix
+  // build, but that is only a guarantee if both call sites actually read the
+  // same `overrides` — reordering `orderCell`'s arguments, or wiring the
+  // wrong item's override into `orderByItem`, would leave this untested and
+  // the whole suite green. This goes end to end: type an override into the
+  // order section, then read the answer back from the matrix cell, not from
+  // the input just typed into.
+  it('carries an override typed in the order section through to the matrix cell', async () => {
+    const { coke } = await seedRatedCoke()
+
+    render(<ReportScreen />)
+
+    const field = await screen.findByLabelText(`order boxes for ${coke.id}`)
+    fireEvent.change(field, { target: { value: '9' } })
+    await waitFor(() => expect(field).toHaveValue(9))
+
+    expect(screen.getByLabelText('order for 58')).toHaveTextContent('9 × 24')
+  })
+
   it('still renders it blank when the operator turns the suggestion off', async () => {
     const user = userEvent.setup()
     await seedRatedCoke()
@@ -478,5 +497,38 @@ describe('ReportScreen — the order suggestion', () => {
       expect(screen.getByLabelText('order for 58')).toHaveTextContent('21')
     })
     expect(screen.getByLabelText('order for Coke')).toHaveTextContent(/over 24 days/)
+  })
+
+  // Task 3: an override made against the old horizon answers a question that
+  // no longer exists once the horizon changes — carrying it forward would put
+  // a stale figure on the sheet looking exactly like a current one.
+  it('clears every override when the horizon changes', async () => {
+    const user = userEvent.setup()
+    const { coke } = await seedRatedCoke()
+
+    render(<ReportScreen />)
+
+    // Seeded through a real edit rather than written straight to
+    // `localStorage`: this dev environment's `window.localStorage` is a bare
+    // shim with no `getItem`/`setItem` at all (see `src/test/setup.ts`), and
+    // the override has to exist for real either way for the assertions below
+    // to mean anything.
+    const field = await screen.findByLabelText(`order boxes for ${coke.id}`)
+    fireEvent.change(field, { target: { value: '9' } })
+    await waitFor(() => expect(field).toHaveValue(9))
+
+    const horizon = screen.getByLabelText(/horizon/i)
+    await user.clear(horizon)
+    await user.type(horizon, '14')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(`order boxes for ${coke.id}`)).not.toHaveValue(9)
+    })
+
+    // Checked only where the platform actually has a working store — see the
+    // guard above.
+    if (typeof window.localStorage?.getItem === 'function') {
+      expect(JSON.parse(window.localStorage.getItem('vsm.order.overrides') ?? '{}')).toEqual({})
+    }
   })
 })

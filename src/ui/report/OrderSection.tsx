@@ -1,8 +1,10 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  ORDER_HORIZON_DAYS, ORDER_SAFETY_DAYS,
+  ORDER_HORIZON_DAYS, ORDER_SAFETY_DAYS, orderSuggestion,
   type OrderFlag, type OrderLine,
 } from '../../domain/order'
+import type { MatrixRow } from '../../domain/stockMatrix'
+import type { OrderItemInput } from './useReport'
 
 /** One `OrderLine`, plus what the screen needs to say where it came from.
  *
@@ -16,6 +18,35 @@ export interface OrderRow extends OrderLine {
   /** How many of the item's own slots (design §3.8) have a measured rate. */
   ratedSlots: number
   slotCount: number
+  /** The demand rate × 7 — the forecast's own number, in the unit a
+   * Tuesday/Friday route thinks in. Rounded for reading. */
+  sellsPerWeek: number
+  /** The matrix's `balance`, sign-flipped so a shortfall reads positive:
+   * "under full 17" is faster than "−17". Zero when at or over full. */
+  underFull: number
+}
+
+/** The order rows both the report and the printable sheet render. One builder,
+ * because the two must never disagree — the same reason `orderCell` is shared. */
+export function buildOrderRows(
+  inputs: OrderItemInput[],
+  matrixRows: MatrixRow[],
+  horizon: number,
+  safety: number,
+): OrderRow[] {
+  const matrixByItem = new Map(matrixRows.map((r) => [r.itemId, r]))
+
+  return orderSuggestion(inputs, horizon, safety).map((line, index) => ({
+    ...line,
+    itemName: inputs[index].itemName,
+    boxSize: inputs[index].boxSize,
+    ratedSlots: inputs[index].ratedSlots,
+    slotCount: inputs[index].slotCount,
+    sellsPerWeek: Math.round(line.ratePerDay * 7),
+    // An item with no matrix row is in no machine's map at all: neither short
+    // nor full, so zero is the honest figure rather than a fabricated gap.
+    underFull: Math.max(0, -(matrixByItem.get(line.itemId)?.balance ?? 0)),
+  }))
 }
 
 const FLAG_LABELS: Record<OrderFlag, string> = {
@@ -31,8 +62,15 @@ const FLAG_LABELS: Record<OrderFlag, string> = {
  *
  * Exported because `ReportScreen` builds the stock matrix's `orderByItem` map
  * from it: one formatter, so the column and the table below it can never print
- * different answers for the same item. */
-export function orderCell(row: OrderRow): string | null {
+ * different answers for the same item.
+ *
+ * `override`, when given, is the operator's correction (`useOrderOverrides`)
+ * and outranks the no-rate guard below: they may order something the app has
+ * no measured rate for, and a figure they typed is a real instruction. */
+export function orderCell(row: OrderRow, override?: number): string | null {
+  if (override !== undefined) {
+    return row.boxSize > 1 ? `${override} × ${row.boxSize}` : `${override}`
+  }
   if (row.ratedSlots === 0) return null
   // D12: whole boxes where a carton size is known, plain units at `boxSize: 1`
   // — where `packs.ts` degrades to units and nothing special-cases it.
@@ -40,12 +78,39 @@ export function orderCell(row: OrderRow): string | null {
   return `${row.units}`
 }
 
+/** The `StockMatrix`'s `orderByItem` map, built once so `ReportScreen` and
+ * `PrintSheet` cannot drift on what fills it.
+ *
+ * They already had: `ReportScreen` gated the map on `filled` (D7 — the
+ * operator's "Order column blank" toggle) and `PrintSheet` did not, so a
+ * sheet printed with the toggle off came out pre-filled anyway — exactly the
+ * figure the operator turned the toggle off to avoid writing over by hand.
+ * `filled` is checked here, once, so neither call site can forget it again.
+ *
+ * `undefined`, not an empty map, when `filled` is false: `StockMatrix` reads
+ * the presence of the map itself to choose its legend line ("stays blank for
+ * your pen" vs "is the suggestion below"), and an empty map would print the
+ * wrong one. */
+export function buildOrderByItem(
+  rows: OrderRow[],
+  overrides: Record<string, number>,
+  filled: boolean,
+): Map<string, string> | undefined {
+  if (!filled) return undefined
+  return new Map(
+    rows.flatMap((row) => {
+      const cell = orderCell(row, overrides[row.itemId])
+      return cell === null ? [] : [[row.itemId, cell] as const]
+    }),
+  )
+}
+
 /** Round for reading, not for arithmetic: the forecast is printed unrounded
  * except for the tail a mean of integers over integers produces. */
 const trim = (n: number) => Number(n.toFixed(1)).toString()
 
 const HEAD = 'text-[9.5px] font-bold uppercase tracking-[0.12em]'
-const GRID = 'grid grid-cols-[1fr_44px_44px_54px] items-baseline gap-2 px-3.5'
+const GRID = 'grid grid-cols-[1fr_40px_40px_64px] items-baseline gap-2 px-3.5'
 
 /** The order suggestion, spec §6.4 and design §12.4.
  *
@@ -58,6 +123,7 @@ const GRID = 'grid grid-cols-[1fr_44px_44px_54px] items-baseline gap-2 px-3.5'
 export function OrderSection({
   rows, horizon, safety, filled,
   onHorizonChange, onSafetyChange, onFilledChange,
+  overrides, onOverride, onClearOverride,
 }: {
   rows: OrderRow[]
   horizon: number
@@ -67,6 +133,10 @@ export function OrderSection({
   onHorizonChange: (days: number) => void
   onSafetyChange: (days: number) => void
   onFilledChange: (filled: boolean) => void
+  /** The operator's corrections, by item id — `useOrderOverrides`. */
+  overrides: Record<string, number>
+  onOverride: (itemId: string, boxes: number) => void
+  onClearOverride: (itemId: string) => void
 }) {
   const days = horizon + safety
   const rated = rows.filter((r) => r.ratedSlots > 0).length
@@ -121,11 +191,17 @@ export function OrderSection({
           <ul>
             {rows.map((row) => {
               const cell = orderCell(row)
+              // Whether the operator has corrected this row. Undefined, not
+              // absent-or-zero: a typed `0` is a real override meaning
+              // "order none", and must read exactly like any other override.
+              const overridden = overrides[row.itemId] !== undefined
               return (
                 <li
                   key={row.itemId}
                   aria-label={`order for ${row.itemName}`}
-                  className={`border-b border-rule-light bg-paper py-2 ${
+                  className={`border-b border-rule-light py-2 ${
+                    overridden ? 'bg-accent-100' : 'bg-paper'
+                  } ${
                     row.flags.length > 0
                       ? 'shadow-[inset_4px_0_0_var(--color-accent)]'
                       : ''
@@ -149,10 +225,42 @@ export function OrderSection({
                     <span className="text-right text-[15px] font-extrabold tabular-nums">
                       {row.onHand}
                     </span>
-                    <span className="text-right text-[15px] font-extrabold tabular-nums text-accent-700">
-                      {cell ?? '—'}
+                    {/* The count is the operator's to correct; the carton
+                        size beside it is a property of the product, not a
+                        per-order decision, so it is printed, not typed. */}
+                    <span className="flex items-center justify-end gap-1">
+                      <OrderFigureField
+                        row={row}
+                        override={overrides[row.itemId]}
+                        overridden={overridden}
+                        onOverride={(boxes) => onOverride(row.itemId, boxes)}
+                        onClearOverride={() => onClearOverride(row.itemId)}
+                      />
+                      {row.boxSize > 1 && (
+                        <span className="text-[10px] font-bold text-neutral-700 tabular-nums">
+                          × {row.boxSize}
+                        </span>
+                      )}
                     </span>
                   </div>
+
+                  {overridden && (
+                    <div className="mt-1 flex items-baseline gap-3 px-3.5 text-[11px]">
+                      <span className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-accent-700">
+                        Yours
+                      </span>
+                      <span className="text-neutral-500 tabular-nums">
+                        app said {cell ?? '—'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onClearOverride(row.itemId)}
+                        className="ml-auto text-[11px] font-bold text-accent-700"
+                      >
+                        Undo
+                      </button>
+                    </div>
+                  )}
 
                   {/* The working, so the row can be checked by hand. */}
                   <p className="px-3.5 pt-0.5 text-[10.5px] font-medium tabular-nums text-neutral-700">
@@ -168,6 +276,22 @@ export function OrderSection({
                             : ''
                         }`}
                   </p>
+
+                  {/* The two reference figures: what the item sells in a
+                      week, and how far under full the estate is — so the
+                      operator can judge the suggestion above rather than
+                      just trust or correct it blind. */}
+                  <div className="flex flex-wrap gap-3 px-3.5 pt-1 text-[11px] font-medium text-neutral-700">
+                    {row.ratedSlots > 0 && (
+                      <span>sells <b className="text-[12px] font-extrabold text-ink tabular-nums">{row.sellsPerWeek}</b>/wk</span>
+                    )}
+                    <span aria-label={`under full for ${row.itemId}`}>
+                      under full{' '}
+                      <b className={`text-[12px] font-extrabold tabular-nums ${row.underFull > 0 ? 'text-accent-700' : 'text-ink'}`}>
+                        {row.underFull}
+                      </b>
+                    </span>
+                  </div>
                 </li>
               )
             })}
@@ -180,6 +304,68 @@ export function OrderSection({
         </>
       )}
     </div>
+  )
+}
+
+/** The editable order figure for one row — boxes where a carton size is
+ * known, units where `boxSize` is 1 (matching `orderCell`).
+ *
+ * Same reason as `DaysField`: a controlled numeric field with nowhere to sit
+ * empty cannot be cleared. Bind the input straight to `override ?? row.boxes`
+ * and React puts the old figure straight back the instant the field goes
+ * empty — so a correction like "1" → "4" is typed onto the *end* of the old
+ * value instead of replacing it ("14"), and the operator cannot retype a
+ * figure on a phone at all. The draft holds whatever is actually typed;
+ * `onOverride`/`onClearOverride` are called on every keystroke so the
+ * committed value tracks it live, and the draft only resyncs to the
+ * committed value when that value changed for a reason other than this
+ * field's own edit — the operator hit Undo on this row, or the horizon or
+ * safety days changed and cleared every override. That resync is skipped
+ * while focused, so it can never fight the very typing that is driving the
+ * committed value in the first place; blurring always resolves any drift. */
+function OrderFigureField({ row, override, overridden, onOverride, onClearOverride }: {
+  row: OrderRow
+  override: number | undefined
+  overridden: boolean
+  onOverride: (boxes: number) => void
+  onClearOverride: () => void
+}) {
+  const committed = override ?? (row.ratedSlots === 0 ? '' : row.boxes)
+  const [draft, setDraft] = useState(() => String(committed))
+  const focused = useRef(false)
+
+  useEffect(() => {
+    if (!focused.current) setDraft(String(committed))
+  }, [committed])
+
+  return (
+    <input
+      type="number"
+      min={0}
+      inputMode="numeric"
+      aria-label={`order boxes for ${row.itemId}`}
+      value={draft}
+      onFocus={() => { focused.current = true }}
+      onChange={(e) => {
+        setDraft(e.target.value)
+        // An emptied field is not an order of zero — it is no override at
+        // all, and must hand the row back to the app's own suggestion
+        // rather than store a zero the operator never typed.
+        if (e.target.value === '') {
+          onClearOverride()
+        } else {
+          const parsed = Number(e.target.value)
+          if (Number.isFinite(parsed)) onOverride(parsed)
+        }
+      }}
+      onBlur={() => {
+        focused.current = false
+        setDraft(String(committed))
+      }}
+      className={`w-9 border-2 bg-paper px-1 py-0.5 text-right text-[14px] font-extrabold tabular-nums ${
+        overridden ? 'border-accent text-accent-700' : 'border-ink'
+      }`}
+    />
   )
 }
 
@@ -227,6 +413,7 @@ const KEYS = {
   horizon: 'vsm.order.horizon',
   safety: 'vsm.order.safety',
   filled: 'vsm.order.filled',
+  overrides: 'vsm.order.overrides',
 } as const
 
 function read(key: string, fallback: number): number {
@@ -280,4 +467,63 @@ export function useOrderPreferences() {
   }, [])
 
   return { horizon, safety, filled, setHorizon, setSafety, setFilled }
+}
+
+/** The operator's corrections to the suggestion, by item id — boxes where a
+ * carton size is known, units where `boxSize` is 1, matching `orderCell`'s two
+ * forms. A preference, not a record (design §1): nothing dates it, nothing
+ * subtracts it later, and it is NOT the fix for "does not know what has
+ * already been ordered".
+ *
+ * One key holding a JSON object rather than a key per item, so the whole set
+ * clears in a single write and a malformed value costs one parse. */
+function readOverrides(): Record<string, number> {
+  try {
+    const raw = window.localStorage.getItem(KEYS.overrides)
+    if (raw === null) return {}
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return {}
+    const clean: Record<string, number> = {}
+    for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+        clean[id] = Math.floor(value)
+      }
+    }
+    return clean
+  } catch {
+    return {}
+  }
+}
+
+/** The single writer behind every mutation below: perform the try/catch
+ * `setItem` and hand back what was written, so each caller can use it as the
+ * next state in one expression. */
+function writeOverrides(next: Record<string, number>): Record<string, number> {
+  try {
+    window.localStorage.setItem(KEYS.overrides, JSON.stringify(next))
+  } catch {
+    // In memory is still correct for this tab, and the print tab simply sees
+    // the suggestion. A preference is never worth a broken screen.
+  }
+  return next
+}
+
+export function useOrderOverrides() {
+  const [overrides, setOverrides] = useState<Record<string, number>>(readOverrides)
+
+  const setOverride = useCallback((itemId: string, boxes: number) => {
+    setOverrides((prev) => writeOverrides({ ...prev, [itemId]: Math.max(0, Math.floor(boxes)) }))
+  }, [])
+
+  const clearOverride = useCallback((itemId: string) => {
+    setOverrides((prev) => {
+      const next = { ...prev }
+      delete next[itemId]
+      return writeOverrides(next)
+    })
+  }, [])
+
+  const clearAll = useCallback(() => setOverrides(writeOverrides({})), [])
+
+  return { overrides, setOverride, clearOverride, clearAll }
 }
