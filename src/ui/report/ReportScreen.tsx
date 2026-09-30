@@ -122,9 +122,25 @@ export function ReportScreen() {
         <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-neutral-700">
           Stock on hand — {matrixRows.length} items × {machines.length} machines
         </span>
-        <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-accent-700">
-          Turn phone ⟳
-        </span>
+        <div className="flex items-baseline gap-3">
+          {/* Opened in its own tab rather than pushed onto `App`'s screen
+              union: the sheet has to leave the installed app's standalone
+              mode to reach a working `window.print()` on iOS, and a new tab
+              is what does that (see `PrintSheet.tsx`). It reads the
+              operator's overrides back out of `localStorage`, not out of
+              this screen's React state, which is why nothing is passed to
+              it here. */}
+          <button
+            type="button"
+            onClick={() => window.open('?print=1', '_blank')}
+            className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-accent-700"
+          >
+            Print sheet
+          </button>
+          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-accent-700">
+            Turn phone ⟳
+          </span>
+        </div>
       </div>
       {/* D7: filled from the suggestion, with the toggle in the section below
           handing the column back to the pen for a run where the operator
