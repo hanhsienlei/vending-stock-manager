@@ -95,10 +95,11 @@ export function ReportScreen() {
 
   // One formatter for both places the figure appears (`orderCell`), and only
   // for items there is a figure for — an item with no rate keeps a blank cell
-  // rather than a zero.
+  // rather than a zero. The operator's override (Task 3) is passed through so
+  // the matrix and the order section can never disagree.
   const orderByItem = new Map(
     orderRows.flatMap((row) => {
-      const cell = orderCell(row)
+      const cell = orderCell(row, overrides[row.itemId])
       return cell === null ? [] : [[row.itemId, cell] as const]
     }),
   )

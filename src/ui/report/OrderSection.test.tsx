@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { act, render, renderHook, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { OrderSection, useOrderOverrides, type OrderRow } from './OrderSection'
+import { OrderSection, orderCell, useOrderOverrides, type OrderRow } from './OrderSection'
 
 function row(over: Partial<OrderRow> = {}): OrderRow {
   return {
@@ -273,6 +273,24 @@ describe('OrderSection — editing the order figure', () => {
 
     expect(onClear).toHaveBeenCalledWith('mars')
     expect(onOverride).not.toHaveBeenCalledWith('mars', 0)
+  })
+})
+
+// Task 4: the stock matrix's Order column is built from `orderCell`, the
+// same formatter this section uses for its own figure — so the two can never
+// print different answers for the same item.
+describe('orderCell — the Order column', () => {
+  it('prints the operator figure in the matrix Order column, not the suggestion', () => {
+    expect(orderCell(ROW)).toBe('1 × 50')
+    expect(orderCell(ROW, 2)).toBe('2 × 50')
+  })
+
+  // A row the app cannot forecast returns null — but an override on it is a
+  // real instruction and must print.
+  it('prints an override even where there is no rate', () => {
+    const noRate = { ...ROW, ratedSlots: 0 }
+    expect(orderCell(noRate)).toBeNull()
+    expect(orderCell(noRate, 3)).toBe('3 × 50')
   })
 })
 

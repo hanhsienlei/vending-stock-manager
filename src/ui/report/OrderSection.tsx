@@ -62,8 +62,15 @@ const FLAG_LABELS: Record<OrderFlag, string> = {
  *
  * Exported because `ReportScreen` builds the stock matrix's `orderByItem` map
  * from it: one formatter, so the column and the table below it can never print
- * different answers for the same item. */
-export function orderCell(row: OrderRow): string | null {
+ * different answers for the same item.
+ *
+ * `override`, when given, is the operator's correction (`useOrderOverrides`)
+ * and outranks the no-rate guard below: they may order something the app has
+ * no measured rate for, and a figure they typed is a real instruction. */
+export function orderCell(row: OrderRow, override?: number): string | null {
+  if (override !== undefined) {
+    return row.boxSize > 1 ? `${override} × ${row.boxSize}` : `${override}`
+  }
   if (row.ratedSlots === 0) return null
   // D12: whole boxes where a carton size is known, plain units at `boxSize: 1`
   // — where `packs.ts` degrades to units and nothing special-cases it.
