@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ORDER_HORIZON_DAYS, ORDER_SAFETY_DAYS, orderSuggestion,
   type OrderFlag, type OrderLine,
@@ -195,26 +195,12 @@ export function OrderSection({
                         size beside it is a property of the product, not a
                         per-order decision, so it is printed, not typed. */}
                     <span className="flex items-center justify-end gap-1">
-                      <input
-                        type="number"
-                        min={0}
-                        inputMode="numeric"
-                        aria-label={`order boxes for ${row.itemId}`}
-                        value={overrides[row.itemId] ?? (row.ratedSlots === 0 ? '' : row.boxes)}
-                        onChange={(e) => {
-                          // An emptied field is not an order of zero — it is
-                          // no override at all, and must hand the row back
-                          // to the app's own suggestion rather than store a
-                          // zero the operator never typed.
-                          if (e.target.value === '') {
-                            onClearOverride(row.itemId)
-                          } else {
-                            onOverride(row.itemId, Number(e.target.value))
-                          }
-                        }}
-                        className={`w-9 border-2 bg-paper px-1 py-0.5 text-right text-[14px] font-extrabold tabular-nums ${
-                          overridden ? 'border-accent text-accent-700' : 'border-ink'
-                        }`}
+                      <OrderFigureField
+                        row={row}
+                        override={overrides[row.itemId]}
+                        overridden={overridden}
+                        onOverride={(boxes) => onOverride(row.itemId, boxes)}
+                        onClearOverride={() => onClearOverride(row.itemId)}
                       />
                       {row.boxSize > 1 && (
                         <span className="text-[10px] font-bold text-neutral-700 tabular-nums">
@@ -284,6 +270,68 @@ export function OrderSection({
         </>
       )}
     </div>
+  )
+}
+
+/** The editable order figure for one row — boxes where a carton size is
+ * known, units where `boxSize` is 1 (matching `orderCell`).
+ *
+ * Same reason as `DaysField`: a controlled numeric field with nowhere to sit
+ * empty cannot be cleared. Bind the input straight to `override ?? row.boxes`
+ * and React puts the old figure straight back the instant the field goes
+ * empty — so a correction like "1" → "4" is typed onto the *end* of the old
+ * value instead of replacing it ("14"), and the operator cannot retype a
+ * figure on a phone at all. The draft holds whatever is actually typed;
+ * `onOverride`/`onClearOverride` are called on every keystroke so the
+ * committed value tracks it live, and the draft only resyncs to the
+ * committed value when that value changed for a reason other than this
+ * field's own edit — the operator hit Undo on this row, or the horizon or
+ * safety days changed and cleared every override. That resync is skipped
+ * while focused, so it can never fight the very typing that is driving the
+ * committed value in the first place; blurring always resolves any drift. */
+function OrderFigureField({ row, override, overridden, onOverride, onClearOverride }: {
+  row: OrderRow
+  override: number | undefined
+  overridden: boolean
+  onOverride: (boxes: number) => void
+  onClearOverride: () => void
+}) {
+  const committed = override ?? (row.ratedSlots === 0 ? '' : row.boxes)
+  const [draft, setDraft] = useState(() => String(committed))
+  const focused = useRef(false)
+
+  useEffect(() => {
+    if (!focused.current) setDraft(String(committed))
+  }, [committed])
+
+  return (
+    <input
+      type="number"
+      min={0}
+      inputMode="numeric"
+      aria-label={`order boxes for ${row.itemId}`}
+      value={draft}
+      onFocus={() => { focused.current = true }}
+      onChange={(e) => {
+        setDraft(e.target.value)
+        // An emptied field is not an order of zero — it is no override at
+        // all, and must hand the row back to the app's own suggestion
+        // rather than store a zero the operator never typed.
+        if (e.target.value === '') {
+          onClearOverride()
+        } else {
+          const parsed = Number(e.target.value)
+          if (Number.isFinite(parsed)) onOverride(parsed)
+        }
+      }}
+      onBlur={() => {
+        focused.current = false
+        setDraft(String(committed))
+      }}
+      className={`w-9 border-2 bg-paper px-1 py-0.5 text-right text-[14px] font-extrabold tabular-nums ${
+        overridden ? 'border-accent text-accent-700' : 'border-ink'
+      }`}
+    />
   )
 }
 

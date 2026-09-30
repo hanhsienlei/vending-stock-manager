@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
-import { act, fireEvent, render, renderHook, screen } from '@testing-library/react'
+import { act, render, renderHook, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { OrderSection, useOrderOverrides, type OrderRow } from './OrderSection'
 
@@ -17,6 +18,27 @@ const ROW = row({
   ratePerDay: 1, forecast: 10, onHand: 0, suggested: 10, boxes: 1, units: 50,
   flags: [], sellsPerWeek: 7, underFull: 17,
 })
+
+/** A thin, real state wrapper around `OrderSection` — for the one test that
+ * has to exercise the field through actual `overrides` state rather than
+ * bare mocks. A bare `vi.fn()` for `onOverride` never round-trips into the
+ * `overrides` prop, so it cannot tell an input that correctly reads its own
+ * live edits apart from one that is silently drifting from them. */
+function StatefulOrderSection(props: Omit<Parameters<typeof OrderSection>[0], 'overrides' | 'onOverride' | 'onClearOverride'>) {
+  const [overrides, setOverrides] = useState<Record<string, number>>({})
+  return (
+    <OrderSection
+      {...props}
+      overrides={overrides}
+      onOverride={(itemId, boxes) => setOverrides((prev) => ({ ...prev, [itemId]: boxes }))}
+      onClearOverride={(itemId) => setOverrides((prev) => {
+        const next = { ...prev }
+        delete next[itemId]
+        return next
+      })}
+    />
+  )
+}
 
 function renderSection(over: Partial<Parameters<typeof OrderSection>[0]> = {}) {
   return render(
@@ -52,9 +74,11 @@ describe('OrderSection', () => {
       rows: [row({ boxSize: 1, suggested: 24, boxes: 24, units: 24 })],
     })
 
-    const line = screen.getByLabelText('order for Coke')
-    expect(line).toHaveTextContent('24')
-    expect(line).not.toHaveTextContent('×')
+    // Asserted on the field itself: the working line below also says "24"
+    // (24 short), so a check against the row's text content would pass
+    // whether or not the figure actually reached the input.
+    expect(screen.getByLabelText('order boxes for coke')).toHaveValue(24)
+    expect(screen.getByLabelText('order for Coke')).not.toHaveTextContent('×')
   })
 
   // Spec §6.1: "an explainable forecast that is slightly worse beats an opaque
@@ -190,24 +214,26 @@ describe('OrderSection', () => {
 // stay visible (spec §6.1) — a number nobody can trace back is exactly what
 // that section refuses.
 describe('OrderSection — editing the order figure', () => {
-  it('replaces the suggestion with the operator figure, keeping the original in view', () => {
-    const onOverride = vi.fn()
-    render(<OrderSection rows={[ROW]} horizon={7} safety={3} filled
-      onHorizonChange={() => {}} onSafetyChange={() => {}} onFilledChange={() => {}}
-      overrides={{ mars: 2 }} onOverride={onOverride} onClearOverride={() => {}} />)
+  // Exercised through real `overrides` state (`StatefulOrderSection`), not a
+  // bare mock: a controlled value with nowhere to sit empty snaps straight
+  // back to the old figure the instant the field is cleared, so typing "4"
+  // after clearing a row that suggests "1" used to land on top of it ("14")
+  // instead of replacing it — a defect a mock-backed `onOverride` cannot
+  // surface, because nothing ever feeds its calls back into the input's own
+  // `value`.
+  it('replaces the suggestion with the operator figure, keeping the original in view', async () => {
+    const user = userEvent.setup()
+    render(<StatefulOrderSection rows={[ROW]} horizon={7} safety={3} filled
+      onHorizonChange={() => {}} onSafetyChange={() => {}} onFilledChange={() => {}} />)
 
     const input = screen.getByLabelText('order boxes for mars')
-    expect(input).toHaveValue(2)
-    expect(screen.getByText(/app said/i)).toHaveTextContent('1 × 50')
+    expect(input).toHaveValue(1)
 
-    // `input` is bound to the static `overrides` prop above and nothing in
-    // this test updates it, so React restores the DOM to that prop's value
-    // after every keystroke a real `user.type` would fire (there is no state
-    // update here to keep the interim edit on screen, unlike the real hook).
-    // One `change` event exercises the same handler with the value a typed
-    // "3" would ultimately produce.
-    fireEvent.change(input, { target: { value: '3' } })
-    expect(onOverride).toHaveBeenLastCalledWith('mars', 3)
+    await user.clear(input)
+    await user.type(input, '4')
+
+    expect(input).toHaveValue(4)
+    expect(screen.getByText(/app said/i)).toHaveTextContent('1 × 50')
   })
 
   // The operator can order something the app cannot forecast.
