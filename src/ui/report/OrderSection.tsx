@@ -1,8 +1,10 @@
 import { useCallback, useState } from 'react'
 import {
-  ORDER_HORIZON_DAYS, ORDER_SAFETY_DAYS,
+  ORDER_HORIZON_DAYS, ORDER_SAFETY_DAYS, orderSuggestion,
   type OrderFlag, type OrderLine,
 } from '../../domain/order'
+import type { MatrixRow } from '../../domain/stockMatrix'
+import type { OrderItemInput } from './useReport'
 
 /** One `OrderLine`, plus what the screen needs to say where it came from.
  *
@@ -16,6 +18,35 @@ export interface OrderRow extends OrderLine {
   /** How many of the item's own slots (design §3.8) have a measured rate. */
   ratedSlots: number
   slotCount: number
+  /** The demand rate × 7 — the forecast's own number, in the unit a
+   * Tuesday/Friday route thinks in. Rounded for reading. */
+  sellsPerWeek: number
+  /** The matrix's `balance`, sign-flipped so a shortfall reads positive:
+   * "under full 17" is faster than "−17". Zero when at or over full. */
+  underFull: number
+}
+
+/** The order rows both the report and the printable sheet render. One builder,
+ * because the two must never disagree — the same reason `orderCell` is shared. */
+export function buildOrderRows(
+  inputs: OrderItemInput[],
+  matrixRows: MatrixRow[],
+  horizon: number,
+  safety: number,
+): OrderRow[] {
+  const matrixByItem = new Map(matrixRows.map((r) => [r.itemId, r]))
+
+  return orderSuggestion(inputs, horizon, safety).map((line, index) => ({
+    ...line,
+    itemName: inputs[index].itemName,
+    boxSize: inputs[index].boxSize,
+    ratedSlots: inputs[index].ratedSlots,
+    slotCount: inputs[index].slotCount,
+    sellsPerWeek: Math.round(line.ratePerDay * 7),
+    // An item with no matrix row is in no machine's map at all: neither short
+    // nor full, so zero is the honest figure rather than a fabricated gap.
+    underFull: Math.max(0, -(matrixByItem.get(line.itemId)?.balance ?? 0)),
+  }))
 }
 
 const FLAG_LABELS: Record<OrderFlag, string> = {
@@ -168,6 +199,22 @@ export function OrderSection({
                             : ''
                         }`}
                   </p>
+
+                  {/* The two reference figures: what the item sells in a
+                      week, and how far under full the estate is — so the
+                      operator can judge the suggestion above rather than
+                      just trust or correct it blind. */}
+                  <div className="flex flex-wrap gap-3 px-3.5 pt-1 text-[11px] font-medium text-neutral-700">
+                    {row.ratedSlots > 0 && (
+                      <span>sells <b className="text-[12px] font-extrabold text-ink tabular-nums">{row.sellsPerWeek}</b>/wk</span>
+                    )}
+                    <span aria-label={`under full for ${row.itemId}`}>
+                      under full{' '}
+                      <b className={`text-[12px] font-extrabold tabular-nums ${row.underFull > 0 ? 'text-accent-700' : 'text-ink'}`}>
+                        {row.underFull}
+                      </b>
+                    </span>
+                  </div>
                 </li>
               )
             })}

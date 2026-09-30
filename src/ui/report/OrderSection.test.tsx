@@ -7,7 +7,7 @@ function row(over: Partial<OrderRow> = {}): OrderRow {
   return {
     itemId: 'coke', itemName: 'Coke', boxSize: 24,
     ratePerDay: 3, forecast: 30, onHand: 6, suggested: 24, boxes: 1, units: 24,
-    flags: [], ratedSlots: 2, slotCount: 2,
+    flags: [], ratedSlots: 2, slotCount: 2, sellsPerWeek: 21, underFull: 0,
     ...over,
   }
 }
@@ -149,6 +149,19 @@ describe('OrderSection', () => {
 
     expect(screen.getByLabelText('order suggestion'))
       .toHaveTextContent(/two clean periods/i)
+  })
+
+  it('shows what it sells a week and how far under full it is', () => {
+    renderSection({
+      rows: [row({
+        itemId: 'mars', itemName: 'Mars', boxSize: 50, ratedSlots: 3, slotCount: 3,
+        ratePerDay: 1, forecast: 10, onHand: 0, suggested: 10, boxes: 1, units: 50,
+        flags: [], sellsPerWeek: 7, underFull: 17,
+      })],
+    })
+
+    expect(screen.getByText(/sells/i)).toHaveTextContent('7')
+    expect(screen.getByLabelText('under full for mars')).toHaveTextContent('17')
   })
 
   it('carries no rounded corner and no legacy palette class', () => {

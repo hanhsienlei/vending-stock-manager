@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useReport, latestRunDate } from './useReport'
 import { StockMatrix } from './StockMatrix'
-import { OrderSection, orderCell, useOrderPreferences, type OrderRow } from './OrderSection'
-import { orderSuggestion } from '../../domain/order'
+import { OrderSection, buildOrderRows, orderCell, useOrderPreferences } from './OrderSection'
 import { formatRunDate } from '../../domain/date'
 import type { CensoredReason } from '../../domain/sales'
 
@@ -78,14 +77,7 @@ export function ReportScreen() {
   // `useReport`, so that editing the horizon re-computes without re-reading
   // the estate. `orderSuggestion` preserves input order, so each line pairs
   // with the input it came from.
-  const orderRows: OrderRow[] = orderSuggestion(orderInputs, horizon, safety)
-    .map((line, index) => ({
-      ...line,
-      itemName: orderInputs[index].itemName,
-      boxSize: orderInputs[index].boxSize,
-      ratedSlots: orderInputs[index].ratedSlots,
-      slotCount: orderInputs[index].slotCount,
-    }))
+  const orderRows = buildOrderRows(orderInputs, matrixRows, horizon, safety)
     .sort((a, b) =>
       b.suggested - a.suggested ||
       b.flags.length - a.flags.length ||
