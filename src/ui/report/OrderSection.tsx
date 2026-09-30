@@ -227,6 +227,7 @@ const KEYS = {
   horizon: 'vsm.order.horizon',
   safety: 'vsm.order.safety',
   filled: 'vsm.order.filled',
+  overrides: 'vsm.order.overrides',
 } as const
 
 function read(key: string, fallback: number): number {
@@ -280,4 +281,63 @@ export function useOrderPreferences() {
   }, [])
 
   return { horizon, safety, filled, setHorizon, setSafety, setFilled }
+}
+
+/** The operator's corrections to the suggestion, by item id — boxes where a
+ * carton size is known, units where `boxSize` is 1, matching `orderCell`'s two
+ * forms. A preference, not a record (design §1): nothing dates it, nothing
+ * subtracts it later, and it is NOT the fix for "does not know what has
+ * already been ordered".
+ *
+ * One key holding a JSON object rather than a key per item, so the whole set
+ * clears in a single write and a malformed value costs one parse. */
+function readOverrides(): Record<string, number> {
+  try {
+    const raw = window.localStorage.getItem(KEYS.overrides)
+    if (raw === null) return {}
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return {}
+    const clean: Record<string, number> = {}
+    for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+        clean[id] = Math.floor(value)
+      }
+    }
+    return clean
+  } catch {
+    return {}
+  }
+}
+
+/** The single writer behind every mutation below: perform the try/catch
+ * `setItem` and hand back what was written, so each caller can use it as the
+ * next state in one expression. */
+function writeOverrides(next: Record<string, number>): Record<string, number> {
+  try {
+    window.localStorage.setItem(KEYS.overrides, JSON.stringify(next))
+  } catch {
+    // In memory is still correct for this tab, and the print tab simply sees
+    // the suggestion. A preference is never worth a broken screen.
+  }
+  return next
+}
+
+export function useOrderOverrides() {
+  const [overrides, setOverrides] = useState<Record<string, number>>(readOverrides)
+
+  const setOverride = useCallback((itemId: string, boxes: number) => {
+    setOverrides((prev) => writeOverrides({ ...prev, [itemId]: Math.max(0, Math.floor(boxes)) }))
+  }, [])
+
+  const clearOverride = useCallback((itemId: string) => {
+    setOverrides((prev) => {
+      const next = { ...prev }
+      delete next[itemId]
+      return writeOverrides(next)
+    })
+  }, [])
+
+  const clearAll = useCallback(() => setOverrides(writeOverrides({})), [])
+
+  return { overrides, setOverride, clearOverride, clearAll }
 }

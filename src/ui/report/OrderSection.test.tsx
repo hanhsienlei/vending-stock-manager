@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, renderHook, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { OrderSection, type OrderRow } from './OrderSection'
+import { OrderSection, useOrderOverrides, type OrderRow } from './OrderSection'
 
 function row(over: Partial<OrderRow> = {}): OrderRow {
   return {
@@ -157,5 +157,46 @@ describe('OrderSection', () => {
     expect(container.innerHTML).not.toMatch(/rounded-/)
     expect(container.innerHTML)
       .not.toMatch(/\b(?:bg|text|border)-(?:gray|blue|red|green|emerald|amber)-/)
+  })
+})
+
+describe('useOrderOverrides', () => {
+  it('records, clears one, and clears all', () => {
+    const { result } = renderHook(() => useOrderOverrides())
+
+    act(() => { result.current.setOverride('mars', 2) })
+    expect(result.current.overrides.mars).toBe(2)
+
+    act(() => { result.current.setOverride('coke', 4) })
+    act(() => { result.current.clearOverride('mars') })
+    expect(result.current.overrides.mars).toBeUndefined()
+    expect(result.current.overrides.coke).toBe(4)
+
+    act(() => { result.current.clearAll() })
+    expect(result.current.overrides).toEqual({})
+  })
+
+  // The storage shim on Node 25 has no getItem/setItem at all, and private
+  // Safari throws outright. Neither may take the report down.
+  //
+  // `vi.spyOn(window.localStorage, 'setItem')` cannot attach here: on
+  // Node 25 `window.localStorage` is a bare object with no `setItem` to
+  // spy on in the first place (that absence is exactly what this test
+  // means to cover). `vi.stubGlobal` replaces the whole object instead,
+  // which proves the same thing — a `setItem` that throws — on both
+  // Node 25 and Node 20 (CI), where the real store's `setItem` works.
+  it('survives storage that is absent or throws', () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => { throw new Error('denied') },
+      removeItem: () => {},
+      clear: () => {},
+      key: () => null,
+      length: 0,
+    })
+    const { result } = renderHook(() => useOrderOverrides())
+    act(() => { result.current.setOverride('mars', 2) })
+    expect(result.current.overrides.mars).toBe(2)   // in memory regardless
+    vi.unstubAllGlobals()
   })
 })
